@@ -21,10 +21,41 @@ const basename = import.meta.env.PROD
   ? (import.meta.env.VITE_BASE_PATH || '/').replace(/\/$/, '')
   : '/';
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+// Defensive: surface JS errors to the screen so a runtime failure (network,
+// module load, hydration) never produces a silent blank white wall. The
+// pre-JS splash in index.html stays visible as a fallback if even this
+// script fails to execute.
+window.addEventListener('error', (e) => {
+  // eslint-disable-next-line no-console
+  console.error('[yobou] window error:', e.error || e.message);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  // eslint-disable-next-line no-console
+  console.error('[yobou] unhandled rejection:', e.reason);
+});
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
   <React.StrictMode>
     <BrowserRouter basename={basename}>
       <App />
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// Tell index.html's pre-JS splash to hide itself. The selector watches
+// `html[data-yobou-booted="true"]` — flipping this on the next frame
+// avoids a flash where React renders behind the splash, then the splash
+// vanishes.
+const stuckTimer = setTimeout(() => {
+  // 12s and still no mounted app — flip to the error state so the user
+  // gets a real signal instead of staring at the splash forever.
+  document.documentElement.setAttribute('data-yobou-stuck', 'true');
+  // eslint-disable-next-line no-console
+  console.error('[yobou] boot timeout — React never mounted within 12s');
+}, 12000);
+
+requestAnimationFrame(() => {
+  document.documentElement.setAttribute('data-yobou-booted', 'true');
+  clearTimeout(stuckTimer);
+});

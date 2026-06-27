@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -10,12 +10,103 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet" />
     <title>Yobou Market</title>
+    <style>
+      /*
+        Defensive pre-JS splash. Renders before React even mounts, so the
+        user never sees a blank white screen while the bundle is loading
+        (or if a runtime error keeps React from rendering). Mirrors the
+        launcher icon's Y monogram so cold-start feels like one continuous
+        brand experience.
+
+        Removed automatically once main.jsx adds `data-yobou-booted="true"`
+        to <html>. If the JS bundle fails entirely, the splash stays
+        visible and the user sees the brand instead of a white wall.
+      */
+      html { background: #0034b9; }
+      body {
+        margin: 0;
+        font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+        background: linear-gradient(180deg, #0047f1 0%, #0034b9 100%);
+        color: #fff;
+      }
+      #boot-splash {
+        position: fixed; inset: 0;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        z-index: 9999;
+        pointer-events: none;
+      }
+      #boot-splash .mark {
+        width: 96px; height: 96px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(8px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      }
+      #boot-splash svg { width: 56px; height: 56px; }
+      #boot-splash .word {
+        margin-top: 18px;
+        font-weight: 800;
+        font-size: 22px;
+        letter-spacing: 0.02em;
+      }
+      #boot-splash .tag {
+        margin-top: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        opacity: 0.75;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      /* React tells us it's mounted — hide the splash. */
+      html[data-yobou-booted="true"] #boot-splash { display: none; }
+
+      /*
+        Safety net: if React still hasn't mounted after 12s, swap the splash
+        for a visible error state. Better to tell the user "something went
+        wrong" than to leave them staring at a brand mark with no signal.
+      */
+      #boot-error {
+        display: none;
+        position: fixed; inset: 0;
+        flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 24px;
+        text-align: center;
+        background: linear-gradient(180deg, #0047f1 0%, #0034b9 100%);
+        color: #fff;
+        z-index: 10000;
+      }
+      html[data-yobou-stuck="true"] #boot-error { display: flex; }
+      html[data-yobou-stuck="true"] #boot-splash { display: none; }
+      #boot-error h1 { margin: 0 0 8px; font-size: 22px; font-weight: 800; }
+      #boot-error p { margin: 0; max-width: 320px; opacity: 0.85; font-size: 14px; line-height: 1.5; }
+    </style>
   </head>
   <body>
+    <div id="boot-error" role="alert" aria-live="assertive">
+      <h1>Yobou couldn't start</h1>
+      <p>The app failed to load. Please close and reopen — if the issue persists, reinstall the latest APK.</p>
+    </div>
+    <div id="boot-splash" aria-hidden="true">
+      <div class="mark">
+        <!-- Y monogram, white-on-transparent. Matches launcher icon geometry
+             (108-unit viewport scaled into 56px container). -->
+        <svg viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
+          <path fill="#ffffff" d="M18,14 L29,14 L57,38 L46,38 Z" />
+          <path fill="#ffffff" d="M90,14 L79,14 L51,38 L62,38 Z" />
+          <path fill="#ffffff" d="M47,38 L61,38 L65,70 L65,90 L43,90 L43,70 Z" />
+          <path fill="#fdc003" d="M84,26 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0" />
+        </svg>
+      </div>
+      <div class="word">Yobou</div>
+      <div class="tag">Market</div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
