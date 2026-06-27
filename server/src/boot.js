@@ -78,4 +78,8 @@ require('./seedIfEmpty.js');
 
 // Boot the API
 console.log('[boot] Starting API...');
-require('./index.js');
+const app = require('./index.js');
+const port = Number(process.env.PORT || 4000);
+app.listen(port, () => {
+  console.log(`[yobou] api listening on http://localhost:${port}`);
+});
