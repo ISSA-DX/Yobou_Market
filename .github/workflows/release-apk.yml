@@ -78,7 +78,9 @@ jobs:
       # YOBOU_KEYSTORE_PATH secrets and switch to a signed release.
       - name: Build release APK
         working-directory: APP_shopper_and_buyer/android
-        run: ./gradlew assembleRelease 2>&1 | tee /tmp/gradle-build.log
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease 2>&1 | tee /tmp/gradle-build.log
 
       - name: Locate APK
         id: locate
