@@ -23,7 +23,6 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
 
 env:
   VITE_API_BASE: https://yobou-server.onrender.com
