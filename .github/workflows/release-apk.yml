@@ -80,8 +80,17 @@ jobs:
         working-directory: APP_shopper_and_buyer/android
         run: ./gradlew assembleRelease 2>&1 | tee /tmp/gradle-build.log
 
-      - name: Upload debug logs on failure
-        if: failure()
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yobou-market-apk
+          path: yobou-market.apk
+          if-no-files-found: error
+
+      # Always upload the build logs at the very end of the job so a
+      # failure in any step (including the locate step) is captured.
+      - name: Upload debug logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: apk-debug-logs
