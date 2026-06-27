@@ -40,7 +40,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Setup Java (for Gradle)
@@ -62,13 +62,13 @@ jobs:
 
       - name: Build shopper web bundle
         working-directory: APP_shopper_and_buyer
-        run: npm run build:prod 2>&1 | tee /tmp/shopper-build.log
+        run: set -o pipefail; npm run build:prod 2>&1 | tee /tmp/shopper-build.log
         env:
           VITE_API_BASE: ${{ env.VITE_API_BASE }}
 
       - name: Copy web assets into Android project
         working-directory: APP_shopper_and_buyer
-        run: npx cap sync android 2>&1 | tee /tmp/cap-sync.log
+        run: set -o pipefail; npx cap sync android 2>&1 | tee /tmp/cap-sync.log
 
       # Note: no release keystore is configured in the repo (the previous
       # local builds used Android's debug keystore). For pilot testing,
@@ -80,6 +80,7 @@ jobs:
         working-directory: APP_shopper_and_buyer/android
         run: |
           chmod +x ./gradlew
+          set -o pipefail
           ./gradlew assembleRelease 2>&1 | tee /tmp/gradle-build.log
 
       - name: Locate APK
