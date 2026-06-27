@@ -60,34 +60,11 @@ jobs:
 
       # ----- Customer web (Capacitor build source — also works as web SPA) -----
       - name: Build customer web
-        id: build_customer
         working-directory: APP_shopper_and_buyer
-        run: |
-          npm install --no-audit --no-fund 2>&1 | tee /tmp/customer-install.log
-          INSTALL_RC=${PIPESTATUS[0]}
-          echo "--- install rc=$INSTALL_RC ---"
-          if [ $INSTALL_RC -ne 0 ]; then
-            exit $INSTALL_RC
-          fi
-          npm run build:prod 2>&1 | tee /tmp/customer-build.log
-          BUILD_RC=${PIPESTATUS[0]}
-          echo "--- build rc=$BUILD_RC ---"
-          exit $BUILD_RC
+        run: npm install --no-audit --no-fund && npm run build:prod
         env:
           VITE_API_BASE: ${{ env.VITE_API_BASE }}
           VITE_BASE_PATH: /Yobou_Market/
-
-      # Upload the logs as workflow artifacts on failure so we can
-      # read them from the GitHub UI without API access.
-      - name: Upload customer logs on failure
-        if: failure() && steps.build_customer.conclusion == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: customer-build-logs
-          path: |
-            /tmp/customer-install.log
-            /tmp/customer-build.log
-          if-no-files-found: ignore
 
       # ----- Admin web -----
       - name: Build admin web
