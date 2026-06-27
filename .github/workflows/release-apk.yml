@@ -60,7 +60,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install root deps
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --no-workspaces
 
       - name: Install shopper deps
         working-directory: APP_shopper_and_buyer
@@ -71,7 +71,9 @@ jobs:
       # point at the Render-deployed API instead of localhost.
       - name: Build shopper web bundle
         working-directory: APP_shopper_and_buyer
-        run: npm run build:prod
+        run: |
+          npm run build:prod 2>&1 | tee /tmp/shopper-build.log
+          exit ${PIPESTATUS[0]}
         env:
           VITE_API_BASE: ${{ env.VITE_API_BASE }}
 
@@ -87,7 +89,26 @@ jobs:
       # YOBOU_KEYSTORE_PATH secrets and switch to a signed release.
       - name: Build release APK
         working-directory: APP_shopper_and_buyer/android
-        run: ./gradlew assembleRelease
+        run: |
+          set +e
+          ./gradlew assembleRelease 2>&1 | tee /tmp/gradle-build.log
+          GRADLE_RC=${PIPESTATUS[0]}
+          echo "--- gradle rc=$GRADLE_RC ---"
+          if [ $GRADLE_RC -ne 0 ]; then
+            echo "::error::gradlew assembleRelease failed (rc=$GRADLE_RC)"
+            tail -80 /tmp/gradle-build.log
+          fi
+          exit $GRADLE_RC
+
+      - name: Upload debug logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-debug-logs
+          path: |
+            /tmp/shopper-build.log
+            /tmp/gradle-build.log
+          if-no-files-found: ignore
 
       - name: Locate APK
         id: locate
