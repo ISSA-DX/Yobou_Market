@@ -95,7 +95,15 @@ jobs:
         id: locate
         working-directory: APP_shopper_and_buyer
         run: |
+          echo "--- Listing release output dir ---"
+          ls -la android/app/build/outputs/apk/release/ || true
+          echo "--- find result ---"
+          find android/app/build/outputs/apk/release -name '*.apk' || true
           APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::No APK found in android/app/build/outputs/apk/release/"
+            exit 1
+          fi
           echo "apk_path=$APK" >> $GITHUB_OUTPUT
           echo "Built: $APK"
           ls -la "$APK"
@@ -104,14 +112,14 @@ jobs:
         working-directory: APP_shopper_and_buyer
         run: |
           APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
-          cp "$APK" yobou-market.apk
-          ls -la yobou-market.apk
+          cp "$APK" ../yobou-market.apk
+          ls -la ../yobou-market.apk
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: yobou-market-apk
-          path: APP_shopper_and_buyer/yobou-market.apk
+          path: yobou-market.apk
           if-no-files-found: error
 
   release:
