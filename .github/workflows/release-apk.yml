@@ -24,10 +24,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag name (e.g. v0.1.0) — only used for the release title'
-        required: false
 
 permissions:
   contents: write   # needed to create the release
