@@ -62,13 +62,13 @@ jobs:
 
       - name: Build shopper web bundle
         working-directory: APP_shopper_and_buyer
-        run: npm run build:prod
+        run: npm run build:prod 2>&1 | tee /tmp/shopper-build.log
         env:
           VITE_API_BASE: ${{ env.VITE_API_BASE }}
 
       - name: Copy web assets into Android project
         working-directory: APP_shopper_and_buyer
-        run: npx cap sync android
+        run: npx cap sync android 2>&1 | tee /tmp/cap-sync.log
 
       # Note: no release keystore is configured in the repo (the previous
       # local builds used Android's debug keystore). For pilot testing,
@@ -85,7 +85,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apk-debug-logs
-          path: /tmp/gradle-build.log
+          path: |
+            /tmp/shopper-build.log
+            /tmp/cap-sync.log
+            /tmp/gradle-build.log
           if-no-files-found: ignore
 
       - name: Locate APK
