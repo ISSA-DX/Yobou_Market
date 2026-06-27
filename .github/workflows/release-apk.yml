@@ -1,3 +1,22 @@
+# Builds the Android APK and publishes it as a GitHub Release.
+#
+# Triggers when you push a version tag (v0.1.0, v1.2.3, etc.). The
+# workflow builds the release APK, attaches it to a GitHub Release with
+# auto-generated notes, and uploads it as yobou-market.apk.
+#
+# Pilots install the APK from the Releases page:
+#   https://github.com/ISSA-DX/Yobou_Market/releases/latest/download/yobou-market.apk
+#
+# To publish a new release:
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# Required secrets: none (GitHub Actions runners already have the Java
+# and Android SDK tooling installed via the actions/setup-java step).
+#
+# Cost: $0. GitHub Releases are free for public repos; storage is
+# unlimited.
+
 name: Build & release Android APK
 
 on:
@@ -5,8 +24,101 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
+env:
+  VITE_API_BASE: https://yobou-server.onrender.com
+
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "test triggered"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Java (for Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # No Android SDK pre-installed on ubuntu-latest — set it up.
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install root deps
+        run: npm install --no-audit --no-fund --no-workspaces
+
+      - name: Install shopper deps
+        working-directory: APP_shopper_and_buyer
+        run: npm install --no-audit --no-fund
+
+      - name: Build shopper web bundle
+        working-directory: APP_shopper_and_buyer
+        run: npm run build:prod
+        env:
+          VITE_API_BASE: ${{ env.VITE_API_BASE }}
+
+      - name: Copy web assets into Android project
+        working-directory: APP_shopper_and_buyer
+        run: npx cap sync android
+
+      # Note: no release keystore is configured in the repo (the previous
+      # local builds used Android's debug keystore). For pilot testing,
+      # the debug-signed release APK is fine — it installs like any
+      # other debug app and doesn't require Play Store. When you're
+      # ready to ship to real users, add a keystore and the
+      # YOBOU_KEYSTORE_PATH secrets and switch to a signed release.
+      - name: Build release APK
+        working-directory: APP_shopper_and_buyer/android
+        run: ./gradlew assembleRelease 2>&1 | tee /tmp/gradle-build.log
+
+      - name: Upload debug logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-debug-logs
+          path: /tmp/gradle-build.log
+          if-no-files-found: ignore
+
+      - name: Locate APK
+        id: locate
+        working-directory: APP_shopper_and_buyer
+        run: |
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "apk_path=$APK" >> $GITHUB_OUTPUT
+          echo "Built: $APK"
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yobou-market-apk
+          path: APP_shopper_and_buyer/yobou-market.apk
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: yobou-market-apk
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: dist/yobou-market.apk
