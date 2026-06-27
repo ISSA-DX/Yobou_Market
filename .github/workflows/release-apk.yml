@@ -85,22 +85,24 @@ jobs:
         working-directory: APP_shopper_and_buyer
         run: |
           set +e
-          echo "=== pwd ===" && pwd
-          echo "=== ls android/app/build/outputs ==="
-          ls -la android/app/build/outputs/ 2>&1 || true
-          echo "=== ls apk dirs ==="
-          ls -la android/app/build/outputs/apk/ 2>&1 || true
-          ls -la android/app/build/outputs/apk/release/ 2>&1 || true
-          echo "=== find anywhere (excluding node_modules) ==="
-          find . -name '*.apk' -not -path '*/node_modules/*' 2>&1
-          APK=$(find android/app/build/outputs/apk/release -name '*.apk' 2>/dev/null | head -1)
-          if [ -z "$APK" ]; then
-            echo "::error::No APK found in android/app/build/outputs/apk/release/"
-            exit 1
-          fi
-          echo "apk_path=$APK" >> $GITHUB_OUTPUT
-          echo "Built: $APK"
-          ls -la "$APK"
+          {
+            echo "=== pwd ===" && pwd
+            echo "=== ls android/app/build/outputs ==="
+            ls -la android/app/build/outputs/ 2>&1 || true
+            echo "=== ls apk dirs ==="
+            ls -la android/app/build/outputs/apk/ 2>&1 || true
+            ls -la android/app/build/outputs/apk/release/ 2>&1 || true
+            echo "=== find anywhere (excluding node_modules) ==="
+            find . -name '*.apk' -not -path '*/node_modules/*' 2>&1
+            APK=$(find android/app/build/outputs/apk/release -name '*.apk' 2>/dev/null | head -1)
+            if [ -z "$APK" ]; then
+              echo "::error::No APK found in android/app/build/outputs/apk/release/"
+              exit 1
+            fi
+            echo "apk_path=$APK" >> $GITHUB_OUTPUT
+            echo "Built: $APK"
+            ls -la "$APK"
+          } 2>&1 | tee /tmp/locate.log
 
       - name: Rename APK for release
         working-directory: APP_shopper_and_buyer
@@ -127,6 +129,7 @@ jobs:
             /tmp/shopper-build.log
             /tmp/cap-sync.log
             /tmp/gradle-build.log
+            /tmp/locate.log
           if-no-files-found: ignore
 
   release:
