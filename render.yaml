@@ -37,13 +37,17 @@ services:
     #   - runs prisma db push, then seedIfEmpty, then the API
     # Render runs this with `sh -c`, so the && chain works.
     startCommand: node src/boot.js
-    # Persistent disk — survives redeploys and idle spin-downs, so SQLite
-    # stays intact. 1 GB is Render's free disk tier, more than enough for
-    # a SQLite DB and uploaded product images.
-    disk:
-      name: yobou-data
-      mountPath: /var/data
-      sizeGB: 1
+    # NOTE: persistent disks are NOT available on Render's free tier
+    # (as of mid-2024). boot.js picks /tmp/yobou-data as the data dir
+    # automatically, so the service still boots and works — data just
+    # doesn't persist across deploys. For pilot testing this is fine:
+    # the database is re-seeded from prisma/seed.js on every boot.
+    # When you upgrade to a paid plan, uncomment the disk block below.
+    #
+    # disk:
+    #   name: yobou-data
+    #   mountPath: /var/data
+    #   sizeGB: 1
     envVars:
       # Render assigns PORT automatically. boot.js picks the data dir
       # at runtime (/var/data if the persistent disk is mounted, else
