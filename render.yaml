@@ -31,8 +31,12 @@ services:
     buildCommand: npm install && npx prisma generate
     # Start command — runs the schema migration against the persistent
     # disk (now mounted), seeds the DB if it's empty, then boots the API.
+    # Uses our boot.js wrapper which:
+    #   - picks a writable data dir (/var/data if mounted, else /tmp)
+    #   - sets DATABASE_URL/UPLOAD_DIR to the resolved paths
+    #   - runs prisma db push, then seedIfEmpty, then the API
     # Render runs this with `sh -c`, so the && chain works.
-    startCommand: npx prisma db push --skip-generate && node src/seedIfEmpty.js && node src/index.js
+    startCommand: node src/boot.js
     # Persistent disk — survives redeploys and idle spin-downs, so SQLite
     # stays intact. 1 GB is Render's free disk tier, more than enough for
     # a SQLite DB and uploaded product images.
@@ -41,15 +45,16 @@ services:
       mountPath: /var/data
       sizeGB: 1
     envVars:
-      # Bind to the disk so the SQLite file + uploaded images survive restarts.
+      # Render assigns PORT automatically. boot.js picks the data dir
+      # at runtime (/var/data if the persistent disk is mounted, else
+      # /tmp/yobou-data), then sets DATABASE_URL/UPLOAD_DIR to the
+      # resolved paths. The values below are only fallbacks.
       - key: DATABASE_URL
-        value: file:/var/data/dev.db
+        value: file:/tmp/yobou-data/dev.db
       - key: UPLOAD_DIR
-        value: /var/data/uploads
+        value: /tmp/yobou-data/uploads
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: "4000"
       # JWT secrets — OVERRIDE THESE in the Render dashboard before the first
       # deploy. Generate long random strings with:
       #   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
