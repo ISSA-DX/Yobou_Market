@@ -98,6 +98,14 @@ jobs:
           APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
           echo "apk_path=$APK" >> $GITHUB_OUTPUT
           echo "Built: $APK"
+          ls -la "$APK"
+
+      - name: Rename APK for release
+        working-directory: APP_shopper_and_buyer
+        run: |
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          cp "$APK" yobou-market.apk
+          ls -la yobou-market.apk
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
