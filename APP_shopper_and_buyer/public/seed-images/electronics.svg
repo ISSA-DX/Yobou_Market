@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="Electronics">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0034b9"/>
+      <stop offset="100%" stop-color="#002280"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#g)"/>
+  <g transform="translate(300 300)" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.92">
+    <rect x="-110" y="-50" width="220" height="140" rx="22"/>
+    <path d="M-110 40 L-150 90 L150 90 L110 40"/>
+    <path d="M-25 -50 L-25 -90 L25 -90 L25 -50"/>
+    <path d="M-90 30 L90 30"/>
+  </g>
+  <text x="300" y="500" text-anchor="middle" fill="#ffffff" font-family="'Be Vietnam Pro',system-ui,sans-serif" font-size="42" font-weight="700" letter-spacing="2">ELECTRONICS</text>
+</svg>

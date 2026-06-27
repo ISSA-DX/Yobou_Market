@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="Beauty">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="600" fill="url(#g)"/>
+  <g transform="translate(300 300)" fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.92">
+    <path d="M-30 -130 L30 -130 L40 -40 L-40 -40 Z"/>
+    <rect x="-60" y="-40" width="120" height="170" rx="14"/>
+    <path d="M-30 -130 L-30 -160 M30 -130 L30 -160"/>
+  </g>
+  <text x="300" y="500" text-anchor="middle" fill="#ffffff" font-family="'Be Vietnam Pro',system-ui,sans-serif" font-size="42" font-weight="700" letter-spacing="2">BEAUTY</text>
+</svg>

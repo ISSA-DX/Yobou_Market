@@ -1,0 +1,72 @@
+# Render Blueprint — provisions the Yobou API as a free-tier Node web service
+# with a persistent disk for the SQLite database.
+#
+# How to deploy (one-time):
+#   1. Sign in to https://dashboard.render.com with the GitHub account that owns
+#      this repo (ISSA-DX / Yobou_Market).
+#   2. Click "New +" → "Blueprint" → connect this repo.
+#   3. Render reads this file and creates:
+#        - Service "yobou-server" (Node, free plan, persistent disk)
+#      It assigns the public URL https://yobou-server.onrender.com.
+#   4. After first deploy, set the JWT secrets in the Render dashboard
+#      (Environment tab) to long random strings — see DEPLOY.md.
+#
+# Cost: $0/month on Render's free tier (750 instance-hours/month, persistent
+# disk free for 1GB). The instance spins down after 15 min of no traffic;
+# the first request after idle takes ~30s to wake up.
+
+services:
+  - type: web
+    name: yobou-server
+    runtime: node
+    plan: free
+    rootDir: server
+    # Build command — installs deps, generates Prisma client, runs migrations
+    # against the persistent SQLite file. No schema changes here: `prisma db push`
+    # is idempotent and a no-op when the schema is already in sync.
+    # Build command — installs deps and generates the Prisma client. We
+    # deliberately don't run `prisma db push` here: the persistent disk
+    # is mounted at runtime, not build time, so the build-time DATABASE_URL
+    # would point at a non-existent path and the migration would fail.
+    buildCommand: npm install && npx prisma generate
+    # Start command — runs the schema migration against the persistent
+    # disk (now mounted), seeds the DB if it's empty, then boots the API.
+    # Render runs this with `sh -c`, so the && chain works.
+    startCommand: npx prisma db push --skip-generate && node src/seedIfEmpty.js && node src/index.js
+    # Persistent disk — survives redeploys and idle spin-downs, so SQLite
+    # stays intact. 1 GB is Render's free disk tier, more than enough for
+    # a SQLite DB and uploaded product images.
+    disk:
+      name: yobou-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      # Bind to the disk so the SQLite file + uploaded images survive restarts.
+      - key: DATABASE_URL
+        value: file:/var/data/dev.db
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      # JWT secrets — OVERRIDE THESE in the Render dashboard before the first
+      # deploy. Generate long random strings with:
+      #   node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      # CORS_ORIGIN is appended to the default allow-list in src/index.js.
+      # The defaults already include https://issadx.github.io (covers the
+      # GitHub Pages subpath under ISSA-DX/Yobou_Market), so leaving
+      # this empty is fine for the pilot. Add additional origins here if
+      # you deploy the web apps elsewhere (comma-separated).
+      - key: CORS_ORIGIN
+        value: ""
+      # Health check — Render pings this periodically to know the service
+      # is alive and to wake it from idle.
+      - key: HEALTHCHECK_PATH
+        value: /api/health
+    healthCheckPath: /api/health
+    autoDeploy: true  # redeploy on every push to the repo's default branch

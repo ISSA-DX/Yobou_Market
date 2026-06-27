@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Yobou Market</string>
+    <string name="title_activity_main">Yobou Market</string>
+    <string name="package_name">com.yobou.market</string>
+    <string name="custom_url_scheme">com.yobou.market</string>
+</resources>

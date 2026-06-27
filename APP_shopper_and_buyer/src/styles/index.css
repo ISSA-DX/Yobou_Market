@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+    background: #f8f9ff;
+    color: #0b1c30;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+  .icon-fill { font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24; }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md font-semibold text-sm transition;
+  }
+  .btn-primary {
+    @apply btn bg-primary text-white hover:bg-primary-container active:scale-[0.98];
+  }
+  .btn-secondary {
+    @apply btn bg-surface-high text-primary hover:bg-surface-highest;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-primary hover:bg-surface-low;
+  }
+  .btn-danger {
+    @apply btn bg-error text-white hover:opacity-90;
+  }
+  .input {
+    @apply w-full px-4 py-3 rounded-md bg-surface-low border border-outline-variant/40
+           focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none transition;
+  }
+  .card {
+    @apply bg-white rounded-lg shadow-card;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-surface-high text-on-surface text-label-md;
+  }
+  .bento {
+    @apply card p-4;
+  }
+}
+
+/* Dark mode */
+.dark body { background: #0b1c30; color: #eaf1ff; }
+.dark .card { background: #15243f; color: #eaf1ff; }
+.dark .input { background: #1f3052; border-color: #2d3f63; color: #eaf1ff; }
+.dark .btn-secondary { background: #1f3052; color: #b8c3ff; }
+.dark .chip { background: #1f3052; color: #a3b1c9; }
+.dark .bento { background: #15243f; }
+
+/* Hide scrollbar on horizontal scroll containers */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

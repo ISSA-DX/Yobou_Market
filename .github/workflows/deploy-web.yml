@@ -1,0 +1,121 @@
+# Deploys the three Yobou web apps (customer, admin, web-version) to
+# GitHub Pages under the issadx.github.io/Yobou_Market/ subpath.
+#
+# Triggers on every push to main and on manual dispatch from the Actions
+# tab. The workflow builds all three apps, assembles them into a single
+# Pages deployment structure, and publishes via the official Pages actions.
+#
+# URLs after deploy:
+#   Customer app:  https://issadx.github.io/Yobou_Market/
+#   Admin app:     https://issadx.github.io/Yobou_Market/admin/
+#   Web-version:   https://issadx.github.io/Yobou_Market/web/
+#
+# Required GitHub repo setup (one-time):
+#   1. Settings → Pages → Source: "GitHub Actions"
+#   2. Settings → Actions → General → Workflow permissions: "Read and write"
+#
+# Cost: $0. GitHub Pages is free for public repos.
+
+name: Deploy web apps to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Only one Pages deploy can run at a time. Without this, parallel runs
+# would race to push the deploy artifact and one would lose its changes.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  VITE_API_BASE: https://yobou-server.onrender.com
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root deps
+        run: npm install --no-audit --no-fund
+
+      # ----- Customer web (Capacitor build source — also works as web SPA) -----
+      - name: Build customer web
+        working-directory: APP_shopper_and_buyer
+        run: npm install --no-audit --no-fund && npm run build:prod
+        env:
+          VITE_API_BASE: ${{ env.VITE_API_BASE }}
+          VITE_BASE_PATH: /Yobou_Market/
+
+      # ----- Admin web -----
+      - name: Build admin web
+        working-directory: Internal_Web_Admin
+        run: npm install --no-audit --no-fund && npm run build
+        env:
+          VITE_API_BASE: ${{ env.VITE_API_BASE }}
+          VITE_BASE_PATH: /Yobou_Market/admin/
+
+      # ----- Web-version (browser-only shopper build) -----
+      # This re-exports APP_shopper_and_buyer/src/main.jsx, which reads
+      # VITE_BASE_PATH for the React Router basename. Pass it explicitly
+      # so the basename becomes '/Yobou_Market/web' instead of the default
+      # '/Yobou_Market'.
+      - name: Build web-version
+        working-directory: Web_Version_APP
+        run: npm install --no-audit --no-fund && npm run build
+        env:
+          VITE_API_BASE: ${{ env.VITE_API_BASE }}
+          VITE_BASE_PATH: /Yobou_Market/web/
+
+      # ----- Assemble into deploy tree -----
+      # Layout on the deployed Pages site:
+      #   /                       → customer app (the main shopper experience)
+      #   /admin/                 → admin portal
+      #   /web/                   → browser-only shopper build
+      #   /404.html               → custom 404 that redirects to /Yobou_Market/
+      - name: Assemble deploy tree
+        run: |
+          mkdir -p dist-deploy/admin dist-deploy/web
+          cp -r APP_shopper_and_buyer/dist/. dist-deploy/
+          cp -r Internal_Web_Admin/dist/. dist-deploy/admin/
+          cp -r Web_Version_APP/dist/. dist-deploy/web/
+          cat > dist-deploy/404.html <<'EOF'
+          <!DOCTYPE html>
+          <html><head><meta charset="utf-8">
+          <title>Yobou — Page Not Found</title>
+          <meta http-equiv="refresh" content="0; url=/Yobou_Market/">
+          </head><body>Redirecting…</body></html>
+          EOF
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-deploy
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

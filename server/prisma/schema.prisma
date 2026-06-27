@@ -1,0 +1,200 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// NOTE: SQLite has no native ENUM, so we use String fields with
+// documented value sets. The server validates values via zod (see
+// server/src/lib/validators.js). Postgres would let us upgrade
+// these to real enums by switching the datasource provider.
+model User {
+  id             String           @id @default(cuid())
+  email          String           @unique
+  passwordHash   String
+  name           String
+  role           String           // 'ADMIN' | 'VENDOR' | 'CUSTOMER'
+  vendor         Vendor?
+  addresses      Address[]
+  paymentMethods PaymentMethod[]
+  orders         Order[]
+  cartItems      CartItem[]
+  refundsRequested     Refund[]         @relation("RefundRequester")
+  refundsReviewed      Refund[]         @relation("RefundReviewer")
+  productChangesReviewed ProductChange[] @relation("ProductChangeReviewer")
+
+  // Preferences
+  language          String   @default("en")
+  currency          String   @default("USD")
+  theme             String   @default("system") // light | dark | system
+  notifyOrderUpdates Boolean @default(true)
+  notifyPromotions   Boolean @default(false)
+  notifyShipping     Boolean @default(true)
+  marketingConsent   Boolean @default(false)
+
+  createdAt      DateTime         @default(now())
+}
+
+model Vendor {
+  id           String       @id @default(cuid())
+  userId       String       @unique
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName String
+  phone        String
+  licenseUrl   String?
+  categories   String        @default("[]") // JSON array of selected categories
+  status       String       @default("PENDING") // PENDING | APPROVED | REJECTED
+  approvedAt   DateTime?
+  products     Product[]
+  changes      ProductChange[]
+  createdAt    DateTime     @default(now())
+}
+
+model Product {
+  id          String      @id @default(cuid())
+  vendorId    String?
+  vendor      Vendor?     @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  name        String
+  description String
+  priceCents  Int
+  category    String
+  imageUrls   String      @default("[]") // JSON array
+  stock       Int         @default(0)
+  status      String      @default("LIVE") // LIVE / DRAFT / HIDDEN
+  createdAt   DateTime    @default(now())
+  orderItems  OrderItem[]
+  cartItems   CartItem[]
+  changes     ProductChange[]
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  userId    String
+  productId String
+  quantity  Int     @default(1)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+}
+
+model Address {
+  id            String  @id @default(cuid())
+  userId        String
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipientName String?
+  line1         String
+  city          String
+  state         String
+  postal        String
+  isDefault     Boolean @default(false)
+  orders        Order[]
+
+  @@index([userId])
+}
+
+model PaymentMethod {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // 'CARD'
+  brand       String   // 'visa' | 'mastercard' | 'amex' | 'discover'
+  last4       String
+  expiryMonth String
+  expiryYear  String
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Order {
+  id             String          @id @default(cuid())
+  userId         String
+  user           User            @relation(fields: [userId], references: [id])
+  status         String          @default("PLACED") // PLACED | PAID | PROCESSING | SHIPPED | DELIVERED | CANCELLED | REFUNDED
+  subtotalCents  Int             @default(0)
+  shippingCents  Int             @default(0)
+  totalCents     Int
+  paymentMethod  String          // CARD | PAYPAL | COD
+  paymentTxnId   String?
+  addressId      String
+  address        Address         @relation(fields: [addressId], references: [id], onDelete: Restrict)
+  snapshotName   String?
+  snapshotLine1  String?
+  snapshotCity   String?
+  snapshotState  String?
+  snapshotPostal String?
+  items          OrderItem[]
+  timeline       TimelineEvent[]
+  refunds        Refund[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model OrderItem {
+  id         String  @id @default(cuid())
+  orderId    String
+  productId  String
+  quantity   Int
+  priceCents Int
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product    Product @relation(fields: [productId], references: [id])
+}
+
+model TimelineEvent {
+  id      String      @id @default(cuid())
+  orderId String
+  order   Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status  String
+  at      DateTime    @default(now())
+}
+
+model ProductChange {
+  id           String   @id @default(cuid())
+  vendorId     String
+  vendor       Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  productId    String?  // null for CREATE
+  product      Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  action       String   // CREATE | UPDATE | DELETE
+  // Proposed snapshot for CREATE/UPDATE; null fields ignored on UPDATE
+  proposedName        String?
+  proposedDescription String?
+  proposedPriceCents  Int?
+  proposedCategory    String?
+  proposedImageUrls   String?  // JSON array
+  proposedStock       Int?
+  proposedStatus      String?
+  // Review
+  status       String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  reviewedById String?
+  reviewedAt   DateTime?
+  adminNote    String?
+  createdAt    DateTime @default(now())
+  reviewedBy   User?    @relation("ProductChangeReviewer", fields: [reviewedById], references: [id])
+
+  @@index([vendorId, status])
+}
+
+model Refund {
+  id           String   @id @default(cuid())
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy   User    @relation("RefundRequester", fields: [requestedById], references: [id])
+  reason       String
+  amountCents  Int
+  status       String   @default("PENDING") // PENDING | APPROVED | REJECTED | PROCESSED
+  reviewedById String?
+  reviewedAt   DateTime?
+  adminNote    String?
+  refundTxnId  String?
+  createdAt    DateTime @default(now())
+  reviewedBy   User?    @relation("RefundReviewer", fields: [reviewedById], references: [id])
+
+  @@index([orderId])
+  @@index([status])
+}

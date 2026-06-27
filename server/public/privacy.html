@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Privacy Policy — Yobou Market</title>
+    <meta name="description" content="How Yobou Market collects, uses, and protects your information." />
+    <style>
+      :root { color-scheme: light dark; }
+      body { font-family: 'Be Vietnam Pro', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+             max-width: 760px; margin: 0 auto; padding: 32px 24px; line-height: 1.6;
+             color: #1b1f23; background: #f7f9fc; }
+      h1 { font-size: 1.8rem; margin-bottom: .25rem; color: #0034b9; }
+      h2 { font-size: 1.15rem; margin-top: 2rem; color: #0034b9; }
+      p, li { font-size: .98rem; }
+      .updated { color: #6b7280; font-size: .9rem; margin-bottom: 1.5rem; }
+      a { color: #0034b9; }
+      code { background: #eef2f7; padding: 2px 6px; border-radius: 4px; font-size: .9em; }
+      @media (prefers-color-scheme: dark) {
+        body { background: #0f1115; color: #e6e8eb; }
+        h1, h2 { color: #6c8cff; }
+        a { color: #8aa6ff; }
+        code { background: #1c2230; }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: 2026-06-22</p>
+
+    <p>
+      Yobou Market ("Yobou", "we", "us") is a multi-vendor marketplace operated as a
+      demo/research app. This policy describes what data we collect, how it is used, and the
+      choices you have. By using the app you agree to the practices below.
+    </p>
+
+    <h2>1. Data we collect</h2>
+    <ul>
+      <li><strong>Account data:</strong> name, email, password (bcrypt-hashed, never stored in plain text).</li>
+      <li><strong>Vendor data:</strong> business name, phone, optional license URL, approval status.</li>
+      <li><strong>Order data:</strong> items purchased, prices at time of purchase, shipping address, order status, simulated payment transaction IDs.</li>
+      <li><strong>Device data:</strong> anonymous usage telemetry collected by the underlying platform (Capacitor / Android) — no advertising IDs.</li>
+    </ul>
+
+    <h2>2. How we use it</h2>
+    <p>Data is used solely to operate the marketplace: authenticate users, process orders, advance shipments, display purchase history, and prevent abuse. We do not sell personal data and do not run advertising.</p>
+
+    <h2>3. Payments</h2>
+    <p>Payments in this app are <strong>simulated</strong>. No real card networks, PayPal accounts, or banks are contacted. Card numbers entered into the demo form are not transmitted to any processor and should not be real card numbers.</p>
+
+    <h2>4. Storage &amp; security</h2>
+    <p>Data is stored in a SQLite database (development) or PostgreSQL (production) accessed only by the application server. Access tokens are short-lived (15 minutes); refresh tokens are stored in an HTTP-only cookie. Passwords are hashed with bcrypt (12 rounds).</p>
+
+    <h2>5. Your rights</h2>
+    <p>You can request deletion of your account and associated data by emailing <a href="mailto:privacy@yobou.market">privacy@yobou.market</a>. Vendor records are retained for tax/audit purposes; order records may be retained in anonymized form.</p>
+
+    <h2>6. Children's privacy</h2>
+    <p>Yobou is not directed to children under 13. We do not knowingly collect data from children.</p>
+
+    <h2>7. Changes to this policy</h2>
+    <p>We may update this policy. The "last updated" date above reflects the most recent change. Material changes will be announced in-app.</p>
+
+    <h2>8. Contact</h2>
+    <p>Questions: <a href="mailto:privacy@yobou.market">privacy@yobou.market</a></p>
+  </body>
+</html>

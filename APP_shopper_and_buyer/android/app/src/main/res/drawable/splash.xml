@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Splash screen background — same gradient as the adaptive icon so cold
+      start and home screen feel like one continuous brand experience.
+    -->
+    <item android:drawable="@drawable/ic_launcher_background"/>
+    <item>
+        <!-- Center the Yobou Y+bag mark at 60% of the smaller screen dimension.
+             Splash screens are typically larger than home-screen icons, so we
+             let the system scale down with gravity=center. -->
+        <bitmap
+            android:gravity="center"
+            android:src="@mipmap/ic_launcher_foreground"/>
+    </item>
+</layer-list>

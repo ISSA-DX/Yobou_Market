@@ -1,0 +1,71 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+.env.production
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Built artifacts at the repo root — not source, rebuilt by CI
+yobou-market-release.apk
+yobou-market-debug.apk
+emulator-screen*.png
+
+# Design asset folders and screenshots — kept locally for reference,
+# not part of the deployed source
+screenshots/
+01_onboarding/
+02_home/
+03_product_details/
+04_cart/
+add_new_card_1/
+add_new_card_2/
+add_new_product_admin/
+admin_dashboard/
+apple_auth_confirmation/
+cart_v1_high_density/
+cart_v2_premium_visuals/
+cart_v3_dark_mode/
+categories/
+chatgpt_image_*.png
+google_auth_account_selection/
+login/
+login_seller_view/
+logout/
+Main logo image/
+order_success/
+partner_registration/
+payment_method/
+premium_commerce_collective/
+product_inventory/
+shipping_address/
+track_your_order/
+user_profile/
+
+# server
+server/prisma/dev.db
+server/prisma/dev.db-journal
+server/uploads/
+
+# stray uploads folder at the repo root (one-off file, not source)
+uploads/
+
+# shopper (Capacitor / Android APK source)
+APP_shopper_and_buyer/.vite/
+APP_shopper_and_buyer/android/.gradle/
+APP_shopper_and_buyer/android/app/build/
+APP_shopper_and_buyer/android/build/
+APP_shopper_and_buyer/android/local.properties
+APP_shopper_and_buyer/android/app/release/
+APP_shopper_and_buyer/yobou-release.keystore
+
+# shopper web build
+Web_Version_APP/.vite/
+Web_Version_APP/node_modules/
+
+# admin web build
+Internal_Web_Admin/.vite/
+Internal_Web_Admin/node_modules/
