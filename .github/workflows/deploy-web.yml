@@ -61,10 +61,38 @@ jobs:
       # ----- Customer web (Capacitor build source — also works as web SPA) -----
       - name: Build customer web
         working-directory: APP_shopper_and_buyer
-        run: npm install --no-audit --no-fund && npm run build:prod
+        run: |
+          set +e
+          {
+            echo "=== Node/npm versions ==="
+            node -v
+            npm -v
+            echo "=== ls ==="
+            ls -la
+            echo "=== npm install ==="
+            npm install --no-audit --no-fund 2>&1
+            INSTALL_RC=$?
+            echo "=== install rc=$INSTALL_RC ==="
+            if [ $INSTALL_RC -eq 0 ]; then
+              echo "=== build:prod ==="
+              npm run build:prod 2>&1
+              echo "=== build rc=$? ==="
+            fi
+            echo "=== final ls dist/ ==="
+            ls -la dist/ 2>&1 || true
+          } | tee /tmp/customer-build.log
+          exit ${PIPESTATUS[0]}
         env:
           VITE_API_BASE: ${{ env.VITE_API_BASE }}
           VITE_BASE_PATH: /Yobou_Market/
+
+      - name: Upload customer build log (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-build-log
+          path: /tmp/customer-build.log
+          if-no-files-found: ignore
 
       # ----- Admin web -----
       - name: Build admin web
