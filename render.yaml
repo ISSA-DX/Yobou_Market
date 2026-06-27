@@ -67,7 +67,7 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       # CORS_ORIGIN is appended to the default allow-list in src/index.js.
-      # The defaults already include https://issadx.github.io (covers the
+      # The defaults already include https://issa-dx.github.io (covers the
       # GitHub Pages subpath under ISSA-DX/Yobou_Market), so leaving
       # this empty is fine for the pilot. Add additional origins here if
       # you deploy the web apps elsewhere (comma-separated).

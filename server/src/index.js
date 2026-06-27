@@ -54,7 +54,7 @@ const ALLOWED_ORIGINS = new Set([
   // GitHub Pages origin for the deployed pilot. Subpaths under this host
   // (/Yobou_Market/, /Yobou_Market/admin/) share the same origin so they're
   // covered by the single entry below.
-  'https://issadx.github.io',
+  'https://issa-dx.github.io',
   ...(process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean) : []),
 ]);
 

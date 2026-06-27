@@ -1,14 +1,14 @@
 # Deploys the three Yobou web apps (customer, admin, web-version) to
-# GitHub Pages under the issadx.github.io/Yobou_Market/ subpath.
+# GitHub Pages under the issa-dx.github.io/Yobou_Market/ subpath.
 #
 # Triggers on every push to main and on manual dispatch from the Actions
 # tab. The workflow builds all three apps, assembles them into a single
 # Pages deployment structure, and publishes via the official Pages actions.
 #
 # URLs after deploy:
-#   Customer app:  https://issadx.github.io/Yobou_Market/
-#   Admin app:     https://issadx.github.io/Yobou_Market/admin/
-#   Web-version:   https://issadx.github.io/Yobou_Market/web/
+#   Customer app:  https://issa-dx.github.io/Yobou_Market/
+#   Admin app:     https://issa-dx.github.io/Yobou_Market/admin/
+#   Web-version:   https://issa-dx.github.io/Yobou_Market/web/
 #
 # Required GitHub repo setup (one-time):
 #   1. Settings → Pages → Source: "GitHub Actions"

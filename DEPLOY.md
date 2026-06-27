@@ -8,9 +8,9 @@ on three free services. **Total monthly cost: $0.** **Credit card required: no.*
 | Component | URL |
 |---|---|
 | API server | `https://yobou-server.onrender.com` |
-| Customer web app | `https://issadx.github.io/Yobou_Market/` |
-| Admin web app | `https://issadx.github.io/Yobou_Market/admin/` |
-| Web-version (browser-only shopper) | `https://issadx.github.io/Yobou_Market/web/` |
+| Customer web app | `https://issa-dx.github.io/Yobou_Market/` |
+| Admin web app | `https://issa-dx.github.io/Yobou_Market/admin/` |
+| Web-version (browser-only shopper) | `https://issa-dx.github.io/Yobou_Market/web/` |
 | Android APK (latest) | `https://github.com/ISSA-DX/Yobou_Market/releases/latest/download/yobou-market.apk` |
 
 ---
@@ -72,8 +72,8 @@ before, just do the last three lines.
 3. The `deploy-web.yml` workflow auto-runs on the push you made in Step 1.
    Watch it at **https://github.com/ISSA-DX/Yobou_Market/actions**.
 4. When it succeeds, the customer app is live at
-   `https://issadx.github.io/Yobou_Market/`. The admin app is at
-   `https://issadx.github.io/Yobou_Market/admin/`.
+   `https://issa-dx.github.io/Yobou_Market/`. The admin app is at
+   `https://issa-dx.github.io/Yobou_Market/admin/`.
 
 > **Note:** The very first request to the Render server after 15 min of
 > no traffic takes ~30 seconds (cold start). Subsequent requests are fast.
@@ -113,10 +113,10 @@ Send each tester this message (customize the names):
 > 5. Log in with `shopper@yobou.test` / `Shopper123!`.
 >
 > **Web (browser)**
-> Open https://issadx.github.io/Yobou_Market/ — same credentials.
+> Open https://issa-dx.github.io/Yobou_Market/ — same credentials.
 >
 > **Admin (browser only)**
-> Open https://issadx.github.io/Yobou_Market/admin/ — log in with
+> Open https://issa-dx.github.io/Yobou_Market/admin/ — log in with
 > `admin@yobou.test` / `Admin123!`.
 >
 > **What to test**
