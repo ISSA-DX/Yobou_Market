@@ -60,11 +60,19 @@ jobs:
         working-directory: APP_shopper_and_buyer
         run: npm install --no-audit --no-fund
 
+      # Build the web bundle first (Vite) so dist/ has the prod assets
+      # baked into the APK. VITE_API_BASE points the bundled JS at the
+      # Render-deployed API; VITE_BASE_PATH=./ emits RELATIVE asset URLs
+      # in index.html (./assets/...) instead of absolute GitHub-Pages
+      # paths (/Yobou_Market/assets/...). The Capacitor WebView serves
+      # the bundle from https://localhost/, where absolute /Yobou_Market/
+      # paths 404 and produce a blank white screen.
       - name: Build shopper web bundle
         working-directory: APP_shopper_and_buyer
         run: set -o pipefail; npm run build:prod 2>&1 | tee /tmp/shopper-build.log
         env:
           VITE_API_BASE: ${{ env.VITE_API_BASE }}
+          VITE_BASE_PATH: ./
 
       - name: Copy web assets into Android project
         working-directory: APP_shopper_and_buyer

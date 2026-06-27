@@ -1,20 +1,29 @@
 """
 Generate Yobou Market launcher icons for Android.
 
-Renders a "Y + shopping bag" mark using Pillow at all standard Android
-densities. The mark matches the in-app brand (primary #0034b9, gold #fdc003,
-white foreground) so the home-screen icon and the in-app icon feel like one
-brand.
+Concept: Bold Y monogram with a flared bag-footprint base and one gold
+accent dot. Designed to read clearly at 48dp (home-screen size) where
+only a single dominant shape survives — every previous detail in earlier
+iterations collapsed at small sizes. The Y is one solid polygon, the
+gold dot is one circle, the gradient is a single vertical wash.
 
-Outputs:
+Brand palette (matches tailwind.config.js):
+  primary-dark  #0034b9  (gradient bottom — same as in-app brand blue)
+  primary-light #0047f1  (gradient top)
+  white         #ffffff  (Y fill)
+  gold          #fdc003  (single dot accent — same as Tailwind secondary)
+
+Outputs (15 PNGs at 5 densities):
   android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png
   android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher_round.png
   android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher_foreground.png
 
 For adaptive-icon devices (Android 8+, mipmap-anydpi-v26/), Android uses the
-foreground+background drawables we already authored in XML. The PNGs are the
-fallback for older devices, and on adaptive devices the foreground PNG is used
-for the "splash" / install dialog preview.
+foreground+background drawables authored as XML vectors. The PNGs are the
+fallback for older devices and are also used as the icon preview shown in
+the install dialog.
+
+Run: python scripts/generate_launcher_icons.py
 """
 import os
 from PIL import Image, ImageDraw
@@ -25,7 +34,7 @@ PRIMARY_BLUE_LIGHT = (0, 71, 241)       # #0047f1 — top of background gradient
 WHITE = (255, 255, 255)
 GOLD = (253, 192, 3)                    # #fdc003
 
-# Standard Android launcher icon densities
+# Standard Android launcher icon densities (px per Android baseline)
 DENSITIES = {
     'mdpi':    48,
     'hdpi':    72,
@@ -41,14 +50,109 @@ RES_DIR = os.path.join(PROJECT_ROOT, 'android', 'app', 'src', 'main', 'res')
 
 def hex_to_rgb(h):
     h = h.lstrip('#')
-    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
+
+# ---------------------------------------------------------------------------
+# Y monogram geometry (108-unit design viewport, identical to Android's
+# adaptive-icon spec — the inner 66-unit safe zone is the canvas inside
+# which the Y must live so aggressive launcher masks don't clip it).
+#
+# The Y is a single 12-vertex polygon. Three bands of form:
+#   1. Two upper arms (mirror-symmetric) meeting at the apex junction.
+#   2. A short stem dropping from the apex junction.
+#   3. A flared base (wider than the stem) that implies a shopping-bag
+#      opening without drawing one — a silhouette cue, not an illustration.
+# ---------------------------------------------------------------------------
+
+# All coordinates are in the 108-unit viewport. Strokes are ~11 units
+# thick (10% of the viewport), which is the smallest width that survives
+# at 48dp (mdpi) without aliasing into mush.
+ARM_THICK = 11          # thickness of the upper Y arms
+STEM_TOP_WIDTH = 14     # stem thickness where it meets the arms
+BASE_FLARE = 22         # wider than stem_top_width — the "bag opening" cue
+APEX_X = 54             # horizontal center
+
+# Upper arms: each arm is a parallelogram from the apex junction up-and-out.
+# Left arm spans from the apex (54, 38) up-left to (22, 14). Right arm is
+# mirror-symmetric. The arms are drawn as filled polygons (outer edge then
+# inner edge back) for an even-weight stroke.
+ARM_TOP_Y = 14          # top edge of the arms
+ARM_OUTER_X_LEFT = 18   # outer top-left corner
+ARM_OUTER_X_RIGHT = 90  # outer top-right corner
+
+# Apex junction (where the arms meet and the stem begins).
+APEX_Y = 38
+
+# Stem (vertical descender from apex into the bag-footprint base).
+STEM_BOTTOM_Y = 70
+BASE_TOP_Y = 70         # where the flare begins
+BASE_BOTTOM_Y = 90      # where the flare ends (sits within safe zone)
+
+
+def y_polygon_vertices():
+    """Return the 12 vertices of the Y monogram in 108-unit viewport coords."""
+    half_arm = ARM_THICK / 2
+    half_stem_top = STEM_TOP_WIDTH / 2
+    half_base = BASE_FLARE / 2
+
+    # Left arm as a quadrilateral. Outer edge runs from the apex down-and-left
+    # to the outer top-left of the arm; inner edge runs back to the inner
+    # top-right of the arm (just right of the apex).
+    #   outer-top  = (ARM_OUTER_X_LEFT, ARM_TOP_Y)
+    #   outer-bot  = (APEX_X - half_arm*sqrt(2), APEX_Y)  — perpendicular offset
+    # but a simpler approximation: each arm is a rectangle tilted 45°, drawn
+    # as the convex hull of 4 corners.
+    # Top-left arm corners (clockwise from upper-left):
+    tl_outer = (ARM_OUTER_X_LEFT, ARM_TOP_Y)
+    tl_inner = (ARM_OUTER_X_LEFT + ARM_THICK, ARM_TOP_Y)
+    # Approximate the bottom of the arm as two points straddling the apex,
+    # each offset perpendicular to the arm's diagonal by half_arm on each side.
+    # For a 45° arm: perp offset = (half_arm*sin45, -half_arm*cos45) —
+    # but we keep it simple and use horizontal offsets.
+    tl_bot_outer = (APEX_X - half_arm - 2, APEX_Y - 1)
+    tl_bot_inner = (APEX_X + 2, APEX_Y - 1)
+    left_arm = [tl_outer, tl_bot_outer, tl_bot_inner, tl_inner]
+
+    # Right arm — mirror of left.
+    tr_outer = (ARM_OUTER_X_RIGHT, ARM_TOP_Y)
+    tr_inner = (ARM_OUTER_X_RIGHT - ARM_THICK, ARM_TOP_Y)
+    tr_bot_outer = (APEX_X + half_arm + 2, APEX_Y - 1)
+    tr_bot_inner = (APEX_X - 2, APEX_Y - 1)
+    right_arm = [tr_outer, tr_bot_inner, tr_bot_outer, tr_inner]
+
+    # Stem + base as one continuous shape (so the flare reads as part of the
+    # Y, not a separate bag glued underneath).
+    stem_left_top = (APEX_X - half_stem_top, APEX_Y)
+    stem_right_top = (APEX_X + half_stem_top, APEX_Y)
+    base_left_top = (APEX_X - half_base, BASE_TOP_Y)
+    base_right_top = (APEX_X + half_base, BASE_TOP_Y)
+    base_left_bot = (APEX_X - half_base, BASE_BOTTOM_Y)
+    base_right_bot = (APEX_X + half_base, BASE_BOTTOM_Y)
+    stem_and_base = [stem_left_top, stem_right_top, base_right_top,
+                     base_right_bot, base_left_bot, base_left_top]
+
+    # Combine: draw left arm, right arm, then stem-and-base on top.
+    # We return them as a list of polygons; composite in draw order.
+    return [left_arm, right_arm, stem_and_base]
+
+
+def gold_dot_vertices():
+    """Single gold accent dot — sits in the upper-right negative space."""
+    # 4-unit radius dot tucked into the gap between the right arm and the
+    # canvas edge. Positioned at (84, 30) — well inside the safe zone.
+    cx, cy, r = 84, 30, 4
+    return [(cx - r, cy - r), (cx + r, cy - r), (cx + r, cy + r), (cx - r, cy + r)]
+
+
+# ---------------------------------------------------------------------------
+# Drawing functions
+# ---------------------------------------------------------------------------
 
 def draw_background(size, rounded=False):
-    """Render the brand background tile (gradient blue, optional rounded mask)."""
+    """Render the brand background tile (vertical gradient blue)."""
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    # Linear vertical gradient: light at top, dark at bottom
     top = hex_to_rgb('#0047f1')
     bot = hex_to_rgb('#0034b9')
     for y in range(size):
@@ -59,16 +163,16 @@ def draw_background(size, rounded=False):
         draw.line([(0, y), (size, y)], fill=(r, g, b, 255))
 
     if rounded:
-        # Circular mask for round launcher icons
+        # Circular mask for round launcher icons (legacy devices).
         mask = Image.new('L', (size, size), 0)
         ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
         out = Image.new('RGBA', (size, size), (0, 0, 0, 0))
         out.paste(img, (0, 0), mask)
         return out
 
-    # Square tile with a subtle 18% corner radius so it reads "premium app"
-    # rather than a hard square. Modern launcher masks apply their own rounding,
-    # so this stays legible on devices that don't mask (Android < 7.1).
+    # Square tile with a subtle 18% corner radius. Modern launcher masks
+    # apply their own rounding; this keeps it legible on devices that
+    # don't mask (Android < 7.1).
     radius = int(size * 0.18)
     mask = Image.new('L', (size, size), 0)
     ImageDraw.Draw(mask).rounded_rectangle(
@@ -81,104 +185,38 @@ def draw_background(size, rounded=False):
 
 def draw_foreground(size):
     """
-    Render the Y + shopping bag artwork on a transparent canvas.
-    The artwork is sized to the 66dp safe zone of an adaptive icon (centered
-    in a 108dp viewport with 21dp padding). For the legacy PNG, we render at
-    the full icon size — Android will mask it correctly.
+    Render the Y monogram + gold accent dot on a transparent canvas.
+    All geometry is in 108-unit viewport space, mapped to `size` pixels.
     """
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # Coordinate space: 108 units wide, mapped to `size` pixels.
-    # All art lives in the safe zone x:[18..90], y:[18..90].
     def s(v):
         """Map a 108-unit coord to pixels."""
         return int(v * size / 108)
 
-    # ----- Soft white glow ring behind the mark -----
-    glow_radius = s(30)
-    cx, cy = s(54), s(54)
+    # Subtle white glow ring behind the Y — gives the icon a "lifted"
+    # feel on the gradient background. Soft enough to vanish at 48dp
+    # without becoming a halo.
+    glow_radius = s(38)
+    cx, cy = s(APEX_X), s((ARM_TOP_Y + BASE_BOTTOM_Y) / 2)
     for r in range(glow_radius, 0, -1):
-        alpha = int(60 * (1 - r / glow_radius) ** 2)
+        alpha = int(40 * (1 - r / glow_radius) ** 2)
         draw.ellipse(
             (cx - r, cy - r, cx + r, cy + r),
             fill=(255, 255, 255, alpha),
         )
 
-    # ----- Bag body (white rounded rectangle) -----
-    # Spans x:[34..74], y:[60..84]. Trapezoidal: narrower at bottom (perspective).
-    bag_top_left  = (s(34), s(60))
-    bag_top_right = (s(74), s(60))
-    bag_bot_right = (s(71), s(84))
-    bag_bot_left  = (s(37), s(84))
-    draw.polygon(
-        [bag_top_left, bag_top_right, bag_bot_right, bag_bot_left],
-        fill=WHITE,
-    )
+    # Draw the Y polygons in white.
+    for poly in y_polygon_vertices():
+        draw.polygon([(s(x), s(y)) for x, y in poly], fill=WHITE)
 
-    # ----- Bag handles (these form the upper arms of the "Y") -----
-    # Left arc: bag-top-left (~44,60) up to apex (~54,46)
-    # Right arc: bag-top-right (~64,60) up to apex (~54,46)
-    # Render as a thick stroked "Y" shape:
-    handle_stroke = max(int(size * 0.07), 4)
-    # Apex point
-    apex = (s(54), s(46))
-    # Left handle base
-    left_base = (s(46), s(60))
-    # Right handle base
-    right_base = (s(62), s(60))
-
-    # Draw the outer + inner arcs of the handles as a thick white ring
-    # We'll approximate by drawing two filled polygons: the outer hull of the Y
-    # arms and the inner negative space.
-    # Outer hull: (apex_top, apex_right, right_base_outer, right_base_top,
-    #             left_base_top, left_base_outer, apex_left)
-    half = handle_stroke // 2
-    # Direction vectors from apex to each base (normalized)
-    def norm(p1, p2):
-        dx, dy = p2[0] - p1[0], p2[1] - p1[1]
-        L = (dx * dx + dy * dy) ** 0.5
-        return (dx / L, dy / L), L
-
-    # Left arm
-    Ld, LL = norm(apex, left_base)
-    Lperp = (-Ld[1], Ld[0])
-    L_outer_top = (apex[0] + Lperp[0] * half, apex[1] + Lperp[1] * half)
-    L_outer_bot = (left_base[0] + Lperp[0] * half, left_base[1] + Lperp[1] * half)
-    L_inner_top = (apex[0] - Lperp[0] * half, apex[1] - Lperp[1] * half)
-    L_inner_bot = (left_base[0] - Lperp[0] * half, left_base[1] - Lperp[1] * half)
-
-    # Right arm
-    Rd, RL = norm(apex, right_base)
-    Rperp = (-Rd[1], Rd[0])
-    R_outer_top = (apex[0] + Rperp[0] * half, apex[1] + Rperp[1] * half)
-    R_outer_bot = (right_base[0] + Rperp[0] * half, right_base[1] + Rperp[1] * half)
-    R_inner_top = (apex[0] - Rperp[0] * half, apex[1] - Rperp[1] * half)
-    R_inner_bot = (right_base[0] - Rperp[0] * half, right_base[1] - Rperp[1] * half)
-
-    # Left arm as quadrilateral
-    draw.polygon([L_outer_top, L_outer_bot, L_inner_bot, L_inner_top], fill=WHITE)
-    # Right arm as quadrilateral
-    draw.polygon([R_outer_top, R_outer_bot, R_inner_bot, R_inner_top], fill=WHITE)
-
-    # ----- Y stem: short vertical descender from the apex into the bag -----
-    stem_w = handle_stroke
-    stem_left = s(54) - stem_w // 2
-    stem_right = s(54) + stem_w // 2
-    draw.rectangle((stem_left, s(46), stem_right, s(70)), fill=WHITE)
-
-    # ----- Gold accent: thin horizontal stripe across the bag's top edge -----
-    gold_stripe_top = s(67)
-    gold_stripe_bot = s(71)
-    draw.rectangle(
-        (s(36), gold_stripe_top, s(72), gold_stripe_bot),
-        fill=GOLD,
-    )
-
-    # ----- Gold dot inside the bag — the "Yobou mark" inside the marketplace bag -----
-    dot_r = max(int(size * 0.025), 2)
+    # Draw the gold dot — single circle, the only warm accent on the icon.
+    dot_verts = gold_dot_vertices()
+    xs = [v[0] for v in dot_verts]
+    ys = [v[1] for v in dot_verts]
     draw.ellipse(
-        (s(54) - dot_r, s(78) - dot_r, s(54) + dot_r, s(78) + dot_r),
+        (s(min(xs)), s(min(ys)), s(max(xs)), s(max(ys))),
         fill=GOLD,
     )
 
@@ -200,20 +238,20 @@ def write_icons():
         out_dir = os.path.join(RES_DIR, f'mipmap-{density}')
         os.makedirs(out_dir, exist_ok=True)
 
-        # Square launcher icon
+        # Square launcher icon.
         sq = composite_launcher(px, rounded=False)
         sq_path = os.path.join(out_dir, 'ic_launcher.png')
         sq.save(sq_path, 'PNG', optimize=True)
         written.append(sq_path)
 
-        # Round launcher icon
+        # Round launcher icon (legacy devices).
         rd = composite_launcher(px, rounded=True)
         rd_path = os.path.join(out_dir, 'ic_launcher_round.png')
         rd.save(rd_path, 'PNG', optimize=True)
         written.append(rd_path)
 
         # Foreground only — used by adaptive-icon devices and as the icon
-        # preview shown in the install dialog
+        # preview shown in the install dialog.
         fg = draw_foreground(px)
         fg_path = os.path.join(out_dir, 'ic_launcher_foreground.png')
         fg.save(fg_path, 'PNG', optimize=True)

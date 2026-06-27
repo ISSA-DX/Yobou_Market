@@ -1,15 +1,19 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// GitHub Pages hosts this app at /Yobou_Market/. Setting `base` here makes
-// Vite rewrite every asset URL in the built bundle to that subpath, so the
-// shipped HTML resolves JS/CSS correctly when served from
-// https://issa-dx.github.io/Yobou_Market/. The dev server still uses '/'
-// locally — set via --base flag at the command line if needed for local
-// preview.
+// `base` rewrites every asset URL in the built bundle so the shipped HTML
+// resolves JS/CSS correctly for its hosting target:
+//   - GitHub Pages (https://issa-dx.github.io/Yobou_Market/) → set
+//     VITE_BASE_PATH=/Yobou_Market/ at build time.
+//   - Capacitor Android APK (served from https://localhost/ by the WebView)
+//     → set VITE_BASE_PATH=./ at build time so asset paths are relative
+//     to the bundled index.html. (Without this, the APK renders a blank
+//     white screen because the absolute /Yobou_Market/ prefix 404s inside
+//     the WebView.)
+// Local dev (`npm run dev`) ignores this and always serves from '/'.
 export default defineConfig({
   plugins: [react()],
-  base: process.env.VITE_BASE_PATH || '/Yobou_Market/',
+  base: process.env.VITE_BASE_PATH || './',
   server: {
     host: true,
     port: 5173,
