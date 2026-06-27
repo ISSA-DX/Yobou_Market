@@ -50,8 +50,14 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      # The repo root has a workspaces config that includes server/
+      # and APP_shopper_and_buyer/, but not Internal_Web_Admin/ or
+      # Web_Version_APP/. Running plain `npm install` at the root would
+      # also try to install those workspace deps, which we don't need
+      # here (each build step installs its own deps below). So just
+      # install the root's own devDeps (concurrently) and move on.
       - name: Install root deps
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --no-workspaces
 
       # ----- Customer web (Capacitor build source — also works as web SPA) -----
       - name: Build customer web
