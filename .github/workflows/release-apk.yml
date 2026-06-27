@@ -56,8 +56,12 @@ jobs:
 
       # No Android SDK pre-installed on ubuntu-latest — set it up.
       # accept-licenses is required so the build doesn't prompt.
+      # NOTE: must be @v4 — the @v3 tag was unpublished when the action
+      # was rewritten. Pinning @v3 caused GitHub to silently mark the
+      # run as failed with zero jobs (workflow eval skipped because the
+      # referenced action doesn't exist).
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install root deps
         run: npm install --no-audit --no-fund --no-workspaces
