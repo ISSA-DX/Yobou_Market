@@ -25,9 +25,6 @@ on:
       - 'v*'
   workflow_dispatch:
 
-permissions:
-  contents: write   # needed to create the release
-
 env:
   VITE_API_BASE: https://yobou-server.onrender.com
 
