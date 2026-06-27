@@ -9,9 +9,7 @@
   },
   "android": {
     "buildOptions": {
-      "keystorePath": "yobou-release.keystore",
-      "keystoreAlias": "yobou",
-      "releaseType": "AAB"
+      "releaseType": "APK"
     }
   },
   "plugins": {
