@@ -9,17 +9,25 @@ import './styles/index.css';
 // VITE_BASE_PATH env var:
 //   ./                   → Capacitor Android APK (set by release-apk.yml,
 //                          WebView serves the bundle from https://localhost/
-//                          with no URL prefix, so basename must be empty).
+//                          with no URL prefix, so basename is just '/').
 //   /Yobou_Market/       → GitHub Pages customer app (default if env unset,
 //                          set explicitly by deploy-web.yml).
 //   /Yobou_Market/web/   → web-version (built from Web_Version_APP).
 //
+// React Router's basename must start with '/' (or be undefined) — a bare
+// '.' or empty string silently breaks route matching and renders nothing
+// to the DOM. So when Vite's `base` is './' (APK) we translate it to '/'
+// here instead of letting `.replace(/\/$/, '')` collapse it to '.'.
+//
 // In dev (vite dev) the Vite server still serves at root, so we use '/'.
 // Web_Version_APP re-exports this file from its own src/, so it inherits
 // the basename logic below.
-const basename = import.meta.env.PROD
-  ? (import.meta.env.VITE_BASE_PATH || '/').replace(/\/$/, '')
-  : '/';
+const rawBasePath = import.meta.env.VITE_BASE_PATH;
+const basename = (() => {
+  if (!import.meta.env.PROD) return '/';
+  if (!rawBasePath || rawBasePath === './' || rawBasePath === '.') return '/';
+  return rawBasePath.replace(/\/$/, '');
+})();
 
 // Defensive: surface JS errors to the screen so a runtime failure (network,
 // module load, hydration) never produces a silent blank white wall. The
