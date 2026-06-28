@@ -11,6 +11,12 @@ async function loadUser(req) {
       where: { id: payload.sub },
       include: { vendor: true },
     });
+    // Reject disabled users at the load step so every subsequent route
+    // is automatically protected. The disabledAt flag is set by admin
+    // via /api/admin/users/:id and unset via the same endpoint to
+    // re-enable. The check is also re-applied in auth/routes.js for
+    // login + refresh so disabled users cannot mint new sessions.
+    if (user && user.disabledAt) return null;
     return user;
   } catch (err) {
     // Treat JWT verification failures as unauthenticated; propagate everything else.

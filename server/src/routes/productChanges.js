@@ -4,6 +4,7 @@ const { z } = require('zod');
 const { prisma } = require('../prisma');
 const { productChangeCreate, adminReview } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
+const { notify, audit } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -156,6 +157,31 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
       return updated;
     });
 
+    await audit(req.user.id, {
+      action: change.action === 'CREATE' ? 'product.create'
+            : change.action === 'UPDATE' ? 'product.update'
+            : 'product.delete',
+      entityType: 'product',
+      entityId: result.productId,
+      meta: { changeId: change.id, vendorId: change.vendorId },
+    });
+
+    // Notify the vendor that their change was approved.
+    const vendorUser = await prisma.user.findUnique({
+      where: { id: change.vendor.userId },
+      select: { id: true },
+    });
+    if (vendorUser) {
+      const productName = result.product?.name || change.proposedName || 'your product';
+      await notify(vendorUser.id, {
+        kind: 'product_approved',
+        title: `Product change approved: ${productName}`,
+        body: `Your ${change.action.toLowerCase()} request was approved${adminNote ? `. Note: ${adminNote}` : '.'}`,
+        link: '/vendor/products',
+        meta: { changeId: change.id, productId: result.productId, action: change.action },
+      });
+    }
+
     res.json({ change: parseChange(result) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
@@ -182,7 +208,30 @@ router.post('/:id/reject', requireAuth, requireRole('ADMIN'), async (req, res, n
         reviewedAt: new Date(),
         adminNote: adminNote.trim(),
       },
+      include: { vendor: { select: { id: true, userId: true, businessName: true } } },
     });
+
+    await audit(req.user.id, {
+      action: 'product.reject',
+      entityType: 'product',
+      entityId: change.productId,
+      meta: { changeId: change.id, vendorId: change.vendorId, adminNote: adminNote.trim() },
+    });
+
+    if (updated.vendor) {
+      const product = change.productId
+        ? await prisma.product.findUnique({ where: { id: change.productId }, select: { name: true } })
+        : null;
+      const productName = product?.name || change.proposedName || 'your product';
+      await notify(updated.vendor.userId, {
+        kind: 'product_rejected',
+        title: `Product change rejected: ${productName}`,
+        body: `Reason: ${adminNote.trim()}`,
+        link: '/vendor/products',
+        meta: { changeId: change.id, productId: change.productId, action: change.action },
+      });
+    }
+
     res.json({ change: parseChange(updated) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });

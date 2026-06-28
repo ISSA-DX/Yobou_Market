@@ -68,6 +68,26 @@ const orderStatus = z.object({
   status: z.enum(['PLACED', 'PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED']),
 });
 
+// Admin-only cancel: requires a reason and optional stock-restore flag.
+const orderCancel = z.object({
+  reason: z.string().min(3).max(500),
+  restoreStock: z.boolean().optional().default(true),
+});
+
+// Ship action: carrier + tracking number + optional ETA. Used by both
+// vendor and admin when transitioning to SHIPPED.
+const CARRIERS = ['DHL', 'FedEx', 'UPS', 'USPS', 'YobouDirect', 'Other'];
+const orderShip = z.object({
+  carrier: z.enum(CARRIERS),
+  trackingNumber: z.string().min(1).max(100),
+  estimatedDelivery: z
+    .string()
+    .datetime()
+    .optional()
+    .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()),
+  note: z.string().max(500).optional(),
+});
+
 // Vendor submits a product change for admin approval.
 // action: CREATE (productId null) | UPDATE (productId required) | DELETE (productId required)
 const productChangeCreate = z.object({
@@ -123,4 +143,7 @@ module.exports = {
   address,
   orderCreate,
   orderStatus,
+  orderCancel,
+  orderShip,
+  CARRIERS,
 };

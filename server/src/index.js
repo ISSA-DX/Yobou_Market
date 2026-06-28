@@ -9,11 +9,13 @@ const productsRoutes = require('./routes/products');
 const productChangesRoutes = require('./routes/productChanges');
 const cartRoutes = require('./routes/cart');
 const ordersRoutes = require('./routes/orders');
+const vendorOrdersRoutes = require('./routes/vendorOrders');
 const vendorsRoutes = require('./routes/vendors');
 const adminRoutes = require('./routes/admin');
 const refundsRoutes = require('./routes/refunds');
 const addressesRoutes = require('./routes/addresses');
 const paymentsRoutes = require('./routes/payments');
+const eventsRoutes = require('./routes/events');
 
 const app = express();
 
@@ -148,11 +150,13 @@ app.use('/api/products', productsRoutes);
 app.use('/api/product-changes', productChangesRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', ordersRoutes);
+app.use('/api/orders/vendor', vendorOrdersRoutes);
 app.use('/api/vendors', vendorsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/refunds', refundsRoutes);
 app.use('/api/addresses', addressesRoutes);
 app.use('/api/payments', paymentsRoutes);
+app.use('/api', eventsRoutes);
 
 // Serve the built React apps in production (single-deploy mode).
 // The shopper portal has two build targets: APP_shopper_and_buyer (the Capacitor /

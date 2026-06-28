@@ -54,6 +54,14 @@ function checkVendorStatus(user, res) {
     if (!user.vendor) return res.status(403).json({ error: 'VENDOR_RECORD_MISSING' });
     if (user.vendor.status === 'PENDING') return res.status(403).json({ error: 'VENDOR_PENDING' });
     if (user.vendor.status === 'REJECTED') return res.status(403).json({ error: 'VENDOR_REJECTED' });
+    if (user.vendor.status === 'SUSPENDED') return res.status(403).json({ error: 'VENDOR_SUSPENDED' });
+  }
+  return null;
+}
+
+function checkAccountDisabled(user, res) {
+  if (user.disabledAt) {
+    return res.status(403).json({ error: 'ACCOUNT_DISABLED' });
   }
   return null;
 }
@@ -95,6 +103,9 @@ router.post('/login', async (req, res, next) => {
     const ok = await bcrypt.compare(data.password, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
 
+    const disabledError = checkAccountDisabled(user, res);
+    if (disabledError) return disabledError;
+
     const vendorError = checkVendorStatus(user, res);
     if (vendorError) return vendorError;
 
@@ -116,6 +127,9 @@ router.post('/refresh', async (req, res) => {
       include: { vendor: true },
     });
     if (!user) return res.status(401).json({ error: 'USER_GONE' });
+
+    const disabledError = checkAccountDisabled(user, res);
+    if (disabledError) return disabledError;
 
     const vendorError = checkVendorStatus(user, res);
     if (vendorError) return vendorError;
@@ -169,6 +183,33 @@ router.patch('/me', requireAuth, async (req, res, next) => {
 
 router.get('/me', requireAuth, (req, res) => {
   res.json({ user: publicUser(req.user) });
+});
+
+const changePassword = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(8).max(128),
+});
+
+router.post('/change-password', requireAuth, async (req, res, next) => {
+  try {
+    const data = changePassword.parse(req.body);
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user) return res.status(401).json({ error: 'UNAUTHENTICATED' });
+    const ok = await bcrypt.compare(data.currentPassword, user.passwordHash);
+    if (!ok) return res.status(400).json({ error: 'INVALID_CURRENT_PASSWORD' });
+    if (data.currentPassword === data.newPassword) {
+      return res.status(400).json({ error: 'PASSWORD_UNCHANGED' });
+    }
+    const passwordHash = await bcrypt.hash(data.newPassword, 12);
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { passwordHash },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
 });
 
 module.exports = router;

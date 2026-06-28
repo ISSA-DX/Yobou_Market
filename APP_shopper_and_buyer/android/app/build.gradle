@@ -18,6 +18,12 @@ android {
     }
     signingConfigs {
         release {
+            // Load signing material from Gradle properties (injected via
+            // `-P` flags or android/local.properties, never committed).
+            // If the properties are absent we deliberately skip this block
+            // — release builds will then be unsigned / use the debug key,
+            // which is fine for local development and prevents accidental
+            // commits of production credentials.
             if (project.hasProperty('YOBOU_KEYSTORE_PATH')) {
                 storeFile file(YOBOU_KEYSTORE_PATH)
                 storePassword YOBOU_KEYSTORE_PASSWORD
@@ -30,7 +36,11 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            // Fall back to the debug signing config when no release
+            // keystore is configured locally. In CI (release-apk.yml),
+            // the keystore + passwords are injected from GitHub Actions
+            // secrets so this branch is never taken.
+            signingConfig project.hasProperty('YOBOU_KEYSTORE_PATH') ? signingConfigs.release : signingConfigs.debug
         }
     }
 }

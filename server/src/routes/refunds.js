@@ -4,6 +4,7 @@ const { z } = require('zod');
 const { prisma } = require('../prisma');
 const { refundCreate, adminReview } = require('../lib/validators');
 const { requireAuth, requireRole } = require('../auth/middleware');
+const { notify, audit } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -126,11 +127,30 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
         where: { id: refund.orderId },
         data: {
           status: 'REFUNDED',
-          timeline: { create: { status: 'REFUNDED' } },
+          timeline: { create: { status: 'REFUNDED', actorId: req.user.id, actorRole: 'ADMIN' } },
         },
       });
       return approvedRefund;
     });
+
+    await audit(req.user.id, {
+      action: 'refund.approve',
+      entityType: 'refund',
+      entityId: updated.id,
+      meta: { orderId: refund.orderId, amountCents: refund.amountCents },
+    });
+
+    // Notify the customer who requested the refund.
+    const order = await prisma.order.findUnique({ where: { id: refund.orderId }, select: { userId: true } });
+    if (order) {
+      await notify(order.userId, {
+        kind: 'order_status',
+        title: 'Refund approved',
+        body: `Your refund of $${(refund.amountCents / 100).toFixed(2)} has been processed.`,
+        link: `/orders/${refund.orderId}/track`,
+        meta: { orderId: refund.orderId, refundId: updated.id, status: 'REFUNDED' },
+      });
+    }
 
     res.json({ refund: updated });
   } catch (err) {
@@ -146,7 +166,10 @@ router.post('/:id/reject', requireAuth, requireRole('ADMIN'), async (req, res, n
     if (!adminNote || !adminNote.trim()) {
       return res.status(400).json({ error: 'NOTE_REQUIRED' });
     }
-    const refund = await prisma.refund.findUnique({ where: { id: req.params.id } });
+    const refund = await prisma.refund.findUnique({
+      where: { id: req.params.id },
+      include: { order: { select: { id: true, userId: true } } },
+    });
     if (!refund) return res.status(404).json({ error: 'NOT_FOUND' });
     if (refund.status !== 'PENDING') return res.status(409).json({ error: 'ALREADY_REVIEWED' });
 
@@ -159,6 +182,24 @@ router.post('/:id/reject', requireAuth, requireRole('ADMIN'), async (req, res, n
         adminNote: adminNote.trim(),
       },
     });
+
+    await audit(req.user.id, {
+      action: 'refund.reject',
+      entityType: 'refund',
+      entityId: updated.id,
+      meta: { orderId: refund.orderId, adminNote: adminNote.trim() },
+    });
+
+    if (refund.order) {
+      await notify(refund.order.userId, {
+        kind: 'order_status',
+        title: 'Refund request rejected',
+        body: `Your refund request was rejected. Reason: ${adminNote.trim()}`,
+        link: `/orders/${refund.orderId}/track`,
+        meta: { orderId: refund.orderId, refundId: updated.id, status: 'REJECTED' },
+      });
+    }
+
     res.json({ refund: updated });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });

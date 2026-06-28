@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const { prisma } = require('../prisma');
 const { vendorRegister, adminVendorCreate } = require('../lib/validators');
 const { requireAuth, requireRole } = require('../auth/middleware');
+const { notify, audit } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -115,13 +116,51 @@ router.post('/', requireAuth, requireRole('ADMIN'), async (req, res, next) => {
 router.patch('/:id/status', requireAuth, requireRole('ADMIN'), async (req, res, next) => {
   try {
     const status = String(req.body?.status);
-    if (!['APPROVED', 'REJECTED', 'PENDING'].includes(status)) {
+    if (!['APPROVED', 'REJECTED', 'PENDING', 'SUSPENDED'].includes(status)) {
       return res.status(400).json({ error: 'INVALID_STATUS' });
     }
+    const before = await prisma.vendor.findUnique({ where: { id: req.params.id } });
+    if (!before) return res.status(404).json({ error: 'NOT_FOUND' });
+
     const vendor = await prisma.vendor.update({
       where: { id: req.params.id },
-      data: { status, approvedAt: status === 'APPROVED' ? new Date() : null },
+      data: {
+        status,
+        approvedAt: status === 'APPROVED' ? new Date() : null,
+      },
     });
+
+    // Notify the vendor user so the in-app inbox + SSE push surfaces the change.
+    const vendorUser = await prisma.user.findUnique({
+      where: { id: vendor.userId },
+      select: { id: true },
+    });
+    if (vendorUser) {
+      const kind = status === 'APPROVED' ? 'vendor_approved'
+                 : status === 'REJECTED' ? 'vendor_rejected'
+                 : status === 'SUSPENDED' ? 'vendor_status'
+                 : 'vendor_status';
+      await notify(vendorUser.id, {
+        kind,
+        title: status === 'APPROVED' ? 'Your vendor account is approved' :
+               status === 'REJECTED' ? 'Your vendor application was rejected' :
+               status === 'SUSPENDED' ? 'Your vendor account is suspended' :
+               'Your vendor account status changed',
+        body: `Your account status is now ${status}.`,
+        link: '/vendor/dashboard',
+        meta: { vendorId: vendor.id, status },
+      });
+    }
+
+    await audit(req.user.id, {
+      action: status === 'APPROVED' ? 'vendor.approve' :
+              status === 'REJECTED' ? 'vendor.reject' :
+              status === 'SUSPENDED' ? 'vendor.suspend' : 'vendor.status',
+      entityType: 'vendor',
+      entityId: vendor.id,
+      meta: { from: before.status, to: status },
+    });
+
     res.json({ vendor: parseVendor(vendor) });
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'NOT_FOUND' });

@@ -11,11 +11,24 @@
 #   git tag v0.1.0
 #   git push origin v0.1.0
 #
-# Required secrets: none (GitHub Actions runners already have the Java
-# and Android SDK tooling installed via the actions/setup-java step).
+# Required secrets (set in repo Settings → Secrets and variables → Actions):
+#   - YOBOU_KEYSTORE_BASE64     base64 of android/app/yobou-release.keystore
+#   - YOBOU_KEYSTORE_PASSWORD   keystore store password
+#   - YOBOU_KEY_ALIAS           key alias inside the keystore (e.g. "yobou")
+#   - YOBOU_KEY_PASSWORD        key password
+# Generate the keystore locally with:
+#   keytool -genkeypair -v -keystore yobou-release.keystore -alias yobou \
+#           -keyalg RSA -keysize 2048 -validity 9125 -storepass <pw> \
+#           -keypass <pw> -dname "CN=Yobou Market, OU=Mobile, O=Yobou, L=City, ST=State, C=US"
+# Encode with: certutil -encode yobou-release.keystore temp.b64 (then strip the
+# BEGIN/END lines and whitespace before pasting).
 #
-# Cost: $0. GitHub Releases are free for public repos; storage is
-# unlimited.
+# Cost: $0. GitHub Releases are free for public repos; storage is unlimited.
+#
+# Keystore rotation: when this keystore is replaced, users who already have
+# the old APK installed must uninstall it before installing the new build —
+# Android refuses to upgrade across signing-cert mismatches. Document this
+# in the release notes.
 
 name: Build & release Android APK
 
@@ -78,18 +91,41 @@ jobs:
         working-directory: APP_shopper_and_buyer
         run: set -o pipefail; npx cap sync android 2>&1 | tee /tmp/cap-sync.log
 
-      # Note: no release keystore is configured in the repo (the previous
-      # local builds used Android's debug keystore). For pilot testing,
-      # the debug-signed release APK is fine — it installs like any
-      # other debug app and doesn't require Play Store. When you're
-      # ready to ship to real users, add a keystore and the
-      # YOBOU_KEYSTORE_PATH secrets and switch to a signed release.
+      # Decode the release keystore from secrets into a temp file the
+      # Gradle build can read. The path is passed via -P so app/build.gradle
+      # picks it up (see android/gradle.properties for the contract).
+      - name: Decode release keystore
+        if: ${{ env.YOBOU_KEYSTORE_BASE64 != '' }}
+        env:
+          YOBOU_KEYSTORE_BASE64: ${{ secrets.YOBOU_KEYSTORE_BASE64 }}
+        run: |
+          set -e
+          echo "$YOBOU_KEYSTORE_BASE64" | base64 -d > /tmp/yobou-release.keystore
+          ls -la /tmp/yobou-release.keystore
+          chmod 600 /tmp/yobou-release.keystore
+
       - name: Build release APK
         working-directory: APP_shopper_and_buyer/android
+        env:
+          YOBOU_KEYSTORE_PATH: ${{ secrets.YOBOU_KEYSTORE_BASE64 != '' && '/tmp/yobou-release.keystore' || '' }}
+          YOBOU_KEYSTORE_PASSWORD: ${{ secrets.YOBOU_KEYSTORE_PASSWORD }}
+          YOBOU_KEY_ALIAS: ${{ secrets.YOBOU_KEY_ALIAS }}
+          YOBOU_KEY_PASSWORD: ${{ secrets.YOBOU_KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
           set -o pipefail
-          ./gradlew assembleRelease 2>&1 | tee /tmp/gradle-build.log
+          if [ -n "$YOBOU_KEYSTORE_PATH" ]; then
+            ./gradlew assembleRelease \
+              -PYOBOU_KEYSTORE_PATH="$YOBOU_KEYSTORE_PATH" \
+              -PYOBOU_KEYSTORE_PASSWORD="$YOBOU_KEYSTORE_PASSWORD" \
+              -PYOBOU_KEY_ALIAS="$YOBOU_KEY_ALIAS" \
+              -PYOBOU_KEY_PASSWORD="$YOBOU_KEY_PASSWORD" \
+              2>&1 | tee /tmp/gradle-build.log
+          else
+            # No keystore configured — fall back to debug signing so the
+            # workflow still produces an installable APK for local pilots.
+            ./gradlew assembleRelease 2>&1 | tee /tmp/gradle-build.log
+          fi
 
       - name: Locate APK
         id: locate

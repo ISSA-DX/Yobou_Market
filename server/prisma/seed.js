@@ -43,6 +43,9 @@ async function main() {
   console.log('Seeding…');
 
   // Wipe (order matters because of FKs).
+  await prisma.notification.deleteMany();
+  await prisma.sseConnection.deleteMany();
+  await prisma.adminAuditLog.deleteMany();
   await prisma.timelineEvent.deleteMany();
   await prisma.refund.deleteMany();
   await prisma.orderItem.deleteMany();

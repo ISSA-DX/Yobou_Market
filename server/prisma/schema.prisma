@@ -25,6 +25,8 @@ model User {
   refundsRequested     Refund[]         @relation("RefundRequester")
   refundsReviewed      Refund[]         @relation("RefundReviewer")
   productChangesReviewed ProductChange[] @relation("ProductChangeReviewer")
+  auditLogEntries      AdminAuditLog[]
+  notifications        Notification[]
 
   // Preferences
   language          String   @default("en")
@@ -34,6 +36,12 @@ model User {
   notifyPromotions   Boolean @default(false)
   notifyShipping     Boolean @default(true)
   marketingConsent   Boolean @default(false)
+
+  // Soft disable: when set, auth middleware blocks login/refresh.
+  disabledAt        DateTime?
+
+  // Last activity timestamp used by the SSE connection housekeeper.
+  lastSeenAt        DateTime?
 
   createdAt      DateTime         @default(now())
 }
@@ -128,6 +136,17 @@ model Order {
   snapshotCity   String?
   snapshotState  String?
   snapshotPostal String?
+
+  // Delivery tracking — populated when status transitions to SHIPPED.
+  trackingNumber    String?
+  carrier           String?       // 'DHL' | 'FedEx' | 'UPS' | 'USPS' | 'YobouDirect' | 'Other'
+  shippedAt         DateTime?
+  estimatedDelivery DateTime?
+
+  // Cancellation record — populated when admin cancels.
+  cancelReason      String?
+  cancelledBy       String?       // userId of the admin who initiated
+
   items          OrderItem[]
   timeline       TimelineEvent[]
   refunds        Refund[]
@@ -146,11 +165,17 @@ model OrderItem {
 }
 
 model TimelineEvent {
-  id      String      @id @default(cuid())
-  orderId String
-  order   Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  status  String
-  at      DateTime    @default(now())
+  id        String      @id @default(cuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    String
+  at        DateTime    @default(now())
+  // Actor attribution — who or what caused this transition. Optional
+  // because pre-existing rows and system-driven events (payment
+  // confirmation, refund approval) may not have a user attached.
+  actorId   String?
+  actorRole String?     // 'ADMIN' | 'VENDOR' | 'SYSTEM'
+  note      String?
 }
 
 model ProductChange {
@@ -197,4 +222,61 @@ model Refund {
 
   @@index([orderId])
   @@index([status])
+}
+
+// In-app notification — written by the notification helper and surfaced
+// via the inbox endpoint and SSE push. We don't send email/SMS/push in
+// this iteration; the inbox is the only delivery channel.
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String   // 'order_status' | 'order_placed' | 'order_cancelled'
+                     // | 'product_approved' | 'product_rejected'
+                     // | 'vendor_approved' | 'vendor_rejected'
+                     // | 'tracking_updated' | 'admin_broadcast'
+  title     String
+  body      String
+  link      String?  // app-internal path like "/orders/abc/track" or "/products/xyz"
+  meta      String?  // JSON of kind-specific payload (orderId, status, etc.)
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+// Diagnostic record for live SSE connections. The authoritative state
+// is the in-memory `sseClients` map (see server/src/lib/notifications.js)
+// because broadcast must not wait on a DB write; this table exists for
+// observability and post-mortem analysis only.
+model SseConnection {
+  id        String   @id @default(cuid())
+  userId    String
+  role      String   // 'ADMIN' | 'VENDOR' | 'CUSTOMER'
+  lastSeen  DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Admin action audit trail. Every write that goes through admin-gated
+// routes appends an entry. Read-only for admins via /api/admin/audit-log.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  actor      User     @relation(fields: [actorId], references: [id])
+  action     String   // 'order.cancel' | 'order.ship' | 'order.status'
+                        // | 'product.create' | 'product.update' | 'product.delete'
+                        // | 'vendor.approve' | 'vendor.reject' | 'vendor.suspend'
+                        // | 'refund.approve' | 'refund.reject'
+                        // | 'broadcast.send'
+                        // | 'user.role' | 'user.disable'
+  entityType String   // 'order' | 'product' | 'vendor' | 'refund' | 'user' | 'broadcast'
+  entityId   String?
+  meta       String?  // JSON of relevant fields (reason, tracking, etc.)
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
 }

@@ -1,5 +1,6 @@
 const { execSync } = require('child_process');
 const path = require('path');
+const supertest = require('supertest');
 
 const TEST_DB = path.resolve(__dirname, '../prisma/test.db');
 const SRC_DIR = path.resolve(__dirname, '../src');
@@ -30,6 +31,9 @@ const { prisma } = require('../src/prisma');
 async function resetTestDb() {
   // Wipe tables in dependency order for a clean slate per test suite.
   await prisma.$transaction([
+    prisma.notification.deleteMany(),
+    prisma.sseConnection.deleteMany(),
+    prisma.adminAuditLog.deleteMany(),
     prisma.timelineEvent.deleteMany(),
     prisma.refund.deleteMany(),
     prisma.orderItem.deleteMany(),
@@ -52,4 +56,23 @@ function getApp() {
   return require('../src/index');
 }
 
-module.exports = { setupTestDb, getApp, TEST_DB, resetTestDb, prisma };
+// Helper: small wrapper around supertest so new tests can write less boilerplate.
+//   request(app, 'POST', '/api/orders/abc/cancel', { token, body: {...} })
+async function request(app, method, path, { token, body, headers = {} } = {}) {
+  let req = supertest(app)[method.toLowerCase()](path);
+  if (token) req = req.set('Authorization', `Bearer ${token}`);
+  for (const [k, v] of Object.entries(headers)) req = req.set(k, v);
+  if (body !== undefined) req = req.send(body);
+  const res = await req;
+  return { status: res.status, body: res.body, headers: res.headers };
+}
+
+// Helper: sign an access token for an arbitrary user (used to bypass the
+// real /api/auth/login flow in unit-style tests).
+function signAccessFor(user) {
+  // Re-require after getApp() may have cleared the cache.
+  const { signAccess } = require('../src/auth/jwt');
+  return signAccess(user);
+}
+
+module.exports = { setupTestDb, getApp, TEST_DB, resetTestDb, prisma, request, signAccessFor };
