@@ -130,10 +130,22 @@ const adminVendorCreate = z.object({
   categories: z.array(z.string()).default([]),
 });
 
+// Vendor updates their own business profile. Empty body is rejected so
+// we always emit an audit entry.
+const vendorSelfUpdate = z.object({
+  businessName: z.string().min(1).max(200).optional(),
+  phone: z.string().min(5).max(40).optional(),
+  licenseUrl: z.string().url().nullable().optional(),
+  categories: z.array(z.string().min(1).max(80)).max(20).optional(),
+  logoUrl: z.string().url().nullable().optional(),
+  bannerUrl: z.string().url().nullable().optional(),
+}).refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
+
 module.exports = {
   registerCustomer,
   login,
   vendorRegister,
+  vendorSelfUpdate,
   productUpsert,
   productChangeCreate,
   adminReview,

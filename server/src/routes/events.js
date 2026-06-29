@@ -13,7 +13,7 @@
 const express = require('express');
 const { z } = require('zod');
 const { prisma } = require('../prisma');
-const { requireAuth } = require('../auth/middleware');
+const { requireAuth, requireAuthSse } = require('../auth/middleware');
 const {
   registerClient,
   unregisterClient,
@@ -26,7 +26,7 @@ const router = express.Router();
 // ---------------------------------------------------------------------------
 // SSE endpoint
 // ---------------------------------------------------------------------------
-router.get('/events', requireAuth, (req, res) => {
+router.get('/events', requireAuthSse, (req, res) => {
   // Handshake: switch to SSE and flush an immediate `hello` so the client
   // can confirm the connection is live (e.g. before subscribing to UI).
   res.set({

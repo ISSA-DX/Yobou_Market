@@ -7,68 +7,71 @@
 
     <!--
       Yobou Market logo (adaptive-icon foreground).
-      Concept: Bold Y monogram with a flared bag-footprint base.
-      The Y is one solid white silhouette that survives at 48dp; the
-      flared base implies a shopping-bag opening without drawing one.
-      A single gold (#fdc003) dot in the upper-right is the only warm
-      accent and prevents the icon from feeling cold.
+      Concept: rounded-rectangle shopping-bag silhouette in white with a Y
+      monogram "cut out" in the brand blue, plus a small gold price-tag
+      chip at the upper-right of the bag. The bag is what makes "market"
+      legible at 48dp; the Y stays for brand recognition; the tag replaces
+      the old decorative dot with a commerce-meaningful shape.
 
       All geometry sits inside the 66dp safe zone (centered on the
       108x108 viewport). Coordinate notes:
-        apex junction ........ (54, 38)
-        arm tops ............. y=14, x=18..90 (with 11-unit thickness)
-        stem drops ........... (54, 38) → (54, 70)
-        flared base .......... x=43..65, y=70..90
-        gold accent dot ...... (84, 30), 4-unit radius
+        bag body ......... x=22..86, y=36..90 (chamfered corners r=8)
+        bag handle ....... y=22..40, x=40..68 (trapezoid)
+        Y apex junction .. (54, 64)
+        Y arm tops ....... y=50, x=36..72 (8-unit thickness)
+        Y stem drops ..... (54, 64) → (54, 80)
+        price tag ........ center (80, 32), body 11×8, tip dx=4 dy=4
     -->
 
-    <!-- Soft glow ring behind the Y — lifts it off the blue gradient -->
-    <path
-        android:fillType="evenOdd"
-        android:pathData="M54,52m-38,0a38,38 0,1 1,76 0a38,38 0,1 1,-76 0">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:centerX="54"
-                android:centerY="52"
-                android:gradientRadius="38"
-                android:type="radial">
-                <item android:color="#28FFFFFF" android:offset="0.0" />
-                <item android:color="#00FFFFFF" android:offset="1.0" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
     <!--
-      Left arm of the Y — a parallelogram from the apex junction up-and-left
-      to the upper-left of the canvas. 11-unit thickness, even weight.
+      Bag handle — drawn first so the bag body overlaps it cleanly along
+      the bag's top edge.
     -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M18,14 L29,14 L57,38 L46,38 Z" />
+        android:pathData="M44,22 L64,22 L68,40 L40,40 Z" />
 
     <!--
-      Right arm of the Y — mirror of the left, going up-and-right.
+      Bag body — chamfered rectangle. The corners are smoothed by an extra
+      group of four small circles below, since vector pathData can't do
+      "rounded-rectangle" with corner radius directly without arc commands.
     -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M90,14 L79,14 L51,38 L62,38 Z" />
+        android:pathData="M30,36 L78,36 L86,44 L86,82 L78,90 L30,90 L22,82 L22,44 Z" />
 
     <!--
-      Stem + flared base — one continuous shape. The stem drops from the
-      apex junction to y=70; below that the form flares out to 22 units
-      wide, reading as the top opening of a shopping bag without drawing
-      any additional illustration. This is the silhouette cue.
+      Corner-rounding circles — overlay the chamfered corners so the bag
+      reads as a proper rounded rectangle at full resolution.
+    -->
+    <path android:fillColor="#FFFFFF" android:pathData="M30,36 m-8,0 a8,8 0,1 1,16 0 a8,8 0,1 1,-16 0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M78,36 m-8,0 a8,8 0,1 1,16 0 a8,8 0,1 1,-16 0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M30,90 m-8,0 a8,8 0,1 1,16 0 a8,8 0,1 1,-16 0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M78,90 m-8,0 a8,8 0,1 1,16 0 a8,8 0,1 1,-16 0" />
+
+    <!--
+      Y monogram in brand blue (#0047f1) — drawn ON TOP of the white bag
+      so it reads as negative space inside the bag silhouette.
     -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M47,38 L61,38 L65,70 L65,90 L43,90 L43,70 Z" />
+        android:fillColor="#0047f1"
+        android:pathData="M36,50 L44,50 L58,64 L50,64 Z" />
+    <path
+        android:fillColor="#0047f1"
+        android:pathData="M72,50 L64,50 L50,64 L58,64 Z" />
+    <path
+        android:fillColor="#0047f1"
+        android:pathData="M50,64 L58,64 L59,80 L49,80 Z" />
 
     <!--
-      Gold accent dot — single 4-unit-radius circle tucked into the
-      upper-right negative space, under the right arm. At small sizes it
-      reads as a warm pixel; at full size it's a deliberate highlight.
+      Gold price tag — rounded rectangle with a small triangular tip
+      extending down-right, plus a transparent circle for the string
+      hole. Sits at the upper-right of the bag.
     -->
     <path
         android:fillColor="#fdc003"
-        android:pathData="M84,26 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0" />
+        android:pathData="M74.5,28 L85.5,28 L89.5,32 L85.5,36 L74.5,36 Z" />
+    <path
+        android:fillColor="#0047f1"
+        android:pathData="M77.5,32 m-1.2,0 a1.2,1.2 0,1 1,2.4 0 a1.2,1.2 0,1 1,-2.4 0" />
 </vector>

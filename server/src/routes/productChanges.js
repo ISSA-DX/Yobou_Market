@@ -58,17 +58,30 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
 });
 
 // Vendor lists their own change requests.
+// Supports ?status=PENDING|APPROVED|REJECTED, ?limit=&?offset= — returns { changes, total, limit, offset }.
 router.get('/mine', requireAuth, requireApprovedVendor, async (req, res, next) => {
   try {
-    const changes = await prisma.productChange.findMany({
-      where: { vendorId: req.user.vendor.id },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        product: { select: { id: true, name: true, imageUrls: true } },
-        reviewedBy: { select: { id: true, name: true, email: true } },
-      },
-    });
-    res.json({ changes: changes.map(parseChange) });
+    const { status } = req.query;
+    const limit = req.query.limit ? Math.max(1, Math.min(200, Number(req.query.limit) || 50)) : 50;
+    const offset = req.query.offset ? Math.max(0, Number(req.query.offset) || 0) : 0;
+    const where = { vendorId: req.user.vendor.id };
+    if (status && ['PENDING', 'APPROVED', 'REJECTED'].includes(String(status))) {
+      where.status = String(status);
+    }
+    const [changes, total] = await Promise.all([
+      prisma.productChange.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+        include: {
+          product: { select: { id: true, name: true, imageUrls: true } },
+          reviewedBy: { select: { id: true, name: true, email: true } },
+        },
+      }),
+      prisma.productChange.count({ where }),
+    ]);
+    res.json({ changes: changes.map(parseChange), total, limit, offset });
   } catch (err) { next(err); }
 });
 

@@ -156,3 +156,136 @@ test('orders — vendor /mine lists orders containing their products', async () 
   assert.ok(res.body.orders.length >= 1);
   assert.strictEqual(res.body.orders[0].id, order.id);
 });
+
+test('orders — vendor cancels PAID order with reason, stock restored, audit logged', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const { vendorUser, product, order } = await seedOrder({ status: 'PAID' });
+  const token = signAccessFor(vendorUser);
+
+  // Order was placed with 2 units. Initial stock was 10.
+  // Simulate the order's stock decrement: 10 - 2 = 8.
+  await prisma.product.update({ where: { id: product.id }, data: { stock: 8 } });
+
+  const res = await request(app, 'POST', `/api/orders/vendor/${order.id}/cancel`, {
+    token,
+    body: { reason: 'Out of stock at fulfillment center' },
+  });
+  assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+  assert.strictEqual(res.body.order.status, 'CANCELLED');
+  assert.match(res.body.order.cancelReason, /stock at fulfillment/);
+
+  // Stock restored to 10.
+  const after = await prisma.product.findUnique({ where: { id: product.id } });
+  assert.strictEqual(after.stock, 10);
+
+  // Timeline event written with actorRole=VENDOR.
+  const events = await prisma.timelineEvent.findMany({ where: { orderId: order.id } });
+  const cancelEvent = events.find((e) => e.status === 'CANCELLED');
+  assert.ok(cancelEvent, 'CANCELLED timeline event missing');
+  assert.strictEqual(cancelEvent.actorRole, 'VENDOR');
+
+  // Audit log entry. `meta` is stored as a JSON string in SQLite — parse it
+  // before reading individual fields.
+  const auditRow = await prisma.adminAuditLog.findFirst({
+    where: { actorId: vendorUser.id, action: 'order.cancel' },
+  });
+  assert.ok(auditRow);
+  const meta = JSON.parse(auditRow.meta || '{}');
+  assert.strictEqual(meta.actorRole, 'VENDOR');
+  assert.strictEqual(meta.reason, 'Out of stock at fulfillment center');
+});
+
+test('orders — vendor cancels PROCESSING order (no stock restore when restoreStock=false)', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const { vendorUser, product, order } = await seedOrder({ status: 'PROCESSING' });
+  const token = signAccessFor(vendorUser);
+  await prisma.product.update({ where: { id: product.id }, data: { stock: 8 } });
+
+  const res = await request(app, 'POST', `/api/orders/vendor/${order.id}/cancel`, {
+    token,
+    body: { reason: 'Customer changed mind', restoreStock: false },
+  });
+  assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+  assert.strictEqual(res.body.order.status, 'CANCELLED');
+
+  const after = await prisma.product.findUnique({ where: { id: product.id } });
+  assert.strictEqual(after.stock, 8, 'stock must NOT be restored when restoreStock=false');
+});
+
+test('orders — vendor cancel of SHIPPED order is rejected (use refund flow)', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const { vendorUser, order } = await seedOrder({ status: 'SHIPPED' });
+  const token = signAccessFor(vendorUser);
+
+  const res = await request(app, 'POST', `/api/orders/vendor/${order.id}/cancel`, {
+    token,
+    body: { reason: 'Too late' },
+  });
+  assert.strictEqual(res.status, 400);
+  assert.strictEqual(res.body.error, 'NOT_CANCELLABLE_BY_VENDOR');
+  assert.strictEqual(res.body.currentStatus, 'SHIPPED');
+});
+
+test('orders — vendor cannot cancel an order they do not own', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const { order } = await seedOrder({ status: 'PAID' });
+  const stranger = await makeUser('VENDOR', {
+    vendor: { create: { businessName: 'Stranger Co', phone: '555', status: 'APPROVED' } },
+  });
+  const token = signAccessFor(stranger);
+
+  const res = await request(app, 'POST', `/api/orders/vendor/${order.id}/cancel`, {
+    token,
+    body: { reason: 'mind changed' },
+  });
+  assert.strictEqual(res.status, 403);
+});
+
+test('orders — vendor cancel of DELIVERED order returns ORDER_ALREADY_FINAL', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const { vendorUser, order } = await seedOrder({ status: 'DELIVERED' });
+  const token = signAccessFor(vendorUser);
+
+  const res = await request(app, 'POST', `/api/orders/vendor/${order.id}/cancel`, {
+    token,
+    body: { reason: 'too late' },
+  });
+  assert.strictEqual(res.status, 409);
+  assert.strictEqual(res.body.error, 'ORDER_ALREADY_FINAL');
+});
+
+test('orders — vendor cancel rejects missing reason', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const { vendorUser, order } = await seedOrder({ status: 'PAID' });
+  const token = signAccessFor(vendorUser);
+
+  const res = await request(app, 'POST', `/api/orders/vendor/${order.id}/cancel`, {
+    token,
+    body: {},
+  });
+  assert.strictEqual(res.status, 400);
+  assert.strictEqual(res.body.error, 'INVALID_INPUT');
+});
+
+test('orders — PENDING vendor cannot cancel an order', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const { order } = await seedOrder({ status: 'PAID' });
+  const pendingVendor = await makeUser('VENDOR', {
+    vendor: { create: { businessName: 'Pending Co', phone: '555', status: 'PENDING' } },
+  });
+  const token = signAccessFor(pendingVendor);
+
+  const res = await request(app, 'POST', `/api/orders/vendor/${order.id}/cancel`, {
+    token,
+    body: { reason: 'whatever' },
+  });
+  assert.strictEqual(res.status, 403);
+  assert.strictEqual(res.body.error, 'VENDOR_PENDING');
+});

@@ -10,6 +10,7 @@ const productChangesRoutes = require('./routes/productChanges');
 const cartRoutes = require('./routes/cart');
 const ordersRoutes = require('./routes/orders');
 const vendorOrdersRoutes = require('./routes/vendorOrders');
+const vendorAnalyticsRoutes = require('./routes/vendorAnalytics');
 const vendorsRoutes = require('./routes/vendors');
 const adminRoutes = require('./routes/admin');
 const refundsRoutes = require('./routes/refunds');
@@ -46,6 +47,8 @@ const ALLOWED_ORIGINS = new Set([
   'http://127.0.0.1:5174',
   'http://localhost:5175',                  // web-only shopper build (dev)
   'http://127.0.0.1:5175',
+  'http://localhost:5176',                  // partner (vendor) web (dev)
+  'http://127.0.0.1:5176',
   'http://localhost:4000',                  // admin SPA served by the API itself in single-host prod
   'http://127.0.0.1:4000',
   'http://localhost',
@@ -151,6 +154,7 @@ app.use('/api/product-changes', productChangesRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/orders/vendor', vendorOrdersRoutes);
+app.use('/api/vendor', vendorAnalyticsRoutes);
 app.use('/api/vendors', vendorsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/refunds', refundsRoutes);
@@ -166,7 +170,18 @@ app.use('/api', eventsRoutes);
 const shopperDist = path.resolve(__dirname, '../../APP_shopper_and_buyer/dist');
 const webDist = path.resolve(__dirname, '../../Web_Version_APP/dist');
 const adminDist = path.resolve(__dirname, '../../Internal_Web_Admin/dist');
+const partnerDist = path.resolve(__dirname, '../../Partner_Web_Vendor/dist');
 const clientDist = fs.existsSync(shopperDist) ? shopperDist : webDist;
+
+// Partner (vendor) SPA — served at /partner/* (also serves /partner as index.html).
+if (fs.existsSync(partnerDist)) {
+  app.use('/partner', express.static(partnerDist));
+  app.get('/partner', (_req, res) => res.sendFile(path.join(partnerDist, 'index.html')));
+  app.get('/partner/*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
+    res.sendFile(path.join(partnerDist, 'index.html'));
+  });
+}
 
 // Admin SPA — served at /admin/* (also serves /admin as index.html).
 if (fs.existsSync(adminDist)) {

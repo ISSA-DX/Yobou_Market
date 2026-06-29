@@ -13,8 +13,13 @@ import ProductNew from './pages/products/ProductNew';
 import Vendors from './pages/vendors/Vendors';
 import VendorNew from './pages/vendors/VendorNew';
 import Orders from './pages/orders/Orders';
+import OrderDetail from './pages/orders/OrderDetail';
 import Changes from './pages/changes/Changes';
 import Refunds from './pages/refunds/Refunds';
+import Users from './pages/users/Users';
+import Broadcast from './pages/broadcast/Broadcast';
+import AuditLog from './pages/audit/AuditLog';
+import NotificationPrefs from './pages/preferences/Notifications';
 
 function Boot() {
   const boot = useStore((s) => s.boot);
@@ -53,8 +58,13 @@ export default function App() {
           <Route path="/vendors" element={<Vendors />} />
           <Route path="/vendors/new" element={<VendorNew />} />
           <Route path="/orders" element={<Orders />} />
+          <Route path="/orders/:id/track" element={<OrderDetail />} />
           <Route path="/changes" element={<Changes />} />
           <Route path="/refunds" element={<Refunds />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/broadcast" element={<Broadcast />} />
+          <Route path="/audit" element={<AuditLog />} />
+          <Route path="/preferences/notifications" element={<NotificationPrefs />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

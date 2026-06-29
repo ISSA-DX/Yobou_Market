@@ -4,6 +4,7 @@ import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import { api } from '../../api';
 import { useApi, RetryError } from '../../useApi.jsx';
+import { toast } from '../../lib/toast';
 
 const SECTIONS = [
   {
@@ -63,8 +64,11 @@ export default function Profile() {
       const updated = await updateProfile(form);
       setUser(updated);
       setEditing(false);
+      toast.success('Profile saved');
     } catch (e) {
-      setErr(e.message === 'EMAIL_TAKEN' ? 'That email is already in use.' : 'Could not save profile.');
+      const msg = e.message === 'EMAIL_TAKEN' ? 'That email is already in use.' : 'Could not save profile.';
+      setErr(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }

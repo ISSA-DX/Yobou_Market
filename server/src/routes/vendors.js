@@ -2,8 +2,8 @@ const express = require('express');
 const { z } = require('zod');
 const bcrypt = require('bcrypt');
 const { prisma } = require('../prisma');
-const { vendorRegister, adminVendorCreate } = require('../lib/validators');
-const { requireAuth, requireRole } = require('../auth/middleware');
+const { vendorRegister, adminVendorCreate, vendorSelfUpdate } = require('../lib/validators');
+const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
 const { notify, audit } = require('../lib/notifications');
 
 const router = express.Router();
@@ -71,6 +71,71 @@ router.get('/', requireAuth, requireRole('ADMIN'), async (_req, res, next) => {
     });
     res.json({ vendors: vendors.map(parseVendor) });
   } catch (err) { next(err); }
+});
+
+// Vendor self-service: view own Vendor record.
+// IMPORTANT: must be mounted before /:id/status so the literal `me`
+// segment isn't captured as an id parameter.
+router.get('/me', requireAuth, requireApprovedVendor, async (req, res, next) => {
+  try {
+    const vendor = await prisma.vendor.findUnique({
+      where: { id: req.user.vendor.id },
+      include: { user: { select: { id: true, name: true, email: true, role: true } } },
+    });
+    if (!vendor) return res.status(404).json({ error: 'NOT_FOUND' });
+    res.json({ vendor: parseVendor(vendor) });
+  } catch (err) { next(err); }
+});
+
+// Vendor self-service: update own Vendor record (businessName, phone,
+// licenseUrl, categories). Every change is audit-logged with from/to.
+router.patch('/me', requireAuth, requireApprovedVendor, async (req, res, next) => {
+  try {
+    const data = vendorSelfUpdate.parse(req.body);
+    const before = await prisma.vendor.findUnique({ where: { id: req.user.vendor.id } });
+    if (!before) return res.status(404).json({ error: 'NOT_FOUND' });
+
+    const updated = await prisma.vendor.update({
+      where: { id: req.user.vendor.id },
+      data: {
+        ...(data.businessName !== undefined && { businessName: data.businessName }),
+        ...(data.phone !== undefined && { phone: data.phone }),
+        ...(data.licenseUrl !== undefined && { licenseUrl: data.licenseUrl || null }),
+        ...(data.categories !== undefined && { categories: JSON.stringify(data.categories) }),
+        ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl || null }),
+        ...(data.bannerUrl !== undefined && { bannerUrl: data.bannerUrl || null }),
+      },
+    });
+
+    await audit(req.user.id, {
+      action: 'vendor.profile_update',
+      entityType: 'vendor',
+      entityId: updated.id,
+      meta: {
+        from: {
+          businessName: before.businessName,
+          phone: before.phone,
+          licenseUrl: before.licenseUrl,
+          categories: before.categories,
+          logoUrl: before.logoUrl,
+          bannerUrl: before.bannerUrl,
+        },
+        to: {
+          businessName: updated.businessName,
+          phone: updated.phone,
+          licenseUrl: updated.licenseUrl,
+          categories: updated.categories,
+          logoUrl: updated.logoUrl,
+          bannerUrl: updated.bannerUrl,
+        },
+      },
+    });
+
+    res.json({ vendor: parseVendor(updated) });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
 });
 
 // Admin onboards a vendor directly (already APPROVED) with an initial password.

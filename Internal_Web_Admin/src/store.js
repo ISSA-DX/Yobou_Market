@@ -100,6 +100,16 @@ export const useStore = create((set, get) => ({
     set({ user: null });
   },
 
+  // Pull the current user from the server and store it. Used by the
+  // preferences page after a PATCH so the in-memory user reflects the
+  // saved booleans without a full re-login.
+  async refresh() {
+    try {
+      const { user } = await api('/api/auth/me');
+      if (user) set({ user });
+    } catch { /* unauth -> leave user alone */ }
+  },
+
   // Called once on boot to restore the session from the refresh cookie.
   async boot() {
     try {

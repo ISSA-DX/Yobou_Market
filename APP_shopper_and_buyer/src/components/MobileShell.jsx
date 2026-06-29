@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import Icon from './Icon';
+import { useNotifications } from '../lib/useNotifications';
 
 const NAV = [
   { to: '/home', label: 'Home', icon: 'home' },
@@ -14,22 +15,25 @@ const NAV = [
 export default function MobileShell() {
   const user = useStore((s) => s.user);
   const cartCount = useStore((s) => s.cartCount);
-  const logout = useStore((s) => s.logout);
   const refreshCart = useStore((s) => s.refreshCartCount);
-  const navigate = useNavigate();
 
   // Refresh cart once per user change — never during render.
   useEffect(() => {
     if (user) refreshCart();
   }, [user, refreshCart]);
 
-  async function handleLogout() {
-    await logout();
-    navigate('/logout');
-  }
-
   return (
     <div className="min-h-screen bg-surface pb-20">
+      {/* Top bar */}
+      <header className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-outline-variant/30">
+        <div className="max-w-screen-md mx-auto flex items-center justify-between px-4 h-12">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-md bg-primary text-white flex items-center justify-center font-black text-sm">Y</div>
+            <span className="font-bold text-sm">Yobou</span>
+          </div>
+          <BellLink />
+        </div>
+      </header>
       <div className="max-w-screen-md mx-auto">
         <Outlet />
       </div>
@@ -63,5 +67,23 @@ export default function MobileShell() {
         </div>
       </nav>
     </div>
+  );
+}
+
+function BellLink() {
+  const { unreadCount } = useNotifications(10);
+  return (
+    <NavLink
+      to="/notifications"
+      className="relative p-2 rounded-md hover:bg-surface-low"
+      aria-label={`Notifications (${unreadCount} unread)`}
+    >
+      <Icon name="notifications" className="text-[22px] text-on-surface-variant" />
+      {unreadCount > 0 && (
+        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-error text-white text-[11px] font-bold flex items-center justify-center">
+          {unreadCount > 99 ? '99+' : unreadCount}
+        </span>
+      )}
+    </NavLink>
   );
 }

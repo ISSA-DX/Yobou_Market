@@ -1,17 +1,18 @@
 """
 Generate Yobou Market launcher icons for Android.
 
-Concept: Bold Y monogram with a flared bag-footprint base and one gold
-accent dot. Designed to read clearly at 48dp (home-screen size) where
-only a single dominant shape survives — every previous detail in earlier
-iterations collapsed at small sizes. The Y is one solid polygon, the
-gold dot is one circle, the gradient is a single vertical wash.
+Concept: A rounded-rectangle shopping bag silhouette (the "bag footprint")
+in white with a Y monogram cut out as negative space in the bag's center,
+and a small gold price-tag dot at the upper-right of the bag. The bag
+silhouette is what makes "market" legible at 48dp; the Y monogram stays
+for brand recognition; the gold tag replaces the decorative dot with a
+commerce-meaningful shape.
 
 Brand palette (matches tailwind.config.js):
   primary-dark  #0034b9  (gradient bottom — same as in-app brand blue)
   primary-light #0047f1  (gradient top)
-  white         #ffffff  (Y fill)
-  gold          #fdc003  (single dot accent — same as Tailwind secondary)
+  white         #ffffff  (bag silhouette)
+  gold          #fdc003  (price-tag accent — same as Tailwind secondary)
 
 Outputs (15 PNGs at 5 densities):
   android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png
@@ -33,6 +34,9 @@ PRIMARY_BLUE_DARK = (0, 52, 185)        # #0034b9 — bottom of background gradi
 PRIMARY_BLUE_LIGHT = (0, 71, 241)       # #0047f1 — top of background gradient
 WHITE = (255, 255, 255)
 GOLD = (253, 192, 3)                    # #fdc003
+BAG_BLUE = (0, 71, 241)                 # #0047f1 — color used as Y "cutout" fill
+                                         # so the Y reads as negative space inside
+                                         # the white bag silhouette.
 
 # Standard Android launcher icon densities (px per Android baseline)
 DENSITIES = {
@@ -54,95 +58,143 @@ def hex_to_rgb(h):
 
 
 # ---------------------------------------------------------------------------
-# Y monogram geometry (108-unit design viewport, identical to Android's
+# Bag + Y geometry (108-unit design viewport, identical to Android's
 # adaptive-icon spec — the inner 66-unit safe zone is the canvas inside
-# which the Y must live so aggressive launcher masks don't clip it).
+# which the bag + Y must live so aggressive launcher masks don't clip them).
 #
-# The Y is a single 12-vertex polygon. Three bands of form:
-#   1. Two upper arms (mirror-symmetric) meeting at the apex junction.
-#   2. A short stem dropping from the apex junction.
-#   3. A flared base (wider than the stem) that implies a shopping-bag
-#      opening without drawing one — a silhouette cue, not an illustration.
+# The composition has three layers, drawn back-to-front:
+#   1. Bag silhouette — a rounded-rectangle in white with a thin handle arc
+#      above the bag body. The bag is wider than tall so it reads as a
+#      shopping tote at small sizes.
+#   2. Y monogram in BAG_BLUE — sits inside the bag as if "cut out", the
+#      same blue as the icon background so it reads as negative space.
+#   3. Gold price tag — small pentagon-with-hole at the upper-right of the
+#      bag. Replaces the old decorative dot with a shape that signals
+#      "commerce" (a price tag).
 # ---------------------------------------------------------------------------
 
-# All coordinates are in the 108-unit viewport. Strokes are ~11 units
-# thick (10% of the viewport), which is the smallest width that survives
-# at 48dp (mdpi) without aliasing into mush.
-ARM_THICK = 11          # thickness of the upper Y arms
-STEM_TOP_WIDTH = 14     # stem thickness where it meets the arms
-BASE_FLARE = 22         # wider than stem_top_width — the "bag opening" cue
-APEX_X = 54             # horizontal center
+# Bag body — occupies most of the inner safe zone.
+BAG_X0, BAG_Y0 = 22, 36                # top-left corner of bag body
+BAG_X1, BAG_Y1 = 86, 90                # bottom-right corner of bag body
+BAG_CORNER_R = 8                       # rounded corner radius (in viewport units)
 
-# Upper arms: each arm is a parallelogram from the apex junction up-and-out.
-# Left arm spans from the apex (54, 38) up-left to (22, 14). Right arm is
-# mirror-symmetric. The arms are drawn as filled polygons (outer edge then
-# inner edge back) for an even-weight stroke.
-ARM_TOP_Y = 14          # top edge of the arms
-ARM_OUTER_X_LEFT = 18   # outer top-left corner
-ARM_OUTER_X_RIGHT = 90  # outer top-right corner
+# Bag handle — a thin arc above the bag. Two endpoints + thickness.
+HANDLE_Y0 = 22                         # top of the handle
+HANDLE_Y1 = 40                         # where the handle meets the bag top
+HANDLE_X0, HANDLE_X1 = 40, 68          # horizontal span of the handle
 
-# Apex junction (where the arms meet and the stem begins).
-APEX_Y = 38
+# Y monogram — drawn inside the bag. Smaller than the standalone-Y icon
+# because it has to fit inside the bag silhouette and leave breathing room
+# on all sides.
+Y_TOP_Y = 50                           # top edge of the Y arms
+Y_ARM_OUTER_X_LEFT = 36                # outer top-left corner of left arm
+Y_ARM_OUTER_X_RIGHT = 72               # outer top-right corner of right arm
+Y_ARM_THICK = 8                        # thickness of upper arms
+Y_APEX_X = 54                          # horizontal center (apex junction)
+Y_APEX_Y = 64                          # apex junction
+Y_STEM_BOTTOM_Y = 80                   # where the stem meets the bag floor
+                                       # (we don't draw a flared base — the
+                                       # bag's bottom edge is the floor)
 
-# Stem (vertical descender from apex into the bag-footprint base).
-STEM_BOTTOM_Y = 70
-BASE_TOP_Y = 70         # where the flare begins
-BASE_BOTTOM_Y = 90      # where the flare ends (sits within safe zone)
+# Gold price tag — a small rounded rectangle with a triangular tip pointing
+# down-right, plus a tiny circle for the "string hole". Sits at upper-right.
+TAG_CX, TAG_CY = 80, 32                # center of the tag's body
+TAG_W, TAG_H = 11, 8                   # body size
+TAG_TIP_DX, TAG_TIP_DY = 4, 4          # tip offset
+TAG_HOLE_R = 1.2                       # string-hole radius
+
+
+def bag_polygon_vertices():
+    """
+    Return vertices for the bag silhouette (rounded rectangle).
+
+    The bag is drawn as a filled rounded rectangle; for sharp-edge pixels
+    on small icons we approximate it as a polygon with chamfered corners
+    so the silhouette survives the icon-mask roundings on older devices.
+    """
+    r = BAG_CORNER_R
+    # 8-vertex chamfered rectangle (clockwise from top-left corner).
+    return [
+        (BAG_X0 + r, BAG_Y0),
+        (BAG_X1 - r, BAG_Y0),
+        (BAG_X1, BAG_Y0 + r),
+        (BAG_X1, BAG_Y1 - r),
+        (BAG_X1 - r, BAG_Y1),
+        (BAG_X0 + r, BAG_Y1),
+        (BAG_X0, BAG_Y1 - r),
+        (BAG_X0, BAG_Y0 + r),
+    ]
+
+
+def bag_handle_vertices():
+    """
+    Return vertices for the bag handle — a thin arc above the bag.
+
+    Approximated as a thin trapezoid (top narrower than bottom) so it
+    renders crisply at every density. The trapezoid's top edge runs from
+    (HANDLE_X0 + 2, HANDLE_Y0) to (HANDLE_X1 - 2, HANDLE_Y0); the bottom
+    edge sits flush with the bag top (HANDLE_Y1).
+    """
+    return [
+        (HANDLE_X0 + 4, HANDLE_Y0),
+        (HANDLE_X1 - 4, HANDLE_Y0),
+        (HANDLE_X1, HANDLE_Y1),
+        (HANDLE_X0, HANDLE_Y1),
+    ]
 
 
 def y_polygon_vertices():
-    """Return the 12 vertices of the Y monogram in 108-unit viewport coords."""
-    half_arm = ARM_THICK / 2
-    half_stem_top = STEM_TOP_WIDTH / 2
-    half_base = BASE_FLARE / 2
+    """Return the Y monogram vertices (drawn in BAG_BLUE as a cutout)."""
+    half_arm = Y_ARM_THICK / 2
+    arm_inner_offset = 2
 
-    # Left arm as a quadrilateral. Outer edge runs from the apex down-and-left
-    # to the outer top-left of the arm; inner edge runs back to the inner
-    # top-right of the arm (just right of the apex).
-    #   outer-top  = (ARM_OUTER_X_LEFT, ARM_TOP_Y)
-    #   outer-bot  = (APEX_X - half_arm*sqrt(2), APEX_Y)  — perpendicular offset
-    # but a simpler approximation: each arm is a rectangle tilted 45°, drawn
-    # as the convex hull of 4 corners.
-    # Top-left arm corners (clockwise from upper-left):
-    tl_outer = (ARM_OUTER_X_LEFT, ARM_TOP_Y)
-    tl_inner = (ARM_OUTER_X_LEFT + ARM_THICK, ARM_TOP_Y)
-    # Approximate the bottom of the arm as two points straddling the apex,
-    # each offset perpendicular to the arm's diagonal by half_arm on each side.
-    # For a 45° arm: perp offset = (half_arm*sin45, -half_arm*cos45) —
-    # but we keep it simple and use horizontal offsets.
-    tl_bot_outer = (APEX_X - half_arm - 2, APEX_Y - 1)
-    tl_bot_inner = (APEX_X + 2, APEX_Y - 1)
-    left_arm = [tl_outer, tl_bot_outer, tl_bot_inner, tl_inner]
+    # Left arm — parallelogram from upper-left to the apex junction.
+    left_arm = [
+        (Y_ARM_OUTER_X_LEFT, Y_TOP_Y),
+        (Y_ARM_OUTER_X_LEFT + Y_ARM_THICK, Y_TOP_Y),
+        (Y_APEX_X + arm_inner_offset, Y_APEX_Y),
+        (Y_APEX_X - half_arm - 1, Y_APEX_Y - 1),
+    ]
 
     # Right arm — mirror of left.
-    tr_outer = (ARM_OUTER_X_RIGHT, ARM_TOP_Y)
-    tr_inner = (ARM_OUTER_X_RIGHT - ARM_THICK, ARM_TOP_Y)
-    tr_bot_outer = (APEX_X + half_arm + 2, APEX_Y - 1)
-    tr_bot_inner = (APEX_X - 2, APEX_Y - 1)
-    right_arm = [tr_outer, tr_bot_inner, tr_bot_outer, tr_inner]
+    right_arm = [
+        (Y_ARM_OUTER_X_RIGHT, Y_TOP_Y),
+        (Y_ARM_OUTER_X_RIGHT - Y_ARM_THICK, Y_TOP_Y),
+        (Y_APEX_X + half_arm + 1, Y_APEX_Y - 1),
+        (Y_APEX_X - arm_inner_offset, Y_APEX_Y),
+    ]
 
-    # Stem + base as one continuous shape (so the flare reads as part of the
-    # Y, not a separate bag glued underneath).
-    stem_left_top = (APEX_X - half_stem_top, APEX_Y)
-    stem_right_top = (APEX_X + half_stem_top, APEX_Y)
-    base_left_top = (APEX_X - half_base, BASE_TOP_Y)
-    base_right_top = (APEX_X + half_base, BASE_TOP_Y)
-    base_left_bot = (APEX_X - half_base, BASE_BOTTOM_Y)
-    base_right_bot = (APEX_X + half_base, BASE_BOTTOM_Y)
-    stem_and_base = [stem_left_top, stem_right_top, base_right_top,
-                     base_right_bot, base_left_bot, base_left_top]
+    # Stem — a tapered rectangle from the apex junction down to the bag floor.
+    stem_top_left = (Y_APEX_X - half_arm, Y_APEX_Y)
+    stem_top_right = (Y_APEX_X + half_arm, Y_APEX_Y)
+    stem_bot_left = (Y_APEX_X - half_arm - 1, Y_STEM_BOTTOM_Y)
+    stem_bot_right = (Y_APEX_X + half_arm + 1, Y_STEM_BOTTOM_Y)
+    stem = [stem_top_left, stem_top_right, stem_bot_right, stem_bot_left]
 
-    # Combine: draw left arm, right arm, then stem-and-base on top.
-    # We return them as a list of polygons; composite in draw order.
-    return [left_arm, right_arm, stem_and_base]
+    return [left_arm, right_arm, stem]
 
 
-def gold_dot_vertices():
-    """Single gold accent dot — sits in the upper-right negative space."""
-    # 4-unit radius dot tucked into the gap between the right arm and the
-    # canvas edge. Positioned at (84, 30) — well inside the safe zone.
-    cx, cy, r = 84, 30, 4
-    return [(cx - r, cy - r), (cx + r, cy - r), (cx + r, cy + r), (cx - r, cy + r)]
+def price_tag_vertices():
+    """
+    Return (body_polygon, hole_circle) for the gold price tag.
+
+    The body is a rounded rectangle with a triangular tip extending
+    down-and-right, suggesting a real price tag. The hole is a small
+    circle punched out via a second draw pass (we draw the tag body, then
+    draw a transparent circle on top).
+    """
+    x0 = TAG_CX - TAG_W / 2
+    y0 = TAG_CY - TAG_H / 2
+    x1 = TAG_CX + TAG_W / 2
+    y1 = TAG_CY + TAG_H / 2
+    body = [
+        (x0, y0),
+        (x1, y0),
+        (x1 + TAG_TIP_DX, TAG_CY),
+        (x1, y1),
+        (x0, y1),
+    ]
+    return body, (TAG_CX - TAG_W / 4, TAG_CY, TAG_HOLE_R)
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +213,16 @@ def draw_background(size, rounded=False):
         g = int(top[1] + (bot[1] - top[1]) * t)
         b = int(top[2] + (bot[2] - top[2]) * t)
         draw.line([(0, y), (size, y)], fill=(r, g, b, 255))
+
+    # Top-edge highlight — thin white wash that fades to transparent over
+    # the first 30% of the tile. Adds a "lit glass" feel at full size and
+    # vanishes cleanly at 48dp.
+    hl = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    hd = ImageDraw.Draw(hl)
+    for y in range(int(size * 0.30)):
+        a = int(255 * (1 - y / (size * 0.30)) ** 2 * 0.10)
+        hd.line([(0, y), (size, y)], fill=(255, 255, 255, a))
+    img.alpha_composite(hl)
 
     if rounded:
         # Circular mask for round launcher icons (legacy devices).
@@ -185,7 +247,7 @@ def draw_background(size, rounded=False):
 
 def draw_foreground(size):
     """
-    Render the Y monogram + gold accent dot on a transparent canvas.
+    Render the bag + Y cutout + price tag on a transparent canvas.
     All geometry is in 108-unit viewport space, mapped to `size` pixels.
     """
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
@@ -195,29 +257,37 @@ def draw_foreground(size):
         """Map a 108-unit coord to pixels."""
         return int(v * size / 108)
 
-    # Subtle white glow ring behind the Y — gives the icon a "lifted"
-    # feel on the gradient background. Soft enough to vanish at 48dp
-    # without becoming a halo.
-    glow_radius = s(38)
-    cx, cy = s(APEX_X), s((ARM_TOP_Y + BASE_BOTTOM_Y) / 2)
-    for r in range(glow_radius, 0, -1):
-        alpha = int(40 * (1 - r / glow_radius) ** 2)
+    # Layer 1: bag handle (trapezoid) — drawn first so the bag body
+    # overlaps it cleanly along the bag's top edge.
+    handle = [(s(x), s(y)) for x, y in bag_handle_vertices()]
+    draw.polygon(handle, fill=WHITE)
+
+    # Layer 2: bag body — rounded-rectangle silhouette.
+    body = [(s(x), s(y)) for x, y in bag_polygon_vertices()]
+    draw.polygon(body, fill=WHITE)
+
+    # Smooth the chamfered corners into proper rounded corners by overlaying
+    # circles at each vertex. PIL's draw.polygon is sharp-corner only.
+    for vx, vy in body:
+        r_px = s(BAG_CORNER_R)
         draw.ellipse(
-            (cx - r, cy - r, cx + r, cy + r),
-            fill=(255, 255, 255, alpha),
+            (s(vx) - r_px, s(vy) - r_px, s(vx) + r_px, s(vy) + r_px),
+            fill=WHITE,
         )
 
-    # Draw the Y polygons in white.
+    # Layer 3: Y monogram in BAG_BLUE — drawn on top of the white bag so
+    # it reads as negative space.
     for poly in y_polygon_vertices():
-        draw.polygon([(s(x), s(y)) for x, y in poly], fill=WHITE)
+        draw.polygon([(s(x), s(y)) for x, y in poly], fill=BAG_BLUE)
 
-    # Draw the gold dot — single circle, the only warm accent on the icon.
-    dot_verts = gold_dot_vertices()
-    xs = [v[0] for v in dot_verts]
-    ys = [v[1] for v in dot_verts]
+    # Layer 4: gold price tag.
+    tag_body, (hx, hy, hr) = price_tag_vertices()
+    draw.polygon([(s(x), s(y)) for x, y in tag_body], fill=GOLD)
+    # String-hole — punch a transparent circle so the tag reads as a tag.
+    hole_r_px = max(1, s(hr))
     draw.ellipse(
-        (s(min(xs)), s(min(ys)), s(max(xs)), s(max(ys))),
-        fill=GOLD,
+        (s(hx) - hole_r_px, s(hy) - hole_r_px, s(hx) + hole_r_px, s(hy) + hole_r_px),
+        fill=(0, 0, 0, 0),
     )
 
     return img

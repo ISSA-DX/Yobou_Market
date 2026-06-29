@@ -1,0 +1,222 @@
+import { useEffect, useState } from 'react';
+import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { useStore } from '../store';
+import { api } from '../api';
+import { useNotifications } from '../lib/useNotifications';
+import Icon from './Icon';
+
+function NotificationBell() {
+  const { notifications, unreadCount, markRead, markAllRead } = useNotifications(20);
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+
+  function handleClick(note) {
+    markRead(note.id);
+    setOpen(false);
+    if (note.link) navigate(note.link);
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="relative p-2 rounded-md hover:bg-surface-low"
+        aria-label={`Notifications (${unreadCount} unread)`}
+      >
+        <Icon name="notifications" className="text-[22px]" />
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-error text-white text-[11px] font-bold flex items-center justify-center">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-lg shadow-xl border border-outline-variant/30 z-30 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-outline-variant/30">
+              <div className="font-semibold text-sm">Notifications</div>
+              {unreadCount > 0 && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); markAllRead(); }}
+                  className="text-xs text-primary hover:underline"
+                >
+                  Mark all read
+                </button>
+              )}
+            </div>
+            <div className="max-h-[480px] overflow-y-auto">
+              {notifications.length === 0 ? (
+                <div className="p-6 text-center text-on-surface-variant text-sm">No notifications yet.</div>
+              ) : (
+                notifications.map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => handleClick(n)}
+                    className={`w-full text-left px-4 py-3 border-b border-outline-variant/20 hover:bg-surface-low ${
+                      !n.readAt ? 'bg-primary/5' : ''
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      {!n.readAt && <span className="mt-1.5 w-2 h-2 rounded-full bg-primary flex-shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{n.title}</div>
+                        <div className="text-xs text-on-surface-variant line-clamp-2">{n.body}</div>
+                        <div className="text-[11px] text-on-surface-variant/70 mt-1">
+                          {new Date(n.createdAt).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function NavItem({ to, label, icon, end }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium ${
+          isActive ? 'bg-surface-high text-primary' : 'text-on-surface-variant hover:bg-surface-low'
+        }`
+      }
+    >
+      <Icon name={icon} className="text-[20px]" />
+      <span className="flex-1">{label}</span>
+    </NavLink>
+  );
+}
+
+const NAV_ITEMS = [
+  { to: '/dashboard', label: 'Dashboard', icon: 'space_dashboard', end: true },
+  { to: '/products', label: 'Products', icon: 'inventory_2' },
+  { to: '/orders', label: 'Orders', icon: 'receipt_long' },
+  { to: '/changes', label: 'Changes', icon: 'pending_actions' },
+  { to: '/analytics', label: 'Analytics', icon: 'monitoring' },
+  { to: '/notifications', label: 'Inbox', icon: 'inbox' },
+  { to: '/profile', label: 'Profile', icon: 'account_circle' },
+];
+
+const BOTTOM_NAV = [
+  { to: '/dashboard', label: 'Home', icon: 'space_dashboard', end: true },
+  { to: '/products', label: 'Products', icon: 'inventory_2' },
+  { to: '/orders', label: 'Orders', icon: 'receipt_long' },
+  { to: '/analytics', label: 'Stats', icon: 'monitoring' },
+  { to: '/profile', label: 'You', icon: 'account_circle' },
+];
+
+export default function PartnerShell() {
+  const user = useStore((s) => s.user);
+  const logout = useStore((s) => s.logout);
+  const toggleDark = useStore((s) => s.toggleDark);
+  const dark = useStore((s) => s.dark);
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    await logout();
+    navigate('/logout');
+  }
+
+  return (
+    <div className="min-h-screen bg-surface flex">
+      {/* Sidebar (desktop) */}
+      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-outline-variant/30 p-4">
+        <div className="flex items-center gap-2 mb-8">
+          <div className="w-9 h-9 rounded-lg bg-primary text-white flex items-center justify-center font-black">Y</div>
+          <div>
+            <div className="font-bold text-on-surface">Yobou Partner</div>
+            <div className="text-label-sm text-on-surface-variant">
+              {user?.vendor?.businessName || 'Vendor portal'}
+            </div>
+          </div>
+        </div>
+        <nav className="flex-1 space-y-1 overflow-y-auto">
+          {NAV_ITEMS.map((it) => (
+            <NavItem key={it.to} {...it} />
+          ))}
+        </nav>
+        <div className="border-t border-outline-variant/30 pt-3 space-y-1">
+          <button
+            onClick={toggleDark}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-on-surface-variant hover:bg-surface-low"
+          >
+            <Icon name={dark ? 'light_mode' : 'dark_mode'} className="text-[20px]" />
+            {dark ? 'Light' : 'Dark'} mode
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-on-surface-variant hover:bg-surface-low"
+          >
+            <Icon name="logout" className="text-[20px]" />
+            Logout
+          </button>
+        </div>
+      </aside>
+
+      {/* Main column */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top bar */}
+        <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-outline-variant/30">
+          <div className="flex items-center justify-between px-4 md:px-8 h-16">
+            <div className="md:hidden flex items-center gap-2">
+              <div className="w-8 h-8 rounded-md bg-primary text-white flex items-center justify-center font-black">Y</div>
+              <div className="font-bold">Yobou <span className="text-on-surface-variant text-xs font-normal">/ Partner</span></div>
+            </div>
+            <div className="hidden md:flex items-center gap-2 text-on-surface-variant text-sm">
+              <Icon name="storefront" className="text-[20px]" />
+              <span>Vendor portal</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <NotificationBell />
+              <button onClick={toggleDark} className="md:hidden p-2 rounded-md hover:bg-surface-low">
+                <Icon name={dark ? 'light_mode' : 'dark_mode'} className="text-[20px]" />
+              </button>
+              <div className="hidden md:flex items-center gap-3 pl-2">
+                <div className="text-right">
+                  <div className="text-sm font-semibold">{user?.name}</div>
+                  <div className="text-label-sm text-on-surface-variant">{user?.email}</div>
+                </div>
+                <div className="w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center font-bold">
+                  {user?.name?.[0] || 'V'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 p-4 md:p-8 max-w-screen-2xl w-full pb-24 md:pb-8">
+          <Outlet />
+        </main>
+
+        {/* Mobile bottom nav */}
+        <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-outline-variant/30 z-20">
+          <div className="grid grid-cols-5">
+            {BOTTOM_NAV.map((it) => (
+              <NavLink
+                key={it.to}
+                to={it.to}
+                end={it.end}
+                className={({ isActive }) =>
+                  `flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-medium ${
+                    isActive ? 'text-primary' : 'text-on-surface-variant'
+                  }`
+                }
+              >
+                <Icon name={it.icon} className="text-[22px]" />
+                {it.label}
+              </NavLink>
+            ))}
+          </div>
+        </nav>
+      </div>
+    </div>
+  );
+}

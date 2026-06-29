@@ -39,20 +39,42 @@ function publicUser(user) {
     notifyPromotions: user.notifyPromotions,
     notifyShipping: user.notifyShipping,
     marketingConsent: user.marketingConsent,
+    // Extended vendor summary so the partner profile page can render
+    // businessName / phone / categories / licenseUrl without an extra
+    // round-trip. `categories` is stored as a JSON string in SQLite —
+    // we parse it on the way out so the SPA gets a real array.
     vendor: user.vendor
       ? {
           id: user.vendor.id,
           businessName: user.vendor.businessName,
           status: user.vendor.status,
+          phone: user.vendor.phone || null,
+          licenseUrl: user.vendor.licenseUrl || null,
+          categories: parseCategories(user.vendor.categories),
         }
       : null,
   };
 }
 
+function parseCategories(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+// checkVendorStatus gates a vendor's session. PENDING is intentionally
+// NOT blocked — newly-registered vendors need to log in so they can see
+// the "awaiting approval" status page. REJECTED and SUSPENDED are still
+// hard blocks: those are terminal statuses that the admin uses to take
+// access away.
 function checkVendorStatus(user, res) {
   if (user.role === 'VENDOR') {
     if (!user.vendor) return res.status(403).json({ error: 'VENDOR_RECORD_MISSING' });
-    if (user.vendor.status === 'PENDING') return res.status(403).json({ error: 'VENDOR_PENDING' });
     if (user.vendor.status === 'REJECTED') return res.status(403).json({ error: 'VENDOR_REJECTED' });
     if (user.vendor.status === 'SUSPENDED') return res.status(403).json({ error: 'VENDOR_SUSPENDED' });
   }

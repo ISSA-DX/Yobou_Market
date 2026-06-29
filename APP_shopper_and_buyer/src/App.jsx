@@ -32,7 +32,10 @@ import Profile from './pages/profile/Profile.jsx';
 import ProfileAddresses from './pages/profile/ProfileAddresses.jsx';
 import ProfileCards from './pages/profile/ProfileCards.jsx';
 import ProfilePreferences from './pages/profile/ProfilePreferences.jsx';
+import Notifications from './pages/Notifications.jsx';
+
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import ToastHost from './components/ToastHost.jsx';
 
 function Boot() {
   const boot = useStore((s) => s.boot);
@@ -61,8 +64,9 @@ export default function App() {
   return (
     <>
       <Boot />
+      <ToastHost />
       <Routes>
-        {/* Public root — go to onboarding for first visit, otherwise home */}
+        {/* Public root */}
         <Route path="/" element={<Navigate to="/onboarding" replace />} />
         <Route path="/onboarding" element={<Onboarding />} />
 
@@ -90,6 +94,7 @@ export default function App() {
           <Route path="/profile/addresses" element={<ErrorBoundary><ProfileAddresses /></ErrorBoundary>} />
           <Route path="/profile/cards" element={<ErrorBoundary><ProfileCards /></ErrorBoundary>} />
           <Route path="/profile/preferences" element={<ErrorBoundary><ProfilePreferences /></ErrorBoundary>} />
+          <Route path="/notifications" element={<ErrorBoundary><Notifications /></ErrorBoundary>} />
         </Route>
 
         {/* Checkout — sticky CTA, no bottom nav */}

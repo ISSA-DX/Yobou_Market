@@ -7,7 +7,6 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const login = useStore((s) => s.login);
-  const [tab, setTab] = useState('customer');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
@@ -24,7 +23,6 @@ export default function Login() {
       if (from && from !== '/login') {
         navigate(from, { replace: true });
       } else if (user.role === 'ADMIN') navigate('/admin/dashboard');
-      else if (user.role === 'VENDOR') navigate('/vendor/dashboard');
       else navigate('/home');
     } catch (e) {
       setErr(humanizeError(e));
@@ -49,25 +47,8 @@ export default function Login() {
         <h1 className="text-headline-lg font-bold">Welcome back</h1>
         <p className="mt-1 text-on-surface-variant">Sign in to continue shopping.</p>
 
-        {/* Role switcher tabs */}
-        <div className="mt-5 grid grid-cols-2 p-1 rounded-lg bg-surface-low">
-          {[
-            { id: 'customer', label: 'Customer' },
-            { id: 'partner', label: 'Partner-Seller' },
-          ].map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`py-2 rounded-md text-sm font-semibold transition ${
-                tab === t.id ? 'bg-white shadow-card text-primary' : 'text-on-surface-variant'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
+        {/* Role switcher removed — this is the customer app. Vendors sign in
+            via the standalone Yobou Partner app. */}
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
             <label className="text-label-md text-on-surface-variant">Email</label>
@@ -107,7 +88,7 @@ export default function Login() {
 
           <button type="submit" disabled={busy} className="btn-primary w-full py-3 disabled:opacity-60">
             {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
-            Sign in as {tab === 'customer' ? 'Customer' : 'Partner'}
+            Sign in
           </button>
 
           <div className="text-center">
@@ -134,11 +115,7 @@ export default function Login() {
 
         <div className="mt-6 text-center text-sm text-on-surface-variant">
           New to Yobou?{' '}
-          {tab === 'customer' ? (
-            <Link to="/register" className="text-primary font-semibold">Sign up</Link>
-          ) : (
-            <Link to="/vendor/register" className="text-primary font-semibold">Become a Partner</Link>
-          )}
+          <Link to="/register" className="text-primary font-semibold">Sign up</Link>
         </div>
       </div>
     </div>

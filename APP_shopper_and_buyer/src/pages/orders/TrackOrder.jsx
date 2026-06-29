@@ -7,6 +7,8 @@ import { useApi, RetryError } from '../../useApi.jsx';
 import { productImage } from '../../lib/productImage';
 import { formatPrice, userLocale } from '../../lib/format';
 import { useStore } from '../../store';
+import { useNotificationStream } from '../../lib/useSse';
+import { trackingUrl } from '../../lib/carrierTracking';
 
 const REFUND_WINDOW_DAYS = 15;
 
@@ -18,15 +20,22 @@ export default function TrackOrder() {
   const order = data?.order;
   const locale = userLocale(language);
 
-  // Poll every 15s for live status updates
-  useEffect(() => {
-    const t = setInterval(() => {
+  // SSE-driven live updates: refetch when a tracking event for THIS order
+  // arrives. The server's notify() writes the orderId into `meta.orderId`.
+  // Falls back to polling every 15s when SSE is offline (it auto-reconnects).
+  useNotificationStream((note) => {
+    const meta = parseMeta(note.meta);
+    if (meta?.orderId === id) {
       refetch().catch(() => {});
-    }, 15000);
+    }
+  });
+
+  useEffect(() => {
+    const t = setInterval(() => { refetch().catch(() => {}); }, 15000);
     return () => clearInterval(t);
   }, [id, refetch]);
 
-  // Compute derived values up-front so hooks never change count between renders.
+  // Derived values up-front so hooks never change count between renders.
   const eta = useMemo(() => {
     if (!order) return { label: 'ETA', value: '—' };
     if (order.status === 'DELIVERED') {
@@ -37,6 +46,13 @@ export default function TrackOrder() {
     }
     if (order.status === 'CANCELLED') {
       return { label: 'Status', value: 'Cancelled' };
+    }
+    // Prefer the admin/vendor-set ETA if present.
+    if (order.estimatedDelivery) {
+      return {
+        label: 'ETA',
+        value: new Date(order.estimatedDelivery).toLocaleDateString(locale, { weekday: 'long', month: 'short', day: 'numeric' }),
+      };
     }
     const date = new Date(new Date(order.createdAt).getTime() + 2 * 86400000);
     return {
@@ -55,8 +71,6 @@ export default function TrackOrder() {
       postal: order.snapshotPostal || order.address?.postal,
     };
   }, [order]);
-
-  const showDriver = order?.status === 'SHIPPED' || order?.status === 'DELIVERED';
 
   // Refund eligibility: only when DELIVERED and within the 15-day window of delivery.
   const refundEligibility = useMemo(() => {
@@ -83,6 +97,9 @@ export default function TrackOrder() {
   }
   if (!order) return <div className="p-8 text-center text-on-surface-variant">Loading order…</div>;
 
+  const carrierUrl = trackingUrl(order.carrier, order.trackingNumber);
+  const showTracking = !!order.trackingNumber;
+
   return (
     <div className="pb-24">
       <header className="flex items-center justify-between px-4 h-14">
@@ -108,45 +125,8 @@ export default function TrackOrder() {
           </div>
         </div>
 
-        {/* Map */}
-        <div className="card aspect-[16/9] bg-gradient-to-br from-surface-high to-surface-low relative overflow-hidden">
-          <div
-            className="absolute inset-0 opacity-30 dark:opacity-20"
-            style={{
-              backgroundImage: 'linear-gradient(var(--tw-colors-outline-variant) 1px, transparent 1px), linear-gradient(90deg, var(--tw-colors-outline-variant) 1px, transparent 1px)',
-              backgroundSize: '20px 20px',
-            }}
-          />
-          {/* Animated pin */}
-          <div className="absolute" style={{ top: '50%', left: '60%', animation: 'bounce 1.5s infinite' }}>
-            <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center shadow-float">
-              <Icon name="local_shipping" />
-            </div>
-          </div>
-          <style>{`@keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }`}</style>
-          <div className="absolute bottom-2 left-2 chip bg-surface">
-            <Icon name="near_me" className="text-[14px] text-primary" /> Live tracking
-          </div>
-        </div>
-
-        {/* Driver card */}
-        {showDriver && (
-          <div className="card p-4 flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center font-bold">M</div>
-            <div className="flex-1">
-              <div className="font-semibold">Mike R.</div>
-              <div className="flex items-center gap-1 text-label-md text-on-surface-variant">
-                <Icon name="star" fill className="text-secondary text-[14px]" /> 4.9 · Courier
-              </div>
-            </div>
-            <a href="mailto:support@yobou.market" className="w-10 h-10 rounded-full bg-surface-high flex items-center justify-center" aria-label="Email support">
-              <Icon name="mail" className="text-primary" />
-            </a>
-            <a href="tel:+18005551234" className="w-10 h-10 rounded-full bg-surface-high flex items-center justify-center" aria-label="Call support">
-              <Icon name="call" className="text-primary" />
-            </a>
-          </div>
-        )}
+        {/* Live tracking card — replaces the placeholder map + driver */}
+        <TrackingCard order={order} carrierUrl={carrierUrl} />
 
         {/* Timeline */}
         <div className="card p-4">
@@ -201,6 +181,17 @@ export default function TrackOrder() {
           </div>
         </div>
 
+        {/* Cancel reason (when admin cancelled this order) */}
+        {order.status === 'CANCELLED' && order.cancelReason && (
+          <div className="card p-4 bg-error/10 text-error flex items-start gap-3">
+            <Icon name="block" className="text-[20px] mt-0.5" />
+            <div>
+              <div className="font-semibold">This order was cancelled</div>
+              <div className="text-sm">{order.cancelReason}</div>
+            </div>
+          </div>
+        )}
+
         {/* Refund */}
         {(order.status === 'DELIVERED' || order.status === 'REFUNDED') && (
           <RefundSection
@@ -210,6 +201,68 @@ export default function TrackOrder() {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// TrackingCard — shows the real carrier + tracking number (with outbound link
+// when we know the carrier's URL), shipped-at, and ETA. Replaces the old
+// placeholder map + fake driver.
+function TrackingCard({ order, carrierUrl }) {
+  if (order.status === 'PLACED' || order.status === 'PAID') {
+    return (
+      <div className="card p-4 flex items-start gap-3">
+        <div className="w-10 h-10 rounded-full bg-surface-high flex items-center justify-center flex-shrink-0">
+          <Icon name="inventory_2" className="text-primary" />
+        </div>
+        <div>
+          <div className="font-semibold">Preparing your order</div>
+          <div className="text-sm text-on-surface-variant">
+            We'll add tracking info here as soon as the vendor ships your package.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (order.status === 'CANCELLED' || order.status === 'REFUNDED') return null;
+
+  return (
+    <div className="card p-4 space-y-2">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center flex-shrink-0">
+          <Icon name="local_shipping" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold">
+            {order.status === 'DELIVERED' ? 'Delivered' : 'In transit'}
+          </div>
+          <div className="text-sm text-on-surface-variant">
+            {order.carrier || 'Carrier'}
+            {order.trackingNumber ? ` · ${order.trackingNumber}` : ''}
+          </div>
+        </div>
+        {carrierUrl && (
+          <a
+            href={carrierUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-primary font-semibold text-sm whitespace-nowrap"
+          >
+            Track ↗
+          </a>
+        )}
+      </div>
+      {order.shippedAt && (
+        <div className="text-label-sm text-on-surface-variant">
+          Shipped: {new Date(order.shippedAt).toLocaleString()}
+        </div>
+      )}
+      {order.estimatedDelivery && order.status !== 'DELIVERED' && (
+        <div className="text-label-sm text-on-surface-variant">
+          Estimated delivery: {new Date(order.estimatedDelivery).toLocaleDateString()}
+        </div>
+      )}
     </div>
   );
 }
@@ -308,4 +361,12 @@ function RefundSection({ order, eligibility, onRefunded }) {
       )}
     </div>
   );
+}
+
+// The server stores `meta` as a JSON string on the Notification row; tolerate
+// both string and object forms so we don't crash on schema drift.
+function parseMeta(meta) {
+  if (!meta) return null;
+  if (typeof meta !== 'string') return meta;
+  try { return JSON.parse(meta); } catch { return null; }
 }

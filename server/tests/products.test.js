@@ -105,4 +105,79 @@ describe('Products API', { concurrency: 1 }, () => {
       .send({ name: 'Bad Product', priceCents: 1000, category: 'Fashion', stock: 5 })
       .expect(403);
   });
+
+  it('vendor quick stock edit queues a ProductChange with only proposedStock set', async () => {
+    const { token, vendorId } = await seedVendor('APPROVED');
+    // Create a LIVE product owned by this vendor.
+    const product = await prisma.product.create({
+      data: {
+        vendorId,
+        name: 'Stockable',
+        description: '',
+        priceCents: 500,
+        category: 'X',
+        imageUrls: '[]',
+        stock: 10,
+        status: 'LIVE',
+      },
+    });
+
+    const res = await request(app)
+      .patch(`/api/products/vendor/${product.id}/stock`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ stock: 25 })
+      .expect(202);
+    assert.equal(res.body.change.action, 'UPDATE');
+    assert.equal(res.body.change.status, 'PENDING');
+    assert.equal(res.body.change.proposedStock, 25);
+    // Other proposed* fields must be null so admin only flips stock.
+    assert.equal(res.body.change.proposedName, null);
+    assert.equal(res.body.change.proposedPriceCents, null);
+
+    // Live product stock must NOT change until admin approves.
+    const live = await prisma.product.findUnique({ where: { id: product.id } });
+    assert.equal(live.stock, 10);
+  });
+
+  it('vendor quick stock edit forbids editing another vendor\'s product', async () => {
+    const { token, vendorId } = await seedVendor('APPROVED');
+    const other = await prisma.product.create({
+      data: {
+        name: 'Other Vendor Product',
+        description: '',
+        priceCents: 100,
+        category: 'X',
+        imageUrls: '[]',
+        stock: 5,
+        status: 'LIVE',
+        vendorId: null, // admin-owned
+      },
+    });
+    await request(app)
+      .patch(`/api/products/vendor/${other.id}/stock`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ stock: 99 })
+      .expect(403);
+  });
+
+  it('vendor quick stock edit rejects negative stock', async () => {
+    const { token, vendorId } = await seedVendor('APPROVED');
+    const product = await prisma.product.create({
+      data: {
+        vendorId,
+        name: 'Negative Stock Test',
+        description: '',
+        priceCents: 100,
+        category: 'X',
+        imageUrls: '[]',
+        stock: 5,
+        status: 'LIVE',
+      },
+    });
+    await request(app)
+      .patch(`/api/products/vendor/${product.id}/stock`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ stock: -1 })
+      .expect(400);
+  });
 });

@@ -5,6 +5,8 @@ import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import ProductCard from '../../components/ProductCard';
 import { useApi, RetryError } from '../../useApi.jsx';
+import { useNotifications } from '../../lib/useNotifications';
+import { toast } from '../../lib/toast';
 
 const CATS = [
   { name: 'Electronics', icon: 'devices', color: 'bg-blue-50 text-blue-600' },
@@ -41,6 +43,7 @@ export default function Home() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = useStore((s) => s.user);
+  const { unreadCount } = useNotifications(10);
   const [q, setQ] = useState('');
   const { data, error, loading, refetch } = useApi('/api/products');
 
@@ -51,6 +54,7 @@ export default function Home() {
     try {
       await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
       await useStore.getState().refreshCartCount();
+      toast.success(`Added ${p.name} to cart`);
     } catch (e) {
       // Not logged in — bounce to login, then come back here
       navigate('/login', { state: { from: location } });
@@ -72,14 +76,18 @@ export default function Home() {
           <Link to={`/search?q=${encodeURIComponent(q)}`} className="p-2" aria-label="Search">
             <Icon name="search" className="text-[24px]" />
           </Link>
-          <button
+          <Link
+            to="/notifications"
             className="p-2 relative"
-            aria-label="Notifications"
-            title="No new notifications"
+            aria-label={`Notifications (${unreadCount} unread)`}
           >
             <Icon name="notifications" className="text-[24px]" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-error" />
-          </button>
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-error text-white text-[11px] font-bold flex items-center justify-center">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </Link>
         </div>
       </header>
 

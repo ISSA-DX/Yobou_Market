@@ -54,6 +54,10 @@ model Vendor {
   phone        String
   licenseUrl   String?
   categories   String        @default("[]") // JSON array of selected categories
+  // Public-facing brand assets — URL strings because uploads are served
+  // by the same /uploads/* route as product images.
+  logoUrl      String?
+  bannerUrl    String?
   status       String       @default("PENDING") // PENDING | APPROVED | REJECTED
   approvedAt   DateTime?
   products     Product[]

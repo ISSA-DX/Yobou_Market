@@ -93,15 +93,67 @@ router.get('/categories', async (_req, res, next) => {
 
 // Vendor-only: list own products (for /vendor/products page).
 // Must be defined BEFORE /:id so it isn't captured as an ID.
+// Supports ?status=LIVE|DRAFT|HIDDEN and ?q=foo (search name/category/description).
 router.get('/vendor/mine', requireAuth, requireApprovedVendor, async (req, res, next) => {
   try {
+    const { status, q } = req.query;
+    const where = { vendorId: req.user.vendor.id };
+    if (status && ['LIVE', 'DRAFT', 'HIDDEN'].includes(String(status))) {
+      where.status = String(status);
+    }
+    if (q) {
+      const term = String(q);
+      where.OR = [
+        { name: { contains: term } },
+        { category: { contains: term } },
+        { description: { contains: term } },
+      ];
+    }
     const products = await prisma.product.findMany({
-      where: { vendorId: req.user.vendor.id },
+      where,
       orderBy: { createdAt: 'desc' },
     });
     res.json({ products: products.map(parseImageUrls) });
   } catch (err) { next(err); }
 });
+
+// Vendor-only: quick stock-only edit. Queues a ProductChange with action
+// UPDATE and only `proposedStock` set, so admin approval flips stock
+// atomically and audit history stays intact. Must be BEFORE /:id.
+const vendorStockEdit = z.object({ stock: z.number().int().nonnegative() });
+router.patch('/vendor/:id/stock', requireAuth, requireApprovedVendor, async (req, res, next) => {
+  try {
+    const { stock } = vendorStockEdit.parse(req.body);
+    const vendorId = req.user.vendor.id;
+    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
+    if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
+    if (product.vendorId !== vendorId) return res.status(403).json({ error: 'FORBIDDEN' });
+
+    const change = await prisma.productChange.create({
+      data: {
+        vendorId,
+        productId: product.id,
+        action: 'UPDATE',
+        proposedStock: stock,
+        status: 'PENDING',
+      },
+    });
+    res.status(202).json({
+      change: parseChange(change),
+      product: parseImageUrls(product),
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
+});
+
+const parseChange = (change) => {
+  if (!change || typeof change.proposedImageUrls !== 'string') return change;
+  let imgs = [];
+  try { imgs = JSON.parse(change.proposedImageUrls); } catch { imgs = []; }
+  return { ...change, proposedImageUrls: imgs };
+};
 
 router.get('/:id', async (req, res, next) => {
   try {

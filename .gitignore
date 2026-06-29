@@ -71,3 +71,14 @@ Web_Version_APP/node_modules/
 # admin web build
 Internal_Web_Admin/.vite/
 Internal_Web_Admin/node_modules/
+
+# partner (Capacitor / Android APK source)
+Partner_Web_Vendor/.vite/
+Partner_Web_Vendor/android/.gradle/
+Partner_Web_Vendor/android/app/build/
+Partner_Web_Vendor/android/build/
+Partner_Web_Vendor/android/local.properties
+Partner_Web_Vendor/android/app/release/
+Partner_Web_Vendor/yobou-partner.keystore
+Partner_Web_Vendor/yobou-partner.apk
+Partner_Web_Vendor/dist/

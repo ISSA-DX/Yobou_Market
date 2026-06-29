@@ -6,6 +6,7 @@ import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImage } from '../../lib/productImage';
 import { formatPrice } from '../../lib/format';
+import { toast } from '../../lib/toast';
 
 const SHIPPING_CENTS = 499;
 const FREE_SHIPPING_THRESHOLD_CENTS = 5000;
@@ -42,7 +43,9 @@ export default function Cart() {
       await api(`/api/cart/${productId}`, { method: 'PATCH', body: { quantity: qty } });
       await refetch();
     } catch (e) {
-      setActionError(humanizeError(e));
+      const msg = humanizeError(e);
+      setActionError(msg);
+      toast.error(msg);
     } finally {
       setBusyId(null);
     }
@@ -54,8 +57,11 @@ export default function Cart() {
     try {
       await api(`/api/cart/${productId}`, { method: 'DELETE' });
       await refetch();
+      toast.success('Removed from cart');
     } catch (e) {
-      setActionError(humanizeError(e));
+      const msg = humanizeError(e);
+      setActionError(msg);
+      toast.error(msg);
     } finally {
       setBusyId(null);
     }

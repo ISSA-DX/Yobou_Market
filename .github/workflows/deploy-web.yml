@@ -1,12 +1,13 @@
-# Deploys the three Yobou web apps (customer, admin, web-version) to
+# Deploys the four Yobou web apps (customer, partner, admin, web-version) to
 # GitHub Pages under the issa-dx.github.io/Yobou_Market/ subpath.
 #
 # Triggers on every push to main and on manual dispatch from the Actions
-# tab. The workflow builds all three apps, assembles them into a single
+# tab. The workflow builds all four apps, assembles them into a single
 # Pages deployment structure, and publishes via the official Pages actions.
 #
 # URLs after deploy:
 #   Customer app:  https://issa-dx.github.io/Yobou_Market/
+#   Partner app:   https://issa-dx.github.io/Yobou_Market/partner/
 #   Admin app:     https://issa-dx.github.io/Yobou_Market/admin/
 #   Web-version:   https://issa-dx.github.io/Yobou_Market/web/
 #
@@ -74,6 +75,14 @@ jobs:
           VITE_API_BASE: ${{ env.VITE_API_BASE }}
           VITE_BASE_PATH: /Yobou_Market/admin/
 
+      # ----- Partner web (vendor portal — standalone Capacitor app source) -----
+      - name: Build partner web
+        working-directory: Partner_Web_Vendor
+        run: npm install --no-audit --no-fund && npm run build:prod
+        env:
+          VITE_API_BASE: ${{ env.VITE_API_BASE }}
+          VITE_BASE_PATH: /Yobou_Market/partner/
+
       # ----- Web-version (browser-only shopper build) -----
       # This re-exports APP_shopper_and_buyer/src/main.jsx, which reads
       # VITE_BASE_PATH for the React Router basename. Pass it explicitly
@@ -89,15 +98,17 @@ jobs:
       # ----- Assemble into deploy tree -----
       # Layout on the deployed Pages site:
       #   /                       → customer app (the main shopper experience)
+      #   /partner/               → vendor portal (Yobou Partner)
       #   /admin/                 → admin portal
       #   /web/                   → browser-only shopper build
       #   /404.html               → custom 404 that redirects to /Yobou_Market/
       - name: Assemble deploy tree
         run: |
-          mkdir -p dist-deploy/admin dist-deploy/web
+          mkdir -p dist-deploy/admin dist-deploy/web dist-deploy/partner
           cp -r APP_shopper_and_buyer/dist/. dist-deploy/
           cp -r Internal_Web_Admin/dist/. dist-deploy/admin/
           cp -r Web_Version_APP/dist/. dist-deploy/web/
+          cp -r Partner_Web_Vendor/dist/. dist-deploy/partner/
           cat > dist-deploy/404.html <<'EOF'
           <!DOCTYPE html>
           <html><head><meta charset="utf-8">

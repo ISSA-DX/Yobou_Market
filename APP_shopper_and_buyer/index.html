@@ -95,13 +95,25 @@
     </div>
     <div id="boot-splash" aria-hidden="true">
       <div class="mark">
-        <!-- Y monogram, white-on-transparent. Matches launcher icon geometry
-             (108-unit viewport scaled into 56px container). -->
+        <!-- Bag + Y cutout + gold price tag — matches launcher icon geometry.
+             Renders inside a translucent frosted-glass chip so the splash
+             reads as the same mark you'll see on the home screen. -->
         <svg viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
-          <path fill="#ffffff" d="M18,14 L29,14 L57,38 L46,38 Z" />
-          <path fill="#ffffff" d="M90,14 L79,14 L51,38 L62,38 Z" />
-          <path fill="#ffffff" d="M47,38 L61,38 L65,70 L65,90 L43,90 L43,70 Z" />
-          <path fill="#fdc003" d="M84,26 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0" />
+          <!-- Bag handle (drawn first; bag body overlaps it on the top edge). -->
+          <path fill="#ffffff" d="M44,22 L64,22 L68,40 L40,40 Z" />
+          <!-- Bag body — chamfered rectangle. -->
+          <path fill="#ffffff" d="M30,36 L78,36 L86,44 L86,82 L78,90 L30,90 L22,82 L22,44 Z" />
+          <!-- Round the chamfered corners with overlay circles. -->
+          <circle cx="30" cy="36" r="8" fill="#ffffff" />
+          <circle cx="78" cy="36" r="8" fill="#ffffff" />
+          <circle cx="30" cy="90" r="8" fill="#ffffff" />
+          <circle cx="78" cy="90" r="8" fill="#ffffff" />
+          <!-- Y monogram in brand blue (reads as negative space inside the bag). -->
+          <path fill="#0047f1" d="M36,50 L44,50 L58,64 L50,64 Z" />
+          <path fill="#0047f1" d="M72,50 L64,50 L50,64 L58,64 Z" />
+          <path fill="#0047f1" d="M50,64 L58,64 L59,80 L49,80 Z" />
+          <!-- Gold price tag at upper-right. -->
+          <path fill="#fdc003" d="M74.5,28 L85.5,28 L89.5,32 L85.5,36 L74.5,36 Z" />
         </svg>
       </div>
       <div class="word">Yobou</div>
