@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Yobou Partner brand background for adaptive launcher icons.
+
+  Same gradient as the customer app so the two apps feel like siblings.
+  The adaptive-icon system composites this as the "behind" layer; the
+  briefcase + Y + gold-check foreground draws on top.
+
+  Replaces the default Capacitor teal-grid scaffold so the install dialog
+  and adaptive-icon devices (Android 8+) show the brand blue, not a
+  generic teal.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#0047f1"
+                android:endColor="#0034b9"
+                android:type="linear" />
+        </shape>
+    </item>
+    <!-- Subtle inner highlight at the top for a "glass tile" feel -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#33FFFFFF"
+                android:endColor="#00FFFFFF"
+                android:type="linear" />
+        </shape>
+    </item>
+</layer-list>

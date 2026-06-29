@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Yobou Partner</string>
+    <string name="title_activity_main">Yobou Partner</string>
+    <string name="package_name">com.yobou.partner</string>
+    <string name="custom_url_scheme">com.yobou.partner</string>
+</resources>

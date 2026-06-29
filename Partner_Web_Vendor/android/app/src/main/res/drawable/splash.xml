@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Splash screen background — same gradient as the partner adaptive icon
+  so cold start and home screen feel like one continuous brand experience.
+  The briefcase + Y + gold-check foreground is centered on the same blue
+  background, sized to the smaller screen dimension.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_background"/>
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@mipmap/ic_launcher_foreground"/>
+    </item>
+</layer-list>
