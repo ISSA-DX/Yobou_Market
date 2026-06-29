@@ -67,6 +67,39 @@
 .dark .chip { background: #1f3052; color: #a3b1c9; }
 .dark .bento { background: #15243f; }
 
+/*
+  Dark mode container overrides for elements that hardcode bg-white.
+  Tailwind's `darkMode: 'class'` is enabled but `dark:` variants are not
+  used in this codebase — instead, plain `.dark <selector>` rules flip
+  surfaces. The selectors below cover the most-touched surfaces
+  (top/bottom nav, fixed CTAs, modals, popovers, dropdowns) so text
+  stays readable in dark mode. !important wins over Tailwind utility
+  classes that hardcode `bg-white`.
+*/
+.dark .bg-white { background: #15243f !important; color: #eaf1ff; }
+.dark .bg-white\/80,
+.dark .bg-white\/90,
+.dark .bg-white\/95 { background: rgba(21, 36, 63, 0.92) !important; color: #eaf1ff; }
+.dark .bg-surface-low { background: #1f3052 !important; }
+.dark .bg-surface-high { background: #1f3052 !important; color: #b8c3ff; }
+.dark .bg-surface-highest { background: #2d3f63 !important; }
+.dark .text-on-surface { color: #eaf1ff; }
+.dark .text-on-surface-variant { color: #a3b1c9; }
+.dark .border-outline-variant\/30,
+.dark .border-outline-variant\/40 { border-color: rgba(163, 177, 201, 0.18) !important; }
+
+/*
+  Sticky headers and bottom-nav bars get a brand-tinted dark surface so the
+  brand-blue glow survives the theme switch. White slabs in dark mode are
+  visually jarring.
+*/
+.dark header.bg-white\/80,
+.dark header.bg-white\/90,
+.dark nav.bg-white\/80,
+.dark nav.bg-white\/90,
+.dark .sticky.bg-white\/80,
+.dark .sticky.bg-white\/90 { background: rgba(21, 36, 63, 0.94) !important; color: #eaf1ff; }
+
 /* Hide scrollbar on horizontal scroll containers */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

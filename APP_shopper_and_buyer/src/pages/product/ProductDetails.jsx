@@ -95,6 +95,8 @@ export default function ProductDetails() {
               key={i}
               src={src}
               alt=""
+              loading={i === 0 ? 'eager' : 'lazy'}
+              decoding="async"
               className="w-full h-full object-cover snap-center shrink-0"
               onError={(e) => { e.currentTarget.src = '/seed-images/placeholder.svg'; }}
             />

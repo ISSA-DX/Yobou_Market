@@ -159,6 +159,8 @@ export default function TrackOrder() {
                   <img
                     src={productImage(it.product)}
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                     className="w-14 h-14 rounded-md object-cover bg-surface-low"
                     onError={(e) => { e.currentTarget.src = '/seed-images/placeholder.svg'; }}
                   />

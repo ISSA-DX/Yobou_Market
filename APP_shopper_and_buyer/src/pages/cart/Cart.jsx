@@ -203,7 +203,7 @@ function CartItem({ item, busy, currency, onQtyChange, onRemove }) {
   return (
     <div className="card p-3 sm:p-4 flex gap-3 sm:gap-4">
       <Link to={`/product/${p.id}`} className="w-24 h-24 sm:w-28 sm:h-28 rounded-lg overflow-hidden bg-surface-low shrink-0">
-        <img src={productImage(p)} alt={p.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = '/seed-images/placeholder.svg'; }} />
+        <img src={productImage(p)} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = '/seed-images/placeholder.svg'; }} />
       </Link>
 
       <div className="flex-1 min-w-0 flex flex-col">

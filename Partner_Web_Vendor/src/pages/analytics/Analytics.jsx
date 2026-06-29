@@ -132,6 +132,8 @@ export default function Analytics() {
                             <img
                               src={productImage(p)}
                               alt=""
+                              loading="lazy"
+                              decoding="async"
                               className="w-10 h-10 rounded-md object-cover bg-surface-low shrink-0"
                               onError={(e) => { e.currentTarget.src = `${import.meta.env.BASE_URL}seed-images/placeholder.svg`; }}
                             />

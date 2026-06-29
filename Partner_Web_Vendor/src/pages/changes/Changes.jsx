@@ -82,6 +82,8 @@ export default function Changes() {
                 <img
                   src={productImage(p)}
                   alt=""
+                  loading="lazy"
+                  decoding="async"
                   className="w-14 h-14 rounded-md object-cover bg-surface-low"
                   onError={(e) => { e.currentTarget.src = `${import.meta.env.BASE_URL}seed-images/placeholder.svg`; }}
                 />

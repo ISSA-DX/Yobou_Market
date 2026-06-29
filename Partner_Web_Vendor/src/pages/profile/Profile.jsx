@@ -203,7 +203,7 @@ export default function Profile() {
           <label className="text-label-md text-on-surface-variant">Banner</label>
           <div className="mt-2 h-32 rounded-lg bg-surface-low border border-outline-variant/30 overflow-hidden flex items-center justify-center">
             {form.bannerUrl ? (
-              <img src={form.bannerUrl} alt="Banner preview" className="w-full h-full object-cover" />
+              <img src={form.bannerUrl} alt="Banner preview" loading="lazy" decoding="async" className="w-full h-full object-cover" />
             ) : (
               <div className="text-on-surface-variant text-sm flex items-center gap-2">
                 <Icon name="image" /> No banner yet
@@ -230,7 +230,7 @@ export default function Profile() {
           <div className="mt-2 flex items-center gap-4">
             <div className="w-24 h-24 rounded-lg bg-surface-low border border-outline-variant/30 overflow-hidden flex items-center justify-center shrink-0">
               {form.logoUrl ? (
-                <img src={form.logoUrl} alt="Logo preview" className="w-full h-full object-cover" />
+                <img src={form.logoUrl} alt="Logo preview" loading="lazy" decoding="async" className="w-full h-full object-cover" />
               ) : (
                 <Icon name="storefront" className="text-[36px] text-on-surface-variant" />
               )}

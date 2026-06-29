@@ -23,5 +23,19 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    target: 'es2020',
+    cssCodeSplit: true,
+    rollupOptions: {
+      output: {
+        // Split vendor code into its own chunk so it caches independently
+        // of app code across releases. React/react-router/zustand rarely
+        // change; app code changes every release. Long-term this means
+        // returning users re-download only the small app chunk on update.
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'state-vendor': ['zustand'],
+        },
+      },
+    },
   },
 });

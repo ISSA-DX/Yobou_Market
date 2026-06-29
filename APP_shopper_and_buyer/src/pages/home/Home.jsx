@@ -63,14 +63,13 @@ export default function Home() {
 
   return (
     <div className="px-4 pt-4 pb-6 space-y-6">
-      {/* Top bar */}
+      {/* Top bar — page-level actions. The brand mark + wordmark live in
+          MobileShell's persistent sticky header, so this row only carries the
+          menu / search / notifications icons (and a flex spacer on the left
+          where the brand mark would otherwise be). */}
       <header className="flex items-center justify-between">
         <Link to="/categories" className="p-2 -ml-2" aria-label="Menu">
           <Icon name="menu" className="text-[24px]" />
-        </Link>
-        <Link to="/home" className="flex items-center gap-1.5">
-          <div className="w-8 h-8 rounded-md bg-primary text-white flex items-center justify-center font-black">Y</div>
-          <span className="font-bold">Yobou</span>
         </Link>
         <div className="flex items-center gap-1">
           <Link to={`/search?q=${encodeURIComponent(q)}`} className="p-2" aria-label="Search">

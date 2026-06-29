@@ -40,8 +40,12 @@ function initialTheme() {
     try { localStorage.removeItem(DARK_KEY); } catch {}
     return 'light';
   }
-  const stored = safeGet(THEME_KEY, 'system');
-  return ['light', 'dark', 'system'].includes(stored) ? stored : 'system';
+  // Default = 'light' (white + blue brand). Users can opt-in to dark via
+  // the profile page. Existing users who explicitly chose 'dark' or 'light'
+  // keep their choice — the fallback only applies on first launch.
+  const stored = safeGet(THEME_KEY, 'light');
+  if (['light', 'dark', 'system'].includes(stored)) return stored;
+  return 'light';
 }
 
 function applyDark(dark) {

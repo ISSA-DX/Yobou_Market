@@ -125,6 +125,8 @@ export default function Orders() {
             <img
               src={productImage(first)}
               alt=""
+              loading="lazy"
+              decoding="async"
               className="w-16 h-16 rounded-md object-cover bg-surface-low"
               onError={(e) => { e.currentTarget.src = '/seed-images/placeholder.svg'; }}
             />

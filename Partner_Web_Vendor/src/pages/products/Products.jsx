@@ -152,6 +152,8 @@ export default function Products() {
                     <img
                       src={productImage(p)}
                       alt=""
+                      loading="lazy"
+                      decoding="async"
                       className="w-12 h-12 rounded-md object-cover bg-surface-low"
                       onError={(e) => { e.currentTarget.src = `${import.meta.env.BASE_URL}seed-images/placeholder.svg`; }}
                     />
