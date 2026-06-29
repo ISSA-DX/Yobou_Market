@@ -2,14 +2,120 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Yobou Partner</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+    <meta name="theme-color" content="#0034b9" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet">
+    <title>Yobou Partner</title>
+    <style>
+      /*
+        Defensive pre-JS splash. Renders before React even mounts, so the
+        user never sees a blank white screen while the bundle is loading
+        (or if a runtime error keeps React from rendering). Mirrors the
+        launcher icon's briefcase + Y + gold-check mark so cold-start feels
+        like one continuous brand experience.
+
+        Removed automatically once main.jsx adds `data-yobou-booted="true"`
+        to <html>. If the JS bundle fails entirely, the splash stays
+        visible and the user sees the brand instead of a white wall.
+      */
+      html { background: #0034b9; }
+      body {
+        margin: 0;
+        font-family: 'Be Vietnam Pro', system-ui, sans-serif;
+        background: linear-gradient(180deg, #0047f1 0%, #0034b9 100%);
+        color: #fff;
+      }
+      #boot-splash {
+        position: fixed; inset: 0;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        z-index: 9999;
+        pointer-events: none;
+      }
+      #boot-splash .mark {
+        width: 96px; height: 96px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(8px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      }
+      #boot-splash svg { width: 56px; height: 56px; }
+      #boot-splash .word {
+        margin-top: 18px;
+        font-weight: 800;
+        font-size: 22px;
+        letter-spacing: 0.02em;
+      }
+      #boot-splash .tag {
+        margin-top: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        opacity: 0.75;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      /* React tells us it's mounted — hide the splash. */
+      html[data-yobou-booted="true"] #boot-splash { display: none; }
+
+      /*
+        Safety net: if React still hasn't mounted after 12s, swap the splash
+        for a visible error state. Better to tell the user "something went
+        wrong" than to leave them staring at a brand mark with no signal.
+      */
+      #boot-error {
+        display: none;
+        position: fixed; inset: 0;
+        flex-direction: column;
+        align-items: center; justify-content: center;
+        padding: 24px;
+        text-align: center;
+        background: linear-gradient(180deg, #0047f1 0%, #0034b9 100%);
+        color: #fff;
+        z-index: 10000;
+      }
+      html[data-yobou-stuck="true"] #boot-error { display: flex; }
+      html[data-yobou-stuck="true"] #boot-splash { display: none; }
+      #boot-error h1 { margin: 0 0 8px; font-size: 22px; font-weight: 800; }
+      #boot-error p { margin: 0; max-width: 320px; opacity: 0.85; font-size: 14px; line-height: 1.5; }
+    </style>
   </head>
   <body>
+    <div id="boot-error" role="alert" aria-live="assertive">
+      <h1>Yobou Partner couldn't start</h1>
+      <p>The app failed to load. Please close and reopen — if the issue persists, reinstall the latest APK.</p>
+    </div>
+    <div id="boot-splash" aria-hidden="true">
+      <div class="mark">
+        <!-- Briefcase + Y + gold check — matches partner launcher icon geometry.
+             Renders inside a translucent frosted-glass chip so the splash
+             reads as the same mark you'll see on the home screen. -->
+        <svg viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
+          <!-- Briefcase handle (drawn first; body overlaps it on the top edge). -->
+          <rect x="42" y="22" width="24" height="14" rx="2" fill="#ffffff" />
+          <!-- Briefcase body — chamfered rectangle. -->
+          <rect x="22" y="36" width="64" height="50" rx="6" fill="#ffffff" />
+          <!-- Center seam across the briefcase body. -->
+          <rect x="22" y="58" width="64" height="2" fill="#0047f1" opacity="0.18" />
+          <!-- Y monogram in brand blue (reads as negative space inside the case). -->
+          <path fill="#0047f1" d="M36,46 L44,46 L54,58 L48,58 Z" />
+          <path fill="#0047f1" d="M72,46 L64,46 L54,58 L60,58 Z" />
+          <path fill="#0047f1" d="M50,58 L58,58 L58,72 L50,72 Z" />
+          <!-- Gold check at lower-right. -->
+          <path fill="#fdc003" d="M68,72 L74,72 L80,78 L74,84 L68,78 Z" />
+          <path fill="#fdc003" d="M70,77 L72,79 L78,73 L80,75 L72,83 L68,79 Z" />
+        </svg>
+      </div>
+      <div class="word">Yobou</div>
+      <div class="tag">Partner</div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
