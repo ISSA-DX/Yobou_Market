@@ -5,6 +5,7 @@ import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImage } from '../../lib/productImage';
 import { useProductLiveSync } from '../../lib/useProductLiveSync';
+import { shopperHomeUrl } from '../../lib/config';
 
 const STATUS_STYLES = {
   LIVE: 'bg-tertiary-container/20 text-tertiary border-0',
@@ -50,11 +51,39 @@ export default function Products() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3 flex-col sm:flex-row">
-        <h1 className="text-headline-lg font-bold">All products</h1>
-        <Link to="/products/new" className="btn-primary">
-          <Icon name="add" /> Add product
-        </Link>
+      <div className="flex items-start sm:items-center justify-between gap-3 flex-col sm:flex-row">
+        <div>
+          <h1 className="text-headline-lg font-bold">All products</h1>
+          <p className="text-on-surface-variant text-sm">
+            Manage every product on Yobou. Changes go live on the storefront immediately.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <a
+            href={shopperHomeUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-secondary"
+            title="Open the customer storefront in a new tab"
+          >
+            <Icon name="open_in_new" />
+            Open storefront
+          </a>
+          <Link to="/products/new" className="btn-primary">
+            <Icon name="add" /> Add product
+          </Link>
+        </div>
+      </div>
+
+      {/* Live sync hint — tells the admin that the table mirrors what's
+          live on the storefront, so they trust the list and the open-
+          in-new-tab button. Pure copy, no behaviour. */}
+      <div className="card p-3 bg-surface-low text-on-surface-variant text-sm flex items-start gap-2">
+        <Icon name="sync" className="text-[18px] text-primary shrink-0 mt-0.5" />
+        <span>
+          This list updates in real time as products are created, edited, or removed.
+          Open the storefront in a new tab to scroll the live customer view — what you see there is exactly what shoppers see.
+        </span>
       </div>
 
       {actionErr && (
