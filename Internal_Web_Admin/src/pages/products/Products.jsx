@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import Icon from '../../components/Icon';
@@ -15,7 +15,15 @@ const STATUS_STYLES = {
 
 export default function Products() {
   const [q, setQ] = useState('');
-  const { data, error, loading, refetch } = useApi(`/api/admin/products${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  // Memoize the API path so the string identity is stable across renders
+  // (otherwise useApi's useCallback re-creates `run` every time and the
+  // useEffect chain refetches in a tight loop, surfacing as React error
+  // #321 "Maximum update depth exceeded" on the deployed admin).
+  const apiPath = useMemo(
+    () => `/api/admin/products${q ? `?q=${encodeURIComponent(q)}` : ''}`,
+    [q]
+  );
+  const { data, error, loading, refetch } = useApi(apiPath);
   const [actionErr, setActionErr] = useState('');
   const [actionOk, setActionOk] = useState('');
   // Live sync — refetch when anyone (this admin tab included, or a vendor's
