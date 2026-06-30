@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api } from '../../api';
+import { api, apiForm } from '../../api';
 import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useStore } from '../../store';
@@ -100,7 +100,7 @@ export default function Profile() {
     try {
       const fd = new FormData();
       fd.append('image', file);
-      const res = await api('/api/products/upload', { method: 'POST', body: fd });
+      const res = await apiForm('/api/products/upload', { body: fd });
       if (res?.url) {
         update(kind === 'logo' ? 'logoUrl' : 'bannerUrl', res.url);
         toast.success(`${kind === 'logo' ? 'Logo' : 'Banner'} uploaded`);
