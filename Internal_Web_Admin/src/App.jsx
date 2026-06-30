@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useStore } from './store';
 
 import AdminShell from './components/AdminShell';
+import ErrorBoundary from './components/ErrorBoundary';
 import Spinner from './components/Spinner';
 
 import Login from './pages/auth/Login';
@@ -52,19 +53,19 @@ export default function App() {
         <Route element={<RequireAuth><AdminShell /></RequireAuth>}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/products" element={<Products />} />
-          <Route path="/products/new" element={<ProductNew />} />
-          <Route path="/products/:id/edit" element={<ProductNew />} />
-          <Route path="/vendors" element={<Vendors />} />
-          <Route path="/vendors/new" element={<VendorNew />} />
-          <Route path="/orders" element={<Orders />} />
-          <Route path="/orders/:id/track" element={<OrderDetail />} />
-          <Route path="/changes" element={<Changes />} />
-          <Route path="/refunds" element={<Refunds />} />
-          <Route path="/users" element={<Users />} />
-          <Route path="/broadcast" element={<Broadcast />} />
-          <Route path="/audit" element={<AuditLog />} />
-          <Route path="/preferences/notifications" element={<NotificationPrefs />} />
+          <Route path="/products" element={<ErrorBoundary><Products /></ErrorBoundary>} />
+          <Route path="/products/new" element={<ErrorBoundary><ProductNew /></ErrorBoundary>} />
+          <Route path="/products/:id/edit" element={<ErrorBoundary><ProductNew /></ErrorBoundary>} />
+          <Route path="/vendors" element={<ErrorBoundary><Vendors /></ErrorBoundary>} />
+          <Route path="/vendors/new" element={<ErrorBoundary><VendorNew /></ErrorBoundary>} />
+          <Route path="/orders" element={<ErrorBoundary><Orders /></ErrorBoundary>} />
+          <Route path="/orders/:id/track" element={<ErrorBoundary><OrderDetail /></ErrorBoundary>} />
+          <Route path="/changes" element={<ErrorBoundary><Changes /></ErrorBoundary>} />
+          <Route path="/refunds" element={<ErrorBoundary><Refunds /></ErrorBoundary>} />
+          <Route path="/users" element={<ErrorBoundary><Users /></ErrorBoundary>} />
+          <Route path="/broadcast" element={<ErrorBoundary><Broadcast /></ErrorBoundary>} />
+          <Route path="/audit" element={<ErrorBoundary><AuditLog /></ErrorBoundary>} />
+          <Route path="/preferences/notifications" element={<ErrorBoundary><NotificationPrefs /></ErrorBoundary>} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
