@@ -47,6 +47,20 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
       const product = await prisma.product.findUnique({ where: { id: data.productId } });
       if (!product) return res.status(404).json({ error: 'PRODUCT_NOT_FOUND' });
       if (product.vendorId !== vendorId) return res.status(403).json({ error: 'FORBIDDEN' });
+      // For UPDATE with a proposed compareAt price, the live product's
+      // priceCents is the comparison target (the body may or may not
+      // carry a new priceCents). Enforce the "deal is cheaper than
+      // current" invariant here, since the validator can't see the
+      // product row at parse time.
+      if (data.action === 'UPDATE' && data.compareAtPriceCents != null) {
+        const targetPrice = (data.priceCents != null) ? data.priceCents : product.priceCents;
+        if (data.compareAtPriceCents <= targetPrice) {
+          return res.status(400).json({
+            error: 'INVALID_INPUT',
+            issues: [{ path: ['compareAtPriceCents'], message: 'compareAtPriceCents must be greater than priceCents' }],
+          });
+        }
+      }
     }
 
     const change = await prisma.productChange.create({
@@ -57,6 +71,7 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
         proposedName: data.name ?? null,
         proposedDescription: data.description ?? null,
         proposedPriceCents: data.priceCents ?? null,
+        proposedCompareAtPriceCents: data.compareAtPriceCents !== undefined ? data.compareAtPriceCents : null,
         proposedCategory: data.category ?? null,
         proposedImageUrls: data.imageUrls !== undefined ? stringifyImageUrls(data.imageUrls) : null,
         proposedStock: data.stock ?? null,
@@ -161,6 +176,7 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
             name: change.proposedName,
             description: change.proposedDescription || '',
             priceCents: change.proposedPriceCents ?? 0,
+            compareAtPriceCents: change.proposedCompareAtPriceCents ?? null,
             category: change.proposedCategory || 'Uncategorized',
             imageUrls: change.proposedImageUrls || '[]',
             stock,
@@ -173,6 +189,12 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
         appliedProductId = created.id;
       } else if (change.action === 'UPDATE') {
         // Build the update payload from non-null proposed fields only.
+        // For proposedCompareAtPriceCents, presence in the change is the
+        // signal: null = "leave the existing value alone" (vendor didn't
+        // touch the deal), non-null = "apply this value (could be null
+        // if the vendor is removing the deal)". We use the column's
+        // nullability to distinguish "absent" from "explicit null" — see
+        // proposedCompareAtPriceCentsSet below.
         const data = {};
         if (change.proposedName !== null) data.name = change.proposedName;
         if (change.proposedDescription !== null) data.description = change.proposedDescription;
@@ -181,6 +203,21 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
         if (change.proposedImageUrls !== null) data.imageUrls = change.proposedImageUrls;
         if (change.proposedStock !== null) data.stock = change.proposedStock;
         if (change.proposedStatus !== null) data.status = change.proposedStatus;
+        // compareAtPriceCents — apply when the change explicitly proposes
+        // one. The zod validator already enforces compareAt > priceCents
+        // for CREATE; here we re-check on UPDATE so a stale change can't
+        // be approved after the live price moved up to meet the deal.
+        if (change.proposedCompareAtPriceCents !== null) {
+          const currentProduct = await tx.product.findUnique({ where: { id: change.productId }, select: { priceCents: true } });
+          if (!currentProduct) {
+            throw new Error('PRODUCT_GONE');
+          }
+          const targetPrice = (change.proposedPriceCents != null) ? change.proposedPriceCents : currentProduct.priceCents;
+          if (change.proposedCompareAtPriceCents <= targetPrice) {
+            throw new Error('INVALID_COMPARE_AT');
+          }
+          data.compareAtPriceCents = change.proposedCompareAtPriceCents;
+        }
         // Variants: when the vendor set proposedVariants, replace the
         // existing variant set (variantsAction='replace') and recompute
         // Product.stock to keep the storefront's "in stock" filter honest.
@@ -280,6 +317,19 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
     res.json({ change: parseChange(result) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    // Sentinel errors thrown from inside the approve transaction. The
+    // product vanished between submit and approve, or the live price
+    // moved up so a stale deal no longer satisfies the cross-field
+    // invariant. Both are 4xx — the client should re-fetch and retry.
+    if (err && err.message === 'PRODUCT_GONE') {
+      return res.status(404).json({ error: 'PRODUCT_GONE' });
+    }
+    if (err && err.message === 'INVALID_COMPARE_AT') {
+      return res.status(409).json({
+        error: 'INVALID_COMPARE_AT',
+        message: 'compareAtPriceCents must be greater than priceCents on the live product. Refresh and try again.',
+      });
+    }
     next(err);
   }
 });

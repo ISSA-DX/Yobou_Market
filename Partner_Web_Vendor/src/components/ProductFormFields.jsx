@@ -186,6 +186,50 @@ export default function ProductFormFields({ form, update, errors = {} }) {
             </div>
           )}
         </div>
+
+        {/* Compare-at / list price. Optional. The storefront renders a
+            strikethrough + "% off" badge when this is set strictly above
+            priceCents. Leave empty for a regular-priced product. */}
+        <div className="pt-1">
+          <label htmlFor="pf-compare-at" className="text-label-md text-on-surface-variant">
+            Compare-at price <span className="text-on-surface-variant/70 text-label-sm">(optional)</span>
+          </label>
+          <div className="mt-1 relative">
+            <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">$</span>
+            <input
+              id="pf-compare-at"
+              type="number"
+              min="0"
+              step="0.01"
+              // Empty string → "no deal" (null). Storing null rather than
+              // 0 means the storefront's deal-filter check (`compareAt >
+              // price`) correctly excludes the product and we don't
+              // render a misleading "$0.00 was $X.XX" badge.
+              value={form.compareAtPriceCents == null
+                ? ''
+                : (form.compareAtPriceCents / 100).toFixed(2)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === '') {
+                  update('compareAtPriceCents', null);
+                } else {
+                  const cents = Math.round(Math.max(0, Number(raw) || 0) * 100);
+                  update('compareAtPriceCents', cents);
+                }
+              }}
+              placeholder="No deal"
+              aria-invalid={Boolean(errors.compareAtPriceCents) || undefined}
+              aria-describedby={errors.compareAtPriceCents ? 'pf-compare-at-err' : 'pf-compare-at-help'}
+            />
+          </div>
+          {errors.compareAtPriceCents ? (
+            <div id="pf-compare-at-err" role="alert" className="text-error text-sm mt-1">{errors.compareAtPriceCents}</div>
+          ) : (
+            <div id="pf-compare-at-help" className="text-label-sm text-on-surface-variant mt-1">
+              Optional. When set, the storefront shows a strikethrough and a discount badge. Must be higher than the price to be a real deal — leave empty if the product isn't on sale.
+            </div>
+          )}
+        </div>
       </section>
 
       {/* ───── Description ───── */}

@@ -27,6 +27,13 @@ const EMPTY_FORM = {
   description: '',
   category: '',
   priceCents: 0,
+  // Optional list/deal price (USD cents). When set strictly above
+  // priceCents, the storefront renders a strikethrough + "X% off" badge.
+  // null = no deal. The user enters dollars in the UI; we convert to
+  // cents on the way in. On submit this rides through the ProductChange
+  // approval queue and the admin-apply step writes it to the live
+  // product.
+  compareAtPriceCents: null,
   stock: 0,
   imageUrls: [],
   status: 'LIVE',
@@ -42,6 +49,15 @@ function validate(form) {
   if (!form.name.trim()) errors.name = 'Product name is required.';
   if (!form.category || !form.category.trim()) errors.category = 'Pick a category.';
   if (form.priceCents < 0) errors.priceCents = 'Price must be zero or more.';
+  // Cross-field deal-price rule — same invariant as the admin form and
+  // the server's zod validator. Friendlier in-form message.
+  if (form.compareAtPriceCents != null) {
+    if (form.compareAtPriceCents < 0) {
+      errors.compareAtPriceCents = 'Compare-at price must be zero or more.';
+    } else if (form.compareAtPriceCents <= form.priceCents) {
+      errors.compareAtPriceCents = 'Compare-at price must be higher than the price to be a real deal.';
+    }
+  }
   const hasVariants = Array.isArray(form.variants) && form.variants.length > 0;
   if (!hasVariants && (form.stock < 0 || !Number.isInteger(form.stock))) {
     errors.stock = 'Stock must be a whole number.';
@@ -88,6 +104,7 @@ export default function ProductNew() {
         description: p.description || '',
         category: p.category || '',
         priceCents: p.priceCents || 0,
+        compareAtPriceCents: typeof p.compareAtPriceCents === 'number' ? p.compareAtPriceCents : null,
         stock: p.stock || 0,
         imageUrls: Array.isArray(p.imageUrls) ? p.imageUrls : [],
         status: p.status || 'LIVE',

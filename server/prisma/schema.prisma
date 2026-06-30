@@ -72,6 +72,13 @@ model Product {
   name        String
   description String
   priceCents  Int
+  // Optional list/deal price. When set and strictly greater than
+  // priceCents, the storefront renders a strikethrough and a "X% off"
+  // badge. Null = no deal. Validation that compareAt > price lives in
+  // the zod validator (see server/src/lib/validators.js); keeping the
+  // invariant at the validator layer means the form can accept a
+  // "remove the deal" empty value without the DB caring.
+  compareAtPriceCents Int?
   category    String
   imageUrls   String           @default("[]") // JSON array
   // `stock` is the canonical available-quantity count for the storefront:
@@ -243,6 +250,12 @@ model ProductChange {
   proposedName        String?
   proposedDescription String?
   proposedPriceCents  Int?
+  // Proposed list/deal price. Mirrors Product.compareAtPriceCents —
+  // a non-null value is applied on admin approval; null is a no-op
+  // (preserves the existing value). To REMOVE an existing deal the
+  // vendor would need a separate "clear compareAt" affordance; for
+  // now this is intentionally write-only.
+  proposedCompareAtPriceCents Int?
   proposedCategory    String?
   proposedImageUrls   String? // JSON array
   proposedStock       Int?

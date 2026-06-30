@@ -39,6 +39,12 @@ const productUpsert = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).default(''),
   priceCents: z.number().int().nonnegative(),
+  // Optional list/deal price. When set, the storefront shows the
+  // strikethrough + "X% off" badge. When null/omitted, no deal is
+  // rendered. We enforce compareAt > priceCents as a cross-field
+  // invariant so the UI never ends up with a "deal" that isn't
+  // actually cheaper than the current price.
+  compareAtPriceCents: z.number().int().nonnegative().nullable().optional(),
   category: z.string().min(1).max(80),
   imageUrls: z.array(z.string()).default([]),
   stock: z.number().int().nonnegative().default(0),
@@ -48,7 +54,26 @@ const productUpsert = z.object({
   // the legacy single stock value is used. Capped at 200 rows per
   // product to guard against oversize bodies.
   variants: z.array(variantInput).max(200).default([]),
-});
+}).refine(
+  // A deal is only valid if it's strictly more expensive than the
+  // current price. A non-null compareAtPriceCents <= priceCents would
+  // either be a no-op (visual bug) or a price hike mislabelled as a
+  // discount — reject so the form can correct the input.
+  (d) => d.compareAtPriceCents == null || d.compareAtPriceCents > d.priceCents,
+  { message: 'compareAtPriceCents must be greater than priceCents', path: ['compareAtPriceCents'] }
+);
+
+// Partial form for PATCH /api/products/:id. The cross-field rule
+// (compareAt > price) only kicks in when BOTH fields are present in the
+// body — otherwise we'd reject a partial update that just sets the
+// compareAt without touching the price. The route handler re-validates
+// against the live product on vendor-update approval.
+const productUpsertPartial = productUpsert.innerType().partial().refine(
+  (d) => d.compareAtPriceCents == null
+    || d.priceCents == null
+    || d.compareAtPriceCents > d.priceCents,
+  { message: 'compareAtPriceCents must be greater than priceCents', path: ['compareAtPriceCents'] }
+);
 
 const cartAdd = z.object({
   productId: z.string(),
@@ -116,6 +141,13 @@ const productChangeCreate = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().max(2000).optional(),
   priceCents: z.number().int().nonnegative().optional(),
+  // Same deal-price rules as productUpsert, but we can't enforce the
+  // "compareAt > price" cross-field rule at parse time because the
+  // existing priceCents may be coming from the live product (not in
+  // the body). The approve path (server/src/routes/productChanges.js)
+  // re-validates against the live product on apply and rejects with
+  // a clear error if the rule would be violated.
+  compareAtPriceCents: z.number().int().nonnegative().nullable().optional(),
   category: z.string().min(1).max(80).optional(),
   imageUrls: z.array(z.string()).optional(),
   stock: z.number().int().nonnegative().optional(),
@@ -129,6 +161,16 @@ const productChangeCreate = z.object({
 ).refine(
   (d) => d.action !== 'CREATE' || (d.name && d.category && d.priceCents !== undefined),
   { message: 'name, category, priceCents are required for CREATE', path: ['name'] }
+).refine(
+  // On CREATE the body must satisfy the same invariant as productUpsert.
+  // For UPDATE the existing priceCents lives on the product row, so we
+  // re-check on apply in the route handler.
+  (d) => {
+    if (d.action !== 'CREATE') return true;
+    if (d.compareAtPriceCents == null) return true;
+    return typeof d.priceCents === 'number' && d.compareAtPriceCents > d.priceCents;
+  },
+  { message: 'compareAtPriceCents must be greater than priceCents', path: ['compareAtPriceCents'] }
 );
 
 const adminReview = z.object({
@@ -181,6 +223,7 @@ module.exports = {
   vendorRegister,
   vendorSelfUpdate,
   productUpsert,
+  productUpsertPartial,
   productChangeCreate,
   variantInput,
   adminReview,

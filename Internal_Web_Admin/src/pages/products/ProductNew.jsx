@@ -30,6 +30,11 @@ const EMPTY_FORM = {
   description: '',
   category: '',
   priceCents: 0,
+  // Optional list/deal price (USD cents). When set and greater than
+  // priceCents, the storefront renders a strikethrough + "X% off"
+  // badge. null = no deal. The user enters dollars in the UI; we
+  // convert to cents on the way in and back to dollars on the way out.
+  compareAtPriceCents: null,
   stock: 0,
   imageUrls: [],
   status: 'LIVE',
@@ -46,6 +51,18 @@ function validate(form) {
   if (!form.name.trim()) errors.name = 'Product name is required.';
   if (!form.category || !form.category.trim()) errors.category = 'Pick a category — or create a new one.';
   if (form.priceCents < 0) errors.priceCents = 'Price must be zero or more.';
+  // Cross-field deal-price rule. A deal must be strictly more expensive
+  // than the current price or the storefront's "X% off" badge becomes
+  // either a visual bug (no discount) or a price hike mislabelled as a
+  // discount. The same rule is re-asserted by the zod validator on the
+  // server, so this is the friendlier in-form check.
+  if (form.compareAtPriceCents != null) {
+    if (form.compareAtPriceCents < 0) {
+      errors.compareAtPriceCents = 'Compare-at price must be zero or more.';
+    } else if (form.compareAtPriceCents <= form.priceCents) {
+      errors.compareAtPriceCents = 'Compare-at price must be higher than the price to be a real deal.';
+    }
+  }
   // Legacy stock validation only applies when there are no variants —
   // when variants exist, Product.stock is derived server-side and the
   // per-row validation below is what matters.
@@ -103,6 +120,10 @@ export default function ProductNew() {
         description: p.description || '',
         category: p.category || '',
         priceCents: p.priceCents || 0,
+        // p.compareAtPriceCents is null on plain products, a number on
+        // products that have a deal. Coerce to null when missing so the
+        // "is deal set?" check (`!= null`) in the form is consistent.
+        compareAtPriceCents: typeof p.compareAtPriceCents === 'number' ? p.compareAtPriceCents : null,
         stock: p.stock || 0,
         imageUrls: Array.isArray(p.imageUrls) ? p.imageUrls : [],
         status: p.status || 'LIVE',

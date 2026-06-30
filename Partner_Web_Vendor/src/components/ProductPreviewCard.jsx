@@ -21,6 +21,15 @@ export default function ProductPreviewCard({ form }) {
   };
   const img = productImage(fake);
   const price = form.priceCents > 0 ? `$${(form.priceCents / 100).toFixed(2)}` : '—';
+  // Deal: same filter as the storefront. Real "% off" badge only when
+  // compareAt is set strictly above the current price.
+  const compareAt = (typeof form.compareAtPriceCents === 'number'
+    && form.compareAtPriceCents > (form.priceCents || 0))
+    ? form.compareAtPriceCents
+    : null;
+  const discountPct = compareAt
+    ? Math.round(((compareAt - form.priceCents) / compareAt) * 100)
+    : 0;
   const status = form.status || 'LIVE';
 
   return (
@@ -41,7 +50,19 @@ export default function ProductPreviewCard({ form }) {
           {form.category?.trim() || <span className="italic">Category</span>}
         </div>
         <div className="flex items-center justify-between pt-1">
-          <div className="font-bold text-base">{price}</div>
+          <div className="flex items-baseline gap-2">
+            <div className="font-bold text-base">{price}</div>
+            {compareAt && (
+              <>
+                <span className="text-label-sm line-through text-on-surface-variant/70">
+                  ${(compareAt / 100).toFixed(2)}
+                </span>
+                <span className="chip bg-error/10 text-error text-[11px] font-semibold">
+                  -{discountPct}%
+                </span>
+              </>
+            )}
+          </div>
           {form.stock > 0 ? (
             <span className="chip bg-tertiary-container/20 text-tertiary">
               <Icon name="check_circle" className="text-[14px]" /> In stock

@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const multer = require('multer');
 const { z } = require('zod');
 const { prisma } = require('../prisma');
-const { productUpsert } = require('../lib/validators');
+const { productUpsert, productUpsertPartial } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
 const { audit, notifyProductChange, notifyAdminsProductChangeSubmitted } = require('../lib/notifications');
 
@@ -308,6 +308,11 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
         proposedName: rest.name,
         proposedDescription: rest.description || '',
         proposedPriceCents: rest.priceCents,
+        // Empty string on the form = "no deal" → null on the change. The
+        // admin-approval apply step will set Product.compareAtPriceCents
+        // to null in that case, which keeps the storefront from rendering
+        // a strikethrough/percentage badge.
+        proposedCompareAtPriceCents: rest.compareAtPriceCents ?? null,
         proposedCategory: rest.category,
         proposedImageUrls: stringifyImageUrls(rest).imageUrls,
         proposedStock: rest.stock ?? 0,
@@ -377,12 +382,26 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
 // apply directly via the `if (isAdmin)` branch below.
 router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res, next) => {
   try {
-    const data = productUpsert.partial().parse(req.body);
+    const data = productUpsertPartial.parse(req.body);
     const product = await prisma.product.findUnique({ where: { id: req.params.id } });
     if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
     const isOwner = req.user.role === 'VENDOR' && product.vendorId === req.user.vendor?.id;
     const isAdmin = req.user.role === 'ADMIN';
     if (!isOwner && !isAdmin) return res.status(403).json({ error: 'FORBIDDEN' });
+
+    // Cross-field deal-price check. The partial validator only enforces
+    // compareAt > priceCents when BOTH are present in the body, so when
+    // the vendor sets just `compareAtPriceCents` we re-check against the
+    // live product here. Same rule as productChanges.js POST + approve.
+    if (data.compareAtPriceCents != null) {
+      const targetPrice = (data.priceCents != null) ? data.priceCents : product.priceCents;
+      if (data.compareAtPriceCents <= targetPrice) {
+        return res.status(400).json({
+          error: 'INVALID_INPUT',
+          issues: [{ path: ['compareAtPriceCents'], message: 'compareAtPriceCents must be greater than priceCents' }],
+        });
+      }
+    }
 
     // Admin updates apply immediately; vendor updates go through approval.
     if (isAdmin) {
@@ -429,6 +448,13 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         proposedName: data.name ?? null,
         proposedDescription: data.description ?? null,
         proposedPriceCents: data.priceCents ?? null,
+        // Presence in the body is the signal: undefined = "don't touch
+        // the deal" (preserves the existing value on the product); a
+        // number = "apply this"; null = "remove the deal" (admin
+        // approval path will set Product.compareAtPriceCents to null).
+        // Route handler in productChanges.js re-validates compareAt >
+        // priceCents against the live product before applying.
+        proposedCompareAtPriceCents: data.compareAtPriceCents !== undefined ? data.compareAtPriceCents : null,
         proposedCategory: data.category ?? null,
         proposedImageUrls: data.imageUrls !== undefined ? JSON.stringify(data.imageUrls || []) : null,
         proposedStock: data.stock ?? null,
