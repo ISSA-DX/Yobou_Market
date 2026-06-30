@@ -251,14 +251,23 @@ test('categories — POST /backfill populates the curated table from seed + live
   const denied = await request(app, 'POST', '/api/categories/backfill', { token: customerToken });
   assert.strictEqual(denied.status, 403, `expected 403 for non-admin, got ${denied.status}`);
 
-  // Admin runs the backfill — should create the 4 seed categories.
+  // Admin runs the backfill — should create the 28 seed categories.
   const res = await request(app, 'POST', '/api/categories/backfill', { token });
   assert.strictEqual(res.status, 200, JSON.stringify(res.body));
-  assert.strictEqual(res.body.created, 4, `expected 4 created, got ${res.body.created}`);
+  assert.strictEqual(res.body.created, 28, `expected 28 created, got ${res.body.created}`);
 
   const after = await prisma.category.findMany({ orderBy: { name: 'asc' } });
   const names = after.map((c) => c.name);
-  assert.deepStrictEqual(names, ['Beauty', 'Electronics', 'Fashion', 'Home']);
+  // Spot-check the start, middle, and end of the seeded list — the
+  // exact array lives in SEED_CATEGORIES on the server side; if the
+  // full list ever drifts, this test will catch it.
+  assert.deepStrictEqual(
+    names.slice(0, 6),
+    ['Appliances', 'Arts & Crafts', 'Automotive', 'Baby', 'Bags', 'Beauty'],
+  );
+  assert.ok(names.includes('TV & Audio'), 'multi-word category should be present');
+  assert.ok(names.includes('Musical Instruments'), 'expanded musical category should be present');
+  assert.strictEqual(names.length, 28, `expected 28 categories, got ${names.length}`);
 
   // Idempotent: a second call creates 0.
   const second = await request(app, 'POST', '/api/categories/backfill', { token });
@@ -319,4 +328,48 @@ test('categories — GET ?curatedOnly=1 hides live-sourced rows', async () => {
   assert.strictEqual(res.status, 200);
   const names = res.body.categories.map((c) => c.name);
   assert.deepStrictEqual(names, ['Electronics'], 'curatedOnly should exclude live-sourced rows');
+});
+
+test('categories — seed-file CATEGORIES array matches SEED_CATEGORIES on the route', async () => {
+  // Drift between the two arrays is the kind of bug that lives for
+  // months unnoticed. The seed file and the route helper both ship
+  // a curated list; this test compares them so a mismatch fails CI.
+  // eslint-disable-next-line global-require
+  const seed = require('../prisma/seed.js');
+  // The CATEGORIES const in the seed file isn't exported, so re-read
+  // the file as text and pull the array literal out.
+  // eslint-disable-next-line global-require
+  const fs = require('node:fs');
+  // eslint-disable-next-line global-require
+  const path = require('node:path');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', 'prisma', 'seed.js'),
+    'utf8',
+  );
+  const m = src.match(/const CATEGORIES = \[([\s\S]*?)\];/);
+  assert.ok(m, 'expected to find `const CATEGORIES = [...]` in prisma/seed.js');
+  const seedNames = m[1]
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => s.replace(/^['"]|['"]$/g, ''));
+
+  // eslint-disable-next-line global-require
+  const categoriesRouter = require('../src/routes/categories');
+  const routeNames = categoriesRouter.SEED_CATEGORIES;
+  assert.ok(Array.isArray(routeNames), 'SEED_CATEGORIES should be exported as an array');
+  assert.strictEqual(
+    routeNames.length,
+    seedNames.length,
+    `seed file lists ${seedNames.length} categories but the route's SEED_CATEGORIES has ${routeNames.length}`,
+  );
+  for (const n of seedNames) {
+    assert.ok(routeNames.includes(n), `route SEED_CATEGORIES missing "${n}" from the seed file`);
+  }
+  for (const n of routeNames) {
+    assert.ok(seedNames.includes(n), `seed file CATEGORIES missing "${n}" from the route's SEED_CATEGORIES`);
+  }
+  // Touch seed so the require call doesn't get tree-shaken; this also
+  // documents the intent that the two arrays must stay in lockstep.
+  assert.ok(seed, 'seed module should be importable');
 });

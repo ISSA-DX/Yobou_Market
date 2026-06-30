@@ -4,15 +4,19 @@
 // The full `npm run seed` wipes every table and re-seeds from scratch —
 // that would destroy all the vendor products, customer orders, variants,
 // and cart items accumulated on Render. This script only touches the
-// Category table, adding any of the four seed categories that are
-// missing. Idempotent: running it twice is a no-op.
+// Category table, adding any of the seed categories (or live product
+// category names) that are missing. Idempotent: running it twice is a
+// no-op.
+//
+// Pulls the curated list from the categories route helper so the
+// standalone script stays in lockstep with the boot-time backfill
+// and the in-app POST /api/categories/backfill endpoint.
 //
 // Run from server/ with the production DATABASE_URL pointed at Render:
 //   node prisma/backfill_categories.js
 
 const { PrismaClient } = require('@prisma/client');
-
-const SEED_CATEGORIES = ['Electronics', 'Fashion', 'Home', 'Beauty'];
+const { SEED_CATEGORIES } = require('../src/routes/categories');
 
 const prisma = new PrismaClient();
 

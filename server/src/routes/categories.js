@@ -36,9 +36,17 @@ function slugify(s) {
     .slice(0, 80);
 }
 
-// The four seed categories that the curated Category table should always
-// contain, even if the seed script was last run before this table existed.
-const SEED_CATEGORIES = ['Electronics', 'Fashion', 'Home', 'Beauty'];
+// The curated product categories that ship with every fresh install.
+// Mirrors the CATEGORIES array in server/prisma/seed.js — kept in sync
+// by hand because the seed file is run-once and the backfill runs on
+// every boot. If you add a category, add it in both places.
+const SEED_CATEGORIES = [
+  'Electronics', 'Phones', 'Computer', 'Fashion', 'Shoes', 'Beauty',
+  'Home', 'Kitchen', 'Sports', 'Fitness', 'Toys', 'Gaming',
+  'TV & Audio', 'Appliances', 'Automotive', 'Books', 'Grocery',
+  'Health', 'Pet Supplies', 'Baby', 'Jewelry', 'Watches', 'Bags',
+  'Office', 'Garden', 'Tools', 'Arts & Crafts', 'Musical Instruments',
+];
 
 /**
  * Backfill the curated Category table from the seed list and from any
