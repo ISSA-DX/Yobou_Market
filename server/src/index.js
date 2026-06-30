@@ -16,6 +16,7 @@ const adminRoutes = require('./routes/admin');
 const refundsRoutes = require('./routes/refunds');
 const addressesRoutes = require('./routes/addresses');
 const paymentsRoutes = require('./routes/payments');
+const categoriesRoutes = require('./routes/categories');
 const eventsRoutes = require('./routes/events');
 
 const app = express();
@@ -160,6 +161,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/refunds', refundsRoutes);
 app.use('/api/addresses', addressesRoutes);
 app.use('/api/payments', paymentsRoutes);
+app.use('/api/categories', categoriesRoutes);
 app.use('/api', eventsRoutes);
 
 // Serve the built React apps in production (single-deploy mode).

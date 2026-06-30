@@ -6,6 +6,7 @@ import Icon from '../../components/Icon';
 import ProductCard from '../../components/ProductCard';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useNotifications } from '../../lib/useNotifications';
+import { useProductLiveSync } from '../../lib/useProductLiveSync';
 import { toast } from '../../lib/toast';
 
 const CATS = [
@@ -46,6 +47,8 @@ export default function Home() {
   const { unreadCount } = useNotifications(10);
   const [q, setQ] = useState('');
   const { data, error, loading, refetch } = useApi('/api/products');
+  // Live sync — Home page refetches when any product is created/updated/deleted.
+  useProductLiveSync(refetch);
 
   const all = data?.products || [];
   const flashDeals = all.slice(0, 4);

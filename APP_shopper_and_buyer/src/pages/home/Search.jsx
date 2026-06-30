@@ -5,6 +5,7 @@ import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import ProductCard from '../../components/ProductCard';
 import { ProductCardSkeleton } from '../../components/ProductCard';
+import { useCatalogStream } from '../../lib/useSse';
 
 export default function Search() {
   const [params, setParams] = useSearchParams();
@@ -34,6 +35,15 @@ export default function Search() {
   useEffect(() => {
     search(initialQ);
   }, [initialQ]);
+
+  // Live sync — when a product is created/updated/deleted and the user's
+  // search term is still the same, refetch so newly-matching products
+  // show up without a manual refresh.
+  useCatalogStream((frame) => {
+    if (!frame?.event) return;
+    if (!['product_created', 'product_updated', 'product_deleted'].includes(frame.event)) return;
+    search(initialQ);
+  });
 
   async function quickAdd(p) {
     await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });

@@ -12,6 +12,8 @@ build/
 # Built artifacts at the repo root — not source, rebuilt by CI
 yobou-market-release.apk
 yobou-market-debug.apk
+Yobou-Market-*.apk
+Yobou-Partner-*.apk
 emulator-screen*.png
 
 # Design asset folders and screenshots — kept locally for reference,
@@ -50,6 +52,11 @@ screenshots/
 # server
 server/prisma/dev.db
 server/prisma/dev.db-journal
+# test.db is recreated on every `npx prisma db push` in tests/ — keep it
+# ignored so the index stays clean across test runs. (Was historically
+# tracked; we untrack it as of the catalog/audit/SSE fan-out change.)
+server/prisma/test.db
+server/prisma/test.db-journal
 server/uploads/
 
 # stray uploads folder at the repo root (one-off file, not source)

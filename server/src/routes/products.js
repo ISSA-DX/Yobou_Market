@@ -6,6 +6,7 @@ const { z } = require('zod');
 const { prisma } = require('../prisma');
 const { productUpsert } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
+const { audit, notifyProductChange } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -80,14 +81,23 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// Backwards-compatible legacy list — derived from the curated Category
+// table. Shopper pages still call `/api/products/categories` for the
+// name+count shape; new admin/partner pickers should hit
+// `/api/categories` which adds id/slug/isActive.
 router.get('/categories', async (_req, res, next) => {
   try {
+    const rows = await prisma.category.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
+    });
     const groups = await prisma.product.groupBy({
       by: ['category'],
       where: { status: 'LIVE' },
       _count: { _all: true },
     });
-    res.json({ categories: groups.map((g) => ({ name: g.category, count: g._count._all })) });
+    const counts = Object.fromEntries(groups.map((g) => [g.category, g._count._all]));
+    res.json({ categories: rows.map((c) => ({ name: c.name, count: counts[c.name] || 0 })) });
   } catch (err) { next(err); }
 });
 
@@ -202,6 +212,15 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
   try {
     const data = productUpsert.parse(req.body);
     const product = await prisma.product.create({ data: stringifyImageUrls(data) });
+    // Audit + live fan-out. notifyProductChange handles "vendor-less"
+    // products by skipping the vendor owner branch internally.
+    await audit(req.user.id, {
+      action: 'product.create',
+      entityType: 'Product',
+      entityId: product.id,
+      meta: { name: product.name, category: product.category, vendorId: product.vendorId },
+    });
+    await notifyProductChange({ action: 'create', product });
     res.status(201).json({ product: parseImageUrls(product) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
@@ -209,8 +228,9 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
   }
 });
 
-// Vendor submits an UPDATE change for admin approval.
-router.patch('/:id', requireAuth, requireApprovedVendor, async (req, res, next) => {
+// Vendor submits an UPDATE change for admin approval; admin updates
+// apply directly via the `if (isAdmin)` branch below.
+router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res, next) => {
   try {
     const data = productUpsert.partial().parse(req.body);
     const product = await prisma.product.findUnique({ where: { id: req.params.id } });
@@ -225,6 +245,13 @@ router.patch('/:id', requireAuth, requireApprovedVendor, async (req, res, next) 
         where: { id: req.params.id },
         data: stringifyImageUrls(data),
       });
+      await audit(req.user.id, {
+        action: 'product.update',
+        entityType: 'Product',
+        entityId: updated.id,
+        meta: { name: updated.name, category: updated.category, vendorId: updated.vendorId },
+      });
+      await notifyProductChange({ action: 'update', product: updated });
       return res.json({ product: parseImageUrls(updated) });
     }
 
@@ -250,7 +277,7 @@ router.patch('/:id', requireAuth, requireApprovedVendor, async (req, res, next) 
   }
 });
 
-router.delete('/:id', requireAuth, requireApprovedVendor, async (req, res, next) => {
+router.delete('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res, next) => {
   try {
     const product = await prisma.product.findUnique({ where: { id: req.params.id } });
     if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
@@ -262,7 +289,17 @@ router.delete('/:id', requireAuth, requireApprovedVendor, async (req, res, next)
     if (isAdmin) {
       const ordered = await prisma.orderItem.findFirst({ where: { productId: req.params.id } });
       if (ordered) return res.status(409).json({ error: 'PRODUCT_HAS_ORDERS' });
+      // Snapshot before delete so notifyProductChange has a name/category
+      // to put in the audit + SSE payload.
+      const product = await prisma.product.findUnique({ where: { id: req.params.id } });
       await prisma.product.delete({ where: { id: req.params.id } });
+      await audit(req.user.id, {
+        action: 'product.delete',
+        entityType: 'Product',
+        entityId: req.params.id,
+        meta: { name: product?.name, category: product?.category, vendorId: product?.vendorId },
+      });
+      await notifyProductChange({ action: 'delete', product: { ...product, id: req.params.id } });
       return res.json({ ok: true });
     }
 

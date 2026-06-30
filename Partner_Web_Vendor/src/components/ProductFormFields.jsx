@@ -1,31 +1,20 @@
 import { useRef, useState } from 'react';
-import { getAccessToken } from '../api';
+import { apiForm } from '../api';
+import CategoryPicker from './CategoryPicker';
 import Icon from './Icon';
-
-const KNOWN_CATEGORIES = [
-  'Electronics', 'Phones', 'Computers', 'Fashion', 'Shoes', 'Beauty', 'Home', 'Kitchen',
-  'Sports', 'Fitness', 'Toys', 'Gaming', 'TV & Audio', 'Appliances', 'Automotive', 'Books',
-  'Grocery', 'Health', 'Pet Supplies', 'Baby', 'Jewelry', 'Watches', 'Bags', 'Office',
-  'Garden', 'Tools', 'Arts & Crafts', 'Musical',
-];
 
 export default function ProductFormFields({ form, update }) {
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState('');
 
+  // Uses the friendly `apiForm` wrapper — sets the correct Content-Type
+  // (multipart/form-data; boundary=...) automatically, surfaces server
+  // error messages, and turns offline/CORS failures into a clear banner.
   async function uploadFile(file) {
-    const token = getAccessToken();
     const body = new FormData();
     body.append('image', file);
-    const headers = {};
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const res = await fetch('/api/products/upload', { method: 'POST', headers, body });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || `Upload failed (${res.status})`);
-    }
-    const { url } = await res.json();
+    const { url } = await apiForm('/api/products/upload', { method: 'POST', body });
     return url;
   }
 
@@ -38,7 +27,10 @@ export default function ProductFormFields({ form, update }) {
       const urls = await Promise.all(images.map(uploadFile));
       update('imageUrls', [...(form.imageUrls || []), ...urls]);
     } catch (e) {
-      setUploadErr(e.message || 'Could not upload image(s).');
+      // Prefer the server's structured message; fall back to the network
+      // banner from `apiForm`'s NETWORK_ERROR branch, then to a generic line.
+      const msg = e?.data?.message || e?.message || 'Could not upload image(s).';
+      setUploadErr(msg);
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -72,17 +64,10 @@ export default function ProductFormFields({ form, update }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="text-label-md text-on-surface-variant">Category *</label>
-          <input
-            list="category-suggestions"
-            className="input mt-1"
+          <CategoryPicker
             value={form.category}
-            onChange={(e) => update('category', e.target.value)}
-            placeholder="e.g. Electronics"
-            required
+            onChange={(v) => update('category', v)}
           />
-          <datalist id="category-suggestions">
-            {KNOWN_CATEGORIES.map((c) => <option key={c} value={c} />)}
-          </datalist>
         </div>
         <div>
           <label className="text-label-md text-on-surface-variant">Stock *</label>

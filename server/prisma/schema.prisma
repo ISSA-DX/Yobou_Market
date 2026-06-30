@@ -82,6 +82,20 @@ model Product {
   changes     ProductChange[]
 }
 
+// Curated catalogue of product categories. Replaces the free-form
+// `Product.category` string as the source of truth at write time; the
+// existing string column is preserved for historical rows and so the
+// shopper app's CategoryDetail page (`?category=<slug>`) keeps working
+// without a migration. `isActive=false` is a soft-delete that hides the
+// category from the picker while keeping existing products addressable.
+model Category {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
 model CartItem {
   id        String  @id @default(cuid())
   userId    String

@@ -3,7 +3,8 @@
 import { useEffect, useRef } from 'react';
 import { getAccessToken, onAuthChange } from '../api';
 
-const subscribers = new Set();
+const notificationSubscribers = new Set();
+const catalogSubscribers = new Set();
 let eventSource = null;
 let reconnectTimer = null;
 
@@ -15,6 +16,12 @@ function close() {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
+  }
+}
+
+function dispatch(set, payload) {
+  for (const fn of set) {
+    try { fn(payload); } catch { /* ignore subscriber errors */ }
   }
 }
 
@@ -33,12 +40,12 @@ function connect() {
   }
   eventSource = es;
   es.addEventListener('notification', (ev) => {
-    try {
-      const note = JSON.parse(ev.data);
-      for (const fn of subscribers) {
-        try { fn(note); } catch { /* ignore subscriber errors */ }
-      }
-    } catch { /* malformed frame */ }
+    try { dispatch(notificationSubscribers, JSON.parse(ev.data)); } catch { /* malformed frame */ }
+  });
+  // Catalog broadcast (no DB row — pure SSE). Fires on product CRUD +
+  // category CRUD so list pages can refetch without a round trip.
+  es.addEventListener('catalog', (ev) => {
+    try { dispatch(catalogSubscribers, JSON.parse(ev.data)); } catch { /* malformed frame */ }
   });
   es.addEventListener('hello', () => { /* connection confirmed */ });
   es.onerror = () => {
@@ -75,10 +82,27 @@ export function useNotificationStream(onNotification) {
     const wrapper = (note) => {
       try { ref.current?.(note); } catch { /* ignore */ }
     };
-    subscribers.add(wrapper);
+    notificationSubscribers.add(wrapper);
     if (!eventSource && getAccessToken()) connect();
     return () => {
-      subscribers.delete(wrapper);
+      notificationSubscribers.delete(wrapper);
+    };
+  }, []);
+}
+
+export function useCatalogStream(onCatalog) {
+  ensureAuthListener();
+  const ref = useRef(onCatalog);
+  ref.current = onCatalog;
+
+  useEffect(() => {
+    const wrapper = (frame) => {
+      try { ref.current?.(frame); } catch { /* ignore */ }
+    };
+    catalogSubscribers.add(wrapper);
+    if (!eventSource && getAccessToken()) connect();
+    return () => {
+      catalogSubscribers.delete(wrapper);
     };
   }, []);
 }

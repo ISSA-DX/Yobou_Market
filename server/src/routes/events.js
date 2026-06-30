@@ -19,6 +19,8 @@ const {
   unregisterClient,
   registerAdmin,
   unregisterAdmin,
+  registerCatalog,
+  unregisterCatalog,
 } = require('../lib/notifications');
 
 const router = express.Router();
@@ -38,8 +40,11 @@ router.get('/events', requireAuthSse, (req, res) => {
   res.flushHeaders?.();
   res.write(`event: hello\ndata: ${JSON.stringify({ userId: req.user.id, role: req.user.role })}\n\n`);
 
-  // Register for live notifications.
+  // Register for live notifications + catalog events. Every authenticated
+  // client gets the catalog channel; admins additionally get admin fan-out
+  // (currently unused but kept for symmetry with the original design).
   registerClient(req.user.id, res);
+  registerCatalog(req.user.id, res);
   if (req.user.role === 'ADMIN') registerAdmin(req.user.id, res);
 
   // Heartbeat. Without this, Render's idle-timeout will close the connection.
@@ -58,6 +63,7 @@ router.get('/events', requireAuthSse, (req, res) => {
     clearInterval(heartbeat);
     clearInterval(seenTouch);
     unregisterClient(req.user.id, res);
+    unregisterCatalog(req.user.id, res);
     if (req.user.role === 'ADMIN') unregisterAdmin(req.user.id, res);
     res.end();
   });

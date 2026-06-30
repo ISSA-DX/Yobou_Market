@@ -99,3 +99,64 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
 function safeParse(t) {
   try { return JSON.parse(t); } catch { return null; }
 }
+
+/**
+ * Multipart upload helper. Use this when you need to send a FormData body
+ * (file uploads, mixed text+file). `api()` cannot carry FormData because it
+ * forces `Content-Type: application/json` and JSON-stringifies the body —
+ * which silently breaks multipart uploads (multer sees an empty body).
+ *
+ * Semantics mirror `api()`:
+ *   - sends the Authorization header automatically
+ *   - transparent refresh + retry on 401
+ *   - throws an Error with `code: 'NETWORK_ERROR'` for offline / CORS rejects
+ *   - throws an Error with `status` + `data` for non-OK responses
+ */
+export async function apiForm(path, { method = 'POST', body, auth = true, retry = true } = {}) {
+  const opts = {
+    method,
+    credentials: 'include',
+    // Do NOT set Content-Type — the browser will set the correct
+    // `multipart/form-data; boundary=...` based on the FormData.
+    body,
+  };
+  if (auth && accessToken) opts.headers = { Authorization: `Bearer ${accessToken}` };
+
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, opts);
+  } catch (networkErr) {
+    const err = new Error(networkErr?.message || 'Network request failed');
+    err.code = 'NETWORK_ERROR';
+    err.data = {
+      error: 'NETWORK_ERROR',
+      message:
+        'Could not reach the server. Check your internet connection — if you\'re on Wi-Fi, the server may not be reachable from this network.',
+    };
+    err.cause = networkErr;
+    throw err;
+  }
+
+  if (res.status === 401 && auth && retry) {
+    try {
+      await refreshAccessToken();
+      return apiForm(path, { method, body, auth, retry: false });
+    } catch {
+      accessToken = null;
+      notifyAuthChange({ user: null });
+      const err = new Error('UNAUTHENTICATED');
+      err.status = 401;
+      err.data = { error: 'UNAUTHENTICATED' };
+      throw err;
+    }
+  }
+  const text = await res.text();
+  const data = text ? safeParse(text) : null;
+  if (!res.ok) {
+    const err = new Error(data?.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}

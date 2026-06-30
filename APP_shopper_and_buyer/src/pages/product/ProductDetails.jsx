@@ -6,6 +6,7 @@ import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImages } from '../../lib/productImage';
 import { formatPrice } from '../../lib/format';
+import { useCatalogStream } from '../../lib/useSse';
 
 const COLORS = ['#0034b9', '#005121', '#fdc003', '#ba1a1a'];
 
@@ -18,6 +19,16 @@ export default function ProductDetails() {
   const wishlist = useStore((s) => s.wishlist);
   const currency = useStore((s) => s.user?.currency || 'USD');
   const { data, error, loading, refetch } = useApi(`/api/products/${id}`);
+  // Live sync — only refetch when the event targets THIS product. We have
+  // a `meta.productId` available — check both shapes since the server has
+  // occasionally emitted productId at the top level too.
+  useCatalogStream((frame) => {
+    if (!frame?.event) return;
+    if (frame.event !== 'product_updated' && frame.event !== 'product_deleted') return;
+    const targetId = frame.productId || frame.meta?.productId;
+    if (targetId && targetId !== id) return;
+    refetch();
+  });
   const p = data?.product;
   const [qty, setQty] = useState(1);
   const [color, setColor] = useState(0);

@@ -4,6 +4,7 @@ import { api } from '../../api';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import ProductCard, { ProductCardSkeleton } from '../../components/ProductCard';
+import { useCatalogStream } from '../../lib/useSse';
 
 const CATEGORY_META = {
   electronics: { icon: 'devices', gradient: 'from-blue-500 to-indigo-600' },
@@ -78,6 +79,18 @@ export default function CategoryDetail() {
 
   useEffect(() => { load(); }, [slug]);
   useEffect(() => { setQuery(''); setSort('featured'); }, [slug]);
+
+  // Live sync — when any product is created/updated/deleted anywhere,
+  // refetch this category's listing so newly-added products appear
+  // without a manual refresh. Could be narrowed with `match: (f) =>
+  // f.category === title` once the server includes category in the
+  // catalog payload (currently it does).
+  useCatalogStream((frame) => {
+    if (!frame?.event) return;
+    if (!['product_created', 'product_updated', 'product_deleted'].includes(frame.event)) return;
+    if (frame.category && frame.category !== title) return;
+    load();
+  });
 
   async function quickAdd(p) {
     await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });

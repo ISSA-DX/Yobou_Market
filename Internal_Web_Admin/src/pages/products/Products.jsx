@@ -4,6 +4,7 @@ import { api } from '../../api';
 import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImage } from '../../lib/productImage';
+import { useProductLiveSync } from '../../lib/useProductLiveSync';
 
 const STATUS_STYLES = {
   LIVE: 'bg-tertiary-container/20 text-tertiary border-0',
@@ -16,6 +17,11 @@ export default function Products() {
   const { data, error, loading, refetch } = useApi(`/api/admin/products${q ? `?q=${encodeURIComponent(q)}` : ''}`);
   const [actionErr, setActionErr] = useState('');
   const [actionOk, setActionOk] = useState('');
+  // Live sync — refetch when anyone (this admin tab included, or a vendor's
+  // approval) creates/updates/deletes any product. The setSearch below
+  // already updates the URL after a local edit; this catches incoming
+  // events so other admin tabs and partner approvals propagate here.
+  useProductLiveSync(refetch);
 
   const products = data?.products || [];
 

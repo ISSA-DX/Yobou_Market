@@ -1,13 +1,20 @@
 // useSse — subscribe to the server's notification stream.
 //
 // Opens a single EventSource per call, listens for `event: notification`
-// frames, and exposes them via a callback. Reconnects automatically if
-// the connection drops (EventSource's built-in retry).
+// AND `event: catalog` frames, and exposes them via two hooks:
+//   - useNotificationStream: per-user inbox pushes (notification rows).
+//   - useCatalogStream: broadcast frames for "catalog changed" events
+//     (product_created / product_updated / product_deleted / category_*).
+//
+// The same EventSource carries both channels (the server multiplexes them
+// over one SSE connection). Reconnects automatically if the connection
+// drops (EventSource's built-in retry).
 //
 // Usage:
 //   useEffect(() => {
 //     const off = useNotificationStream((note) => { ... });
-//     return off;
+//     const off2 = useCatalogStream((frame) => { ... });
+//     return () => { off(); off2(); };
 //   }, []);
 //
 // Returns an unsubscribe function. Safe to call with no token (becomes
@@ -15,7 +22,8 @@
 import { useEffect, useRef } from 'react';
 import { getAccessToken, onAuthChange } from '../api';
 
-const subscribers = new Set();
+const notificationSubscribers = new Set();
+const catalogSubscribers = new Set();
 let eventSource = null;
 let reconnectTimer = null;
 
@@ -27,6 +35,12 @@ function close() {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
+  }
+}
+
+function dispatch(set, payload) {
+  for (const fn of set) {
+    try { fn(payload); } catch { /* ignore subscriber errors */ }
   }
 }
 
@@ -49,10 +63,14 @@ function connect() {
   eventSource = es;
   es.addEventListener('notification', (ev) => {
     try {
-      const note = JSON.parse(ev.data);
-      for (const fn of subscribers) {
-        try { fn(note); } catch { /* ignore subscriber errors */ }
-      }
+      dispatch(notificationSubscribers, JSON.parse(ev.data));
+    } catch { /* malformed frame */ }
+  });
+  // Catalog broadcast (no DB row — pure SSE). Fires on product CRUD +
+  // category CRUD so list pages can refetch without a round trip.
+  es.addEventListener('catalog', (ev) => {
+    try {
+      dispatch(catalogSubscribers, JSON.parse(ev.data));
     } catch { /* malformed frame */ }
   });
   es.addEventListener('hello', () => {
@@ -96,11 +114,28 @@ export function useNotificationStream(onNotification) {
     const wrapper = (note) => {
       try { ref.current?.(note); } catch { /* ignore */ }
     };
-    subscribers.add(wrapper);
+    notificationSubscribers.add(wrapper);
     // Kick a connect if we have a token but no stream.
     if (!eventSource && getAccessToken()) connect();
     return () => {
-      subscribers.delete(wrapper);
+      notificationSubscribers.delete(wrapper);
+    };
+  }, []);
+}
+
+export function useCatalogStream(onCatalog) {
+  ensureAuthListener();
+  const ref = useRef(onCatalog);
+  ref.current = onCatalog;
+
+  useEffect(() => {
+    const wrapper = (frame) => {
+      try { ref.current?.(frame); } catch { /* ignore */ }
+    };
+    catalogSubscribers.add(wrapper);
+    if (!eventSource && getAccessToken()) connect();
+    return () => {
+      catalogSubscribers.delete(wrapper);
     };
   }, []);
 }

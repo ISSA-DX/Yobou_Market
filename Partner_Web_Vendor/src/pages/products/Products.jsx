@@ -8,6 +8,7 @@ import { productImage } from '../../lib/productImage';
 import { useStore } from '../../store';
 import { formatPrice } from '../../lib/format';
 import { toast } from '../../lib/toast';
+import { useProductLiveSync } from '../../lib/useProductLiveSync';
 
 const STATUS_STYLES = {
   LIVE: 'bg-tertiary-container/20 text-tertiary border-0',
@@ -25,6 +26,9 @@ export default function Products() {
   if (statusFilter) params.set('status', statusFilter);
   const qs = params.toString();
   const { data, error, loading, refetch } = useApi(`/api/products/vendor/mine${qs ? `?${qs}` : ''}`);
+  // Live sync — when an admin approves a vendor change, the product
+  // transitions PENDING→LIVE for the partner's "my products" list.
+  useProductLiveSync(refetch);
 
   const [stockModal, setStockModal] = useState(null);
   const [stockValue, setStockValue] = useState('');

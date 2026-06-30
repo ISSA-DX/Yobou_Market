@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../../api';
 import Icon from '../../components/Icon';
+import { useApi } from '../../useApi.jsx';
+import { useProductLiveSync } from '../../lib/useProductLiveSync';
 
 const BENTO = [
   { name: 'Electronics', icon: 'devices', color: 'from-primary to-primary-container', size: 'col-span-2 row-span-2', textColor: 'text-white' },
@@ -38,27 +39,20 @@ const ALL_CATS = [
 ];
 
 export default function Categories() {
-  const [groups, setGroups] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-
-  async function load() {
-    setLoading(true); setError('');
-    try {
-      const { categories } = await api('/api/products/categories');
-      setGroups(categories || []);
-    } catch {
-      setError('Could not load categories.');
-    } finally {
-      setLoading(false);
-    }
-  }
-  useEffect(() => { load(); }, []);
+  // useApi returns { data, error, refetch } so we can pass refetch to
+  // useProductLiveSync — the page refetches its category counts when
+  // product_created/updated/deleted or category_* events arrive.
+  const { data, error, loading, refetch } = useApi('/api/products/categories');
+  const groups = data?.categories || [];
 
   const q = query.trim().toLowerCase();
   const filteredBento = useMemo(() => BENTO.filter((c) => c.name.toLowerCase().includes(q)), [q]);
   const filteredAll = useMemo(() => ALL_CATS.filter((c) => c.name.toLowerCase().includes(q)), [q]);
+
+  // Live sync — also includes category_* events so the picker reflects
+  // newly-added categories without a refresh.
+  useProductLiveSync(refetch, { alsoCategories: true });
 
   return (
     <div className="px-4 pt-4 pb-6 space-y-5">
@@ -87,8 +81,8 @@ export default function Categories() {
 
         {error && (
           <div className="card p-4 bg-error/10 text-error text-sm flex items-center justify-between mb-3">
-            <span>{error}</span>
-            <button onClick={load} className="text-primary font-semibold">Retry</button>
+            <span>Could not load categories.</span>
+            <button onClick={refetch} className="text-primary font-semibold">Retry</button>
           </div>
         )}
 

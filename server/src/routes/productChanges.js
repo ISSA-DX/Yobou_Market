@@ -4,7 +4,7 @@ const { z } = require('zod');
 const { prisma } = require('../prisma');
 const { productChangeCreate, adminReview } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
-const { notify, audit } = require('../lib/notifications');
+const { notify, audit, notifyProductChange } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -169,6 +169,25 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
       });
       return updated;
     });
+
+    // Fan out the catalogue change to every connected client (customer +
+    // admin + partner) BEFORE the vendor's personal "approved" ping, so
+    // a list page subscribed via useNotificationStream refetches in sync
+    // with the inbox bell. Re-read the product with the vendor relation so
+    // notifyProductChange can include it in the SSE/catalog payload.
+    let productForFanout = null;
+    if (result.productId) {
+      productForFanout = await prisma.product.findUnique({
+        where: { id: result.productId },
+        include: { vendor: { select: { userId: true } } },
+      });
+    }
+    if (productForFanout) {
+      const action = change.action === 'CREATE' ? 'create'
+                    : change.action === 'UPDATE' ? 'update'
+                    : 'delete';
+      await notifyProductChange({ action, product: productForFanout });
+    }
 
     await audit(req.user.id, {
       action: change.action === 'CREATE' ? 'product.create'

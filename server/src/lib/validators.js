@@ -141,6 +141,17 @@ const vendorSelfUpdate = z.object({
   bannerUrl: z.string().url().nullable().optional(),
 }).refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
 
+const categoryCreate = z.object({
+  name: z.string().min(1).max(80),
+  slug: z.string().min(1).max(80).optional(),
+});
+
+const categoryUpdate = z.object({
+  name: z.string().min(1).max(80).optional(),
+  slug: z.string().min(1).max(80).optional(),
+  isActive: z.boolean().optional(),
+}).refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
+
 module.exports = {
   registerCustomer,
   login,
@@ -158,4 +169,6 @@ module.exports = {
   orderCancel,
   orderShip,
   CARRIERS,
+  categoryCreate,
+  categoryUpdate,
 };

@@ -52,6 +52,31 @@ function liveAdminClients() {
  */
 const adminClients = new Map();
 
+// Catalog-broadcast registry — every authenticated client subscribes to
+// this so we can fan out "the catalogue just changed" events (new
+// product, category created, etc.) without writing an inbox row per user.
+// SSE endpoint registers each connection into both sseClients (for
+// per-user notifications) and catalogClients (for catalogue events).
+const catalogClients = new Map();
+
+function registerCatalog(userId, res) {
+  if (!catalogClients.has(userId)) catalogClients.set(userId, new Set());
+  catalogClients.get(userId).add(res);
+}
+
+function unregisterCatalog(userId, res) {
+  const set = catalogClients.get(userId);
+  if (!set) return;
+  set.delete(res);
+  if (set.size === 0) catalogClients.delete(userId);
+}
+
+function liveCatalogClients() {
+  const out = [];
+  for (const set of catalogClients.values()) for (const r of set) out.push(r);
+  return out;
+}
+
 function registerAdmin(userId, res) {
   if (!adminClients.has(userId)) adminClients.set(userId, new Set());
   adminClients.get(userId).add(res);
@@ -68,6 +93,28 @@ function liveAdmins() {
   const out = [];
   for (const set of adminClients.values()) for (const r of set) out.push(r);
   return out;
+}
+
+/**
+ * Push a "catalog changed" frame to every connected client. The event
+ * is sent with `event: catalog` so client-side listeners can branch
+ * cleanly without parsing the inbox payload. No DB writes — the client
+ * decides whether to refetch based on the frame.
+ */
+function pushCatalog(event, data) {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of liveCatalogClients()) {
+    try { res.write(payload); } catch { /* drop */ }
+  }
+}
+
+/**
+ * Public alias for code that doesn't need to know the channel name.
+ * Currently a thin wrapper around pushCatalog so existing call sites
+ * keep their meaning ("a public broadcast, not a personal inbox push").
+ */
+function pushPublic(event, data) {
+  pushCatalog(event, data);
 }
 
 /**
@@ -223,6 +270,78 @@ async function audit(actorId, { action, entityType, entityId, meta }) {
 }
 
 /**
+ * Fan-out a product change to admins (inbox row) + every connected client
+ * (catalog event). No customer inbox row is written — that would clutter
+ * every shopper's inbox with every CRUD. Customers see the event by
+ * reacting to the SSE `event: catalog` channel and re-fetching their
+ * product list pages.
+ *
+ * @param {object}   opts
+ * @param {'create'|'update'|'delete'} opts.action
+ * @param {object}   opts.product   the product row (or what remains of it after a delete)
+ * @param {string}   [opts.title]   override default title
+ * @param {string}   [opts.body]    override default body
+ * @param {string}   [opts.link]    override default link
+ * @param {object}   [opts.tx]      optional Prisma transaction client
+ */
+async function notifyProductChange({ action, product, title, body, link, tx }) {
+  const db = tx || prisma;
+  const kind = action === 'create' ? 'product_created'
+             : action === 'update' ? 'product_updated'
+             : action === 'delete' ? 'product_deleted' : null;
+  if (!kind || !product) return;
+
+  const meta = { productId: product.id, productName: product.name, category: product.category };
+  const defaultTitle = action === 'create' ? `New product: ${product.name}`
+                     : action === 'update' ? `Product updated: ${product.name}`
+                     : `Product removed: ${product.name}`;
+  const defaultLink = action === 'delete' ? '/products' : `/products/${product.id}`;
+  const t = title || defaultTitle;
+  const b = body || `Catalog changed: ${action} on "${product.name}".`;
+  const l = link || defaultLink;
+
+  // 1. Catalog event to every connected client (customer + admin + partner).
+  //    No DB row, just an SSE frame.
+  const catalogPayload = {
+    action,
+    productId: product.id,
+    productName: product.name,
+    category: product.category,
+    vendorId: product.vendorId || null,
+    status: product.status || null,
+    priceCents: product.priceCents != null ? product.priceCents : null,
+    imageUrls: typeof product.imageUrls === 'string'
+      ? safeParseJson(product.imageUrls) || []
+      : (product.imageUrls || []),
+    stock: product.stock != null ? product.stock : null,
+  };
+  pushCatalog('catalog', { event: kind, ...catalogPayload });
+
+  // 2. Inbox rows for admins (so the bell increments and they can audit).
+  const admins = await db.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+  for (const a of admins) {
+    const row = await db.notification.create({
+      data: { userId: a.id, kind, title: t, body: b, link: l, meta: JSON.stringify(meta) },
+    });
+    pushToUser(a.id, row);
+  }
+
+  // 3. Vendor owner — only when the product belongs to a vendor (i.e.
+  //    the change was approved from a vendor's submission). Admins
+  //    writing a Yobou-Direct product have no vendor to ping.
+  if (product.vendor?.userId) {
+    const row = await db.notification.create({
+      data: { userId: product.vendor.userId, kind, title: t, body: b, link: l, meta: JSON.stringify(meta) },
+    });
+    pushToUser(product.vendor.userId, row);
+  }
+}
+
+function safeParseJson(s) {
+  try { return JSON.parse(s); } catch { return null; }
+}
+
+/**
  * Notify many users in one call. Used by /api/admin/broadcast.
  *
  * Returns { created: number, suppressed: number } so the caller can
@@ -265,12 +384,17 @@ module.exports = {
   unregisterClient,
   registerAdmin,
   unregisterAdmin,
+  registerCatalog,
+  unregisterCatalog,
   liveClientsFor,
   liveAdmins,
   notify,
   notifyMany,
   pushToUser,
   pushToAdmins,
+  pushCatalog,
+  pushPublic,
   notifyOrderAudience,
+  notifyProductChange,
   audit,
 };
