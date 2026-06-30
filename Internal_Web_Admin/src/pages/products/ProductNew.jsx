@@ -11,14 +11,16 @@
 //   - Cancel-with-confirmation when the form is dirty (DirtyGuardModal).
 //   - Status select lets the admin save as DRAFT without leaving the
 //     page, separate from the prominent "Publish product" CTA.
-//   - After a successful save, the draft is cleared and we navigate
-//     back to /products.
+//   - After a successful save, instead of a blank redirect, we render
+//     ProductPublishedSuccess: a two-step confirmation with a deep link
+//     to the storefront and an optional "Notify partners" step.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '../../api';
 import Icon from '../../components/Icon';
 import ProductFormFields from '../../components/ProductFormFields';
 import ProductPreviewCard from '../../components/ProductPreviewCard';
+import ProductPublishedSuccess from '../../components/ProductPublishedSuccess';
 import DirtyGuardModal from '../../components/DirtyGuardModal';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useFormDraft } from '../../lib/useFormDraft';
@@ -64,6 +66,11 @@ export default function ProductNew() {
     if (!initialFormRef.current) return false;
     return JSON.stringify(form) !== JSON.stringify(initialFormRef.current);
   }, [form]);
+  // After a successful save we render the success page instead of the
+  // form. Stash the saved product so ProductPublishedSuccess can show
+  // the deep link + recipient picker without a refetch.
+  const [publishedProduct, setPublishedProduct] = useState(null);
+  const [publishedAction, setPublishedAction] = useState(null);
 
   // Seed form from server response (edit mode) and snapshot the
   // initial value so dirty-tracking has a stable baseline.
@@ -105,14 +112,18 @@ export default function ProductNew() {
     setBusy(true);
     setErr('');
     try {
+      let saved;
       if (isEdit) {
-        await api(`/api/products/${id}`, { method: 'PATCH', body: next });
+        const res = await api(`/api/products/${id}`, { method: 'PATCH', body: next });
+        saved = res.product;
       } else {
-        await api('/api/products/admin', { method: 'POST', body: next });
+        const res = await api('/api/products/admin', { method: 'POST', body: next });
+        saved = res.product;
       }
       clearDraft();
       setSavedAt(new Date());
-      setTimeout(() => navigate('/products'), 600);
+      setPublishedProduct(saved);
+      setPublishedAction(isEdit ? 'update' : 'create');
     } catch (e) {
       setErr(e.data?.error || e.message || 'Could not save product.');
     } finally {
@@ -150,6 +161,13 @@ export default function ProductNew() {
 
   if (isEdit && productApi.error && !productApi.data) {
     return <RetryError message="Couldn't load product." onRetry={productApi.refetch} />;
+  }
+
+  // After a successful save we hide the form and render the success
+  // page. The user is in control: they can navigate away (top nav still
+  // works) or stay to notify partners.
+  if (publishedProduct) {
+    return <ProductPublishedSuccess product={publishedProduct} action={publishedAction} />;
   }
 
   return (
