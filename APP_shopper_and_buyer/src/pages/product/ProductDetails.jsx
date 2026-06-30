@@ -8,6 +8,7 @@ import { productImages } from '../../lib/productImage';
 import { colorToHex } from '../../lib/colorSwatch';
 import { formatPrice } from '../../lib/format';
 import { useCatalogStream } from '../../lib/useSse';
+import { useRecentlyViewed } from '../../lib/useRecentlyViewed';
 
 export default function ProductDetails() {
   const { id } = useParams();
@@ -18,6 +19,11 @@ export default function ProductDetails() {
   const wishlist = useStore((s) => s.wishlist);
   const currency = useStore((s) => s.user?.currency || 'USD');
   const { data, error, loading, refetch } = useApi(`/api/products/${id}`);
+  // Record this view for the "Recently viewed" rail on Home. Fires once
+  // per product load — we don't track on every refetch so a live-sync
+  // event doesn't bubble the same product back to the top.
+  const { track: trackRecent } = useRecentlyViewed();
+  const trackedRef = useRef(null);
   // Live sync — refetch when an event targets THIS product. Includes
   // product_variants_changed so a vendor/admin editing the variant
   // matrix updates the storefront without a manual refresh.
@@ -33,6 +39,16 @@ export default function ProductDetails() {
     refetch();
   });
   const p = data?.product;
+  // Record the view in the recently-viewed list once the product is
+  // resolved. The ref guard prevents re-tracking on live-sync refetches
+  // for the same product, which would otherwise bubble it to the top
+  // every time a vendor edits a variant.
+  useEffect(() => {
+    if (p?.id && trackedRef.current !== p.id) {
+      trackedRef.current = p.id;
+      trackRecent(p.id);
+    }
+  }, [p?.id, trackRecent]);
   const [qty, setQty] = useState(1);
   const [activeImage, setActiveImage] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -205,12 +221,22 @@ export default function ProductDetails() {
           <div className="text-label-md text-on-surface-variant uppercase">{p.category}</div>
           <h1 className="mt-1 text-headline-lg font-bold">{p.name}</h1>
           <div className="mt-2 flex items-center gap-3">
-            <div className="flex items-center gap-0.5 text-secondary">
-              {[1,2,3,4,5].map((s) => <Icon key={s} name="star" fill={s <= 4} className="text-[16px]" />)}
-            </div>
-            <span className="text-label-md text-on-surface-variant">
-              4.0 · {hasVariants ? `${p.stock} in stock` : `${p.stock} in stock`}
-            </span>
+            {typeof p.rating === 'number' && p.rating > 0 ? (
+              <>
+                <div className="flex items-center gap-0.5 text-secondary">
+                  {[1,2,3,4,5].map((s) => (
+                    <Icon key={s} name="star" fill={s <= Math.round(p.rating)} className="text-[16px]" />
+                  ))}
+                </div>
+                <span className="text-label-md text-on-surface-variant">
+                  {p.rating.toFixed(1)}{typeof p.reviewCount === 'number' && p.reviewCount > 0 ? ` (${p.reviewCount} review${p.reviewCount === 1 ? '' : 's'})` : ''} · {p.stock} in stock
+                </span>
+              </>
+            ) : (
+              <span className="text-label-md text-on-surface-variant/70 italic">
+                No reviews yet · {p.stock} in stock
+              </span>
+            )}
           </div>
           <div className="mt-3">
             <span className="text-headline-lg font-bold text-primary">{formatPrice(p.priceCents, currency)}</span>

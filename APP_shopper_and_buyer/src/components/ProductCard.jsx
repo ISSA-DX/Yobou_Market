@@ -25,8 +25,12 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
   const listPrice = product.compareAtPriceCents
     ? formatPrice(product.compareAtPriceCents, currency)
     : null;
-  const rating = 4;
-  const reviews = Math.floor(product.stock > 0 ? product.stock * 7 + 12 : 0);
+  // Real ratings live on the product when the catalog exposes them. Until
+  // the backend ships a real rating pipeline, we render an honest
+  // "No reviews yet" chip rather than fake stars derived from stock.
+  // This avoids misleading shoppers about product quality.
+  const hasRealRating = typeof product.rating === 'number' && product.rating > 0;
+  const reviewCount = typeof product.reviewCount === 'number' ? product.reviewCount : 0;
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -117,18 +121,24 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
           </h3>
         </Link>
 
-        <div className="mt-1.5 flex items-center gap-1.5">
-          <div className="flex items-center">
-            {[1, 2, 3, 4, 5].map((s) => (
-              <Icon
-                key={s}
-                name="star"
-                fill={s <= Math.round(rating)}
-                className={`text-[14px] ${s <= Math.round(rating) ? 'text-secondary' : 'text-surface-high'}`}
-              />
-            ))}
-          </div>
-          <span className="text-label-md text-on-surface-variant">{reviews}</span>
+        <div className="mt-1.5 flex items-center gap-1.5 min-h-[20px]">
+          {hasRealRating ? (
+            <>
+              <div className="flex items-center">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <Icon
+                    key={s}
+                    name="star"
+                    fill={s <= Math.round(product.rating)}
+                    className={`text-[14px] ${s <= Math.round(product.rating) ? 'text-secondary' : 'text-surface-high'}`}
+                  />
+                ))}
+              </div>
+              <span className="text-label-md text-on-surface-variant">{product.rating.toFixed(1)}{reviewCount > 0 ? ` (${reviewCount})` : ''}</span>
+            </>
+          ) : (
+            <span className="text-label-md text-on-surface-variant/70 italic">No reviews yet</span>
+          )}
         </div>
 
         <div className="mt-2">

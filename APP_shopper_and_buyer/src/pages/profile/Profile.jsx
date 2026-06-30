@@ -17,7 +17,7 @@ const SECTIONS = [
   {
     title: 'Shopping',
     items: [
-      { icon: 'favorite', label: 'Wishlist', to: '/profile' },
+      { icon: 'favorite', label: 'Wishlist', to: '/wishlist' },
       { icon: 'rate_review', label: 'My reviews', to: '/profile' },
       { icon: 'receipt_long', label: 'Order history', to: '/orders' },
     ],
@@ -179,7 +179,7 @@ export default function Profile() {
             <div className="mt-1 text-headline-md font-bold">{orders.length}</div>
             <div className="text-label-md text-on-surface-variant">Orders</div>
           </Link>
-          <Link to="/profile" className="card p-4 text-center hover:shadow-float transition">
+          <Link to="/wishlist" className="card p-4 text-center hover:shadow-float transition">
             <Icon name="favorite" className="text-tertiary text-[24px] mx-auto" />
             <div className="mt-1 text-headline-md font-bold">{wishlist.length}</div>
             <div className="text-label-md text-on-surface-variant">Wishlist</div>

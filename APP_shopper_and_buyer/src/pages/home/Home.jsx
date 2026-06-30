@@ -7,6 +7,7 @@ import ProductCard from '../../components/ProductCard';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useNotifications } from '../../lib/useNotifications';
 import { useProductLiveSync } from '../../lib/useProductLiveSync';
+import { useRecentlyViewed } from '../../lib/useRecentlyViewed';
 import { toast } from '../../lib/toast';
 
 const CATS = [
@@ -49,9 +50,27 @@ export default function Home() {
   const { data, error, loading, refetch } = useApi('/api/products');
   // Live sync — Home page refetches when any product is created/updated/deleted.
   useProductLiveSync(refetch);
+  // Recently viewed rail — guest-friendly via localStorage.
+  const { ids: recentIds, clear: clearRecent } = useRecentlyViewed();
 
   const all = data?.products || [];
-  const flashDeals = all.slice(0, 4);
+  // "Deals" — products with a real compare-at price set higher than the
+  // current price. We sort by discount % so the biggest savings lead the
+  // section. The hero banner below uses the top deal to render a real
+  // copy line, not generic marketing. If no product has a discount
+  // configured, the section silently disappears — no fake "Up to 50% off"
+  // banner that isn't backed by data.
+  const deals = all
+    .filter((p) => typeof p.compareAtPriceCents === 'number'
+      && p.compareAtPriceCents > (p.priceCents || 0)
+      && p.stock > 0)
+    .sort((a, b) => {
+      const da = (a.compareAtPriceCents - (a.priceCents || 0)) / a.compareAtPriceCents;
+      const db = (b.compareAtPriceCents - (b.priceCents || 0)) / b.compareAtPriceCents;
+      return db - da;
+    });
+  const topDeal = deals[0] || null;
+  const dealCount = deals.length;
 
   async function quickAdd(p) {
     try {
@@ -117,19 +136,54 @@ export default function Home() {
         <RetryError message="Couldn't load products." onRetry={refetch} />
       ) : null}
 
-      {/* Hero banner */}
-      <div className="card p-5 bg-gradient-to-br from-primary to-primary-container text-white relative overflow-hidden">
-        <div className="relative z-10 max-w-[60%]">
-          <div className="chip bg-white/15 text-white border-0 mb-3">
-            <Icon name="bolt" className="text-[14px]" /> Limited offer
+      {/* Hero banner — data-driven when a real deal exists, otherwise a
+          neutral on-brand welcome card. Renders nothing misleading. */}
+      {topDeal ? (
+        <Link
+          to={`/product/${topDeal.id}`}
+          className="card p-5 bg-gradient-to-br from-primary to-primary-container text-white relative overflow-hidden block"
+        >
+          <div className="relative z-10 max-w-[60%]">
+            <div className="chip bg-white/15 text-white border-0 mb-3">
+              <Icon name="bolt" className="text-[14px]" /> Today's deal
+            </div>
+            <h2 className="text-headline-lg font-bold leading-tight line-clamp-2">
+              {Math.round(((topDeal.compareAtPriceCents - topDeal.priceCents) / topDeal.compareAtPriceCents) * 100)}% off · {topDeal.name}
+            </h2>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-headline-md font-bold">${(topDeal.priceCents / 100).toFixed(2)}</span>
+              <span className="text-label-md line-through opacity-80">${(topDeal.compareAtPriceCents / 100).toFixed(2)}</span>
+            </div>
+            <span className="mt-3 inline-block bg-white text-primary font-semibold px-4 py-2 rounded-full text-sm">
+              Shop the deal
+            </span>
           </div>
-          <h2 className="text-headline-lg font-bold leading-tight">Up to 50% off electronics this week</h2>
-          <Link to="/categories/Electronics" className="mt-4 inline-block bg-white text-primary font-semibold px-4 py-2 rounded-full text-sm">Shop the sale</Link>
+          <img
+            src={(() => {
+              try {
+                const urls = typeof topDeal.imageUrls === 'string' ? JSON.parse(topDeal.imageUrls) : (topDeal.imageUrls || []);
+                return urls[0] || '/seed-images/placeholder.svg';
+              } catch { return '/seed-images/placeholder.svg'; }
+            })()}
+            alt=""
+            loading="lazy"
+            className="absolute right-0 top-0 h-full w-1/2 object-cover opacity-30"
+            onError={(e) => { e.currentTarget.src = '/seed-images/placeholder.svg'; }}
+          />
+        </Link>
+      ) : (
+        <div className="card p-5 bg-gradient-to-br from-primary to-primary-container text-white relative overflow-hidden">
+          <div className="relative z-10 max-w-[70%]">
+            <h2 className="text-headline-lg font-bold leading-tight">Welcome to Yobou</h2>
+            <p className="mt-2 text-label-md opacity-90">
+              Shop from {all.length} product{all.length === 1 ? '' : 's'} across {CATS.length} categories.
+            </p>
+            <Link to="/categories" className="mt-4 inline-block bg-white text-primary font-semibold px-4 py-2 rounded-full text-sm">
+              Browse all
+            </Link>
+          </div>
         </div>
-        <div className="absolute -right-6 -bottom-6 w-40 h-40 rounded-full bg-white/10 flex items-center justify-center">
-          <Icon name="shopping_bag" className="text-[88px] text-white/30" fill />
-        </div>
-      </div>
+      )}
 
       {/* Categories */}
       <section>
@@ -159,17 +213,19 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Flash deals */}
-      {flashDeals.length > 0 && (
+      {/* Deals rail — only when at least one product has a real discount. */}
+      {dealCount > 0 && (
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-headline-md font-bold flex items-center gap-2">
-              <Icon name="bolt" className="text-secondary" /> Flash Deals
+              <Icon name="bolt" className="text-secondary" /> Deals
             </h2>
-            <Link to="/categories" className="text-sm text-primary font-semibold">See all</Link>
+            <span className="text-label-md text-on-surface-variant">
+              {dealCount} item{dealCount === 1 ? '' : 's'} on sale
+            </span>
           </div>
           <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4">
-            {flashDeals.map((p) => (
+            {deals.slice(0, 8).map((p) => (
               <div key={p.id} className="min-w-[170px] sm:min-w-[200px]">
                 <ProductCard product={p} onAdd={quickAdd} />
               </div>
@@ -179,6 +235,46 @@ export default function Home() {
       )}
 
       {/* Recommended */}
+
+      {/* Recently viewed — localStorage-backed, hidden when empty. The
+          rail only renders products that still exist in the public
+          catalog; if a vendor removed one since the user last saw it,
+          the card just doesn't show up. */}
+      {recentIds.length > 0 && all.length > 0 && (() => {
+        const byId = new Map(all.map((p) => [p.id, p]));
+        const recent = recentIds
+          .map((rid) => byId.get(rid))
+          .filter(Boolean)
+          .slice(0, 12);
+        if (recent.length === 0) return null;
+        return (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-headline-md font-bold flex items-center gap-2">
+                <Icon name="history" className="text-on-surface-variant" /> Recently viewed
+              </h2>
+              <button
+                onClick={clearRecent}
+                className="text-label-md text-on-surface-variant hover:text-primary"
+                aria-label="Clear recently viewed"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4">
+              {recent.map((p) => (
+                <div key={p.id} className="min-w-[170px] sm:min-w-[200px]">
+                  <ProductCard product={p} onAdd={quickAdd} />
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
+
+      {/* Recommended — full catalog grid. Lives below Recently viewed so
+          shoppers who return to a product they were considering see it
+          again before falling into the broader discovery loop. */}
       {all.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-3">

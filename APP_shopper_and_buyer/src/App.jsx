@@ -35,6 +35,7 @@ const Profile = lazy(() => import('./pages/profile/Profile.jsx'));
 const ProfileAddresses = lazy(() => import('./pages/profile/ProfileAddresses.jsx'));
 const ProfileCards = lazy(() => import('./pages/profile/ProfileCards.jsx'));
 const ProfilePreferences = lazy(() => import('./pages/profile/ProfilePreferences.jsx'));
+const Wishlist = lazy(() => import('./pages/wishlist/Wishlist.jsx'));
 const Notifications = lazy(() => import('./pages/Notifications.jsx'));
 const GooglePicker = lazy(() => import('./pages/auth/GooglePicker.jsx'));
 const AppleConfirm = lazy(() => import('./pages/auth/AppleConfirm.jsx'));
@@ -111,6 +112,7 @@ export default function App() {
             <Route path="/profile/addresses" element={<ErrorBoundary><ProfileAddresses /></ErrorBoundary>} />
             <Route path="/profile/cards" element={<ErrorBoundary><ProfileCards /></ErrorBoundary>} />
             <Route path="/profile/preferences" element={<ErrorBoundary><ProfilePreferences /></ErrorBoundary>} />
+            <Route path="/wishlist" element={<ErrorBoundary><Wishlist /></ErrorBoundary>} />
             <Route path="/notifications" element={<ErrorBoundary><Notifications /></ErrorBoundary>} />
           </Route>
 
