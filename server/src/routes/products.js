@@ -32,6 +32,18 @@ function requireAdminOrApprovedVendor(req, res, next) {
   return requireApprovedVendor(req, res, next);
 }
 
+// Build an absolute URL from the live request so <img src=...> resolves
+// correctly when the SPA is served from a different origin than the API
+// (e.g. the GitHub-Pages deployment where the API is on Render and the
+// SPA is on isaa-dx.github.io). `app.set('trust proxy', 1)` in
+// server/src/index.js makes x-forwarded-proto/host trustworthy.
+function absoluteUploadUrl(req, filename) {
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0];
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0];
+  if (!host) return `/uploads/${filename}`; // single-host fallback
+  return `${proto}://${host}/uploads/${filename}`;
+}
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
@@ -52,7 +64,10 @@ const upload = multer({
 router.post('/upload', requireAuth, requireAdminOrApprovedVendor, upload.single('image'), (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'NO_FILE' });
-    res.json({ url: `/uploads/${req.file.filename}` });
+    // Absolute URL — see absoluteUploadUrl. Required so the deployed
+    // GitHub-Pages admin can render the thumbnail without same-origin
+    // collision with the API.
+    res.json({ url: absoluteUploadUrl(req, req.file.filename) });
   } catch (err) { next(err); }
 });
 

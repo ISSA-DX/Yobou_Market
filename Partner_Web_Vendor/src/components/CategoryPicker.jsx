@@ -6,8 +6,8 @@ import { api } from '../api';
 import Modal from './Modal';
 import Icon from './Icon';
 
-export default function CategoryPicker({ value, onChange }) {
-  const { data, refetch, error } = useApi('/api/categories');
+export default function CategoryPicker({ value, onChange, id, error }) {
+  const { data, refetch, error: fetchErr } = useApi('/api/categories');
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [creatingErr, setCreatingErr] = useState('');
@@ -43,7 +43,8 @@ export default function CategoryPicker({ value, onChange }) {
   return (
     <>
       <select
-        className="input mt-1 w-full"
+        id={id}
+        className={`input mt-1 w-full ${error ? 'border-error' : ''}`}
         value={value || ''}
         onChange={(e) => {
           if (e.target.value === '__create__') {
@@ -53,6 +54,8 @@ export default function CategoryPicker({ value, onChange }) {
             onChange(e.target.value);
           }
         }}
+        aria-invalid={Boolean(error) || undefined}
+        aria-describedby={error ? `${id || 'cat'}-err` : undefined}
       >
         <option value="" disabled>
           Select a category…
@@ -65,7 +68,7 @@ export default function CategoryPicker({ value, onChange }) {
         <option value="__create__">+ Create new category…</option>
       </select>
 
-      {error && !data && (
+      {fetchErr && !data && (
         <div className="text-error text-sm flex items-center gap-1 mt-2">
           <Icon name="error" className="text-[18px]" />
           Couldn't load categories.

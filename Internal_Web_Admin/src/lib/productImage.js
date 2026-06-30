@@ -7,6 +7,22 @@
 // Vite's `base: '/admin/'` rewrites asset URLs and serves public/* under
 // that prefix, so we resolve fallback paths through import.meta.env.BASE_URL.
 const BASE = import.meta.env.BASE_URL || '/';
+const API = import.meta.env.VITE_API_BASE || '';
+
+// Heal older DB rows that store relative paths (`/uploads/foo.png`).
+// When the SPA is served from the API's own host (single-host prod,
+// happy during local dev), `API` is empty and we leave them as-is.
+// When the SPA is served from GitHub Pages (deployed pilot), we
+// rewrite to the Render API URL. New uploads are already absolute
+// (see server/src/routes/products.js absoluteUploadUrl), so this is
+// purely a back-compat safety net for pre-fix rows.
+function resolveUrl(u) {
+  if (!u) return u;
+  if (/^(https?:|data:|blob:)/i.test(u)) return u; // already absolute
+  if (u.startsWith('/') && API) return `${API}${u}`;
+  return u;
+}
+
 const CATEGORY_KEYS = {
   electronics: 'electronics',
   fashion: 'fashion',
@@ -38,7 +54,7 @@ function parseImages(raw) {
 
 export function productImage(product) {
   if (!product) return `${BASE}seed-images/placeholder.svg`;
-  const imgs = parseImages(product.imageUrls);
+  const imgs = parseImages(product.imageUrls).map(resolveUrl);
   if (imgs.length && imgs[0]) return imgs[0];
   const slug = pickCategory(product.category);
   return `${BASE}seed-images/${slug}.svg`;
@@ -46,7 +62,7 @@ export function productImage(product) {
 
 export function productImages(product) {
   if (!product) return [`${BASE}seed-images/placeholder.svg`];
-  const imgs = parseImages(product.imageUrls);
+  const imgs = parseImages(product.imageUrls).map(resolveUrl);
   if (imgs.length) return imgs;
   const slug = pickCategory(product.category);
   return [`${BASE}seed-images/${slug}.svg`];

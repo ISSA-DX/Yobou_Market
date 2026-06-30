@@ -1,26 +1,45 @@
+// ProductFormFields — fields shared by the admin and partner product
+// forms. The visual style is intentionally simple (Tailwind utility
+// classes from the project's `.input` / `.btn-*` set) so both apps
+// render identically.
+//
+// Accessibility:
+//   - Every input has an associated <label htmlFor> (or aria-label for
+//     the icon-only remove button).
+//   - Required inputs set aria-required and get aria-describedby
+//     pointing at the field's help text.
+//   - The drop zone is keyboard-focusable (tabindex=0) and Enter /
+//     Space opens the file picker — same affordance as a real button.
+//
+// Media model:
+//   - imageUrls[] is the source of truth. Order matters: index 0 is
+//     the cover shown in the catalog grid and on the product detail
+//     page. The UI exposes ↑ / ↓ buttons and a "Set as cover" radio
+//     to reorder without leaving the form.
 import { useRef, useState } from 'react';
 import { apiForm } from '../api';
 import CategoryPicker from './CategoryPicker';
 import Icon from './Icon';
 
-export default function ProductFormFields({ form, update }) {
+export default function ProductFormFields({ form, update, errors = {} }) {
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState('');
+  const [dragging, setDragging] = useState(false);
 
-  // Uses the friendly `apiForm` wrapper — sets the correct Content-Type
-  // (multipart/form-data; boundary=...) automatically, surfaces server
-  // error messages, and turns offline/CORS failures into a clear banner.
   async function uploadFile(file) {
     const body = new FormData();
     body.append('image', file);
-    const { url } = await apiForm('/api/products/upload', { method: 'POST', body });
+    const { url } = await apiForm('/api/products/upload', { body });
     return url;
   }
 
   async function handleFiles(files) {
     const images = Array.from(files).filter((f) => f.type.startsWith('image/'));
-    if (!images.length) return;
+    if (!images.length) {
+      setUploadErr('Only image files (PNG, JPG, WEBP) are supported.');
+      return;
+    }
     setUploading(true);
     setUploadErr('');
     try {
@@ -38,78 +57,173 @@ export default function ProductFormFields({ form, update }) {
   }
 
   function removeImage(i) {
-    const arr = [...form.imageUrls];
+    const arr = [...(form.imageUrls || [])];
     arr.splice(i, 1);
+    update('imageUrls', arr);
+  }
+
+  function moveImage(i, dir) {
+    const arr = [...(form.imageUrls || [])];
+    const j = i + dir;
+    if (j < 0 || j >= arr.length) return;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    update('imageUrls', arr);
+  }
+
+  function setAsCover(i) {
+    if (i === 0) return;
+    const arr = [...(form.imageUrls || [])];
+    const [picked] = arr.splice(i, 1);
+    arr.unshift(picked);
     update('imageUrls', arr);
   }
 
   function onDrop(e) {
     e.preventDefault();
+    setDragging(false);
     handleFiles(e.dataTransfer.files);
   }
 
+  const imgs = form.imageUrls || [];
+  const FALLBACK = `${import.meta.env.BASE_URL || '/'}seed-images/placeholder.svg`;
+  const onImgError = (e) => { e.currentTarget.src = FALLBACK; };
+
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="text-label-md text-on-surface-variant">Product name *</label>
-        <input
-          className="input mt-1"
-          value={form.name}
-          onChange={(e) => update('name', e.target.value)}
-          placeholder="e.g. Wireless Earbuds Pro"
-          required
-        />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className="space-y-6">
+      {/* ───── Identity ───── */}
+      <section aria-labelledby="pf-identity" className="space-y-3">
         <div>
-          <label className="text-label-md text-on-surface-variant">Category *</label>
-          <CategoryPicker
-            value={form.category}
-            onChange={(v) => update('category', v)}
-          />
+          <h3 id="pf-identity" className="font-bold text-base">Identity</h3>
+          <p className="text-label-md text-on-surface-variant">How shoppers find and recognise your product.</p>
         </div>
+
         <div>
-          <label className="text-label-md text-on-surface-variant">Stock *</label>
+          <label htmlFor="pf-name" className="text-label-md text-on-surface-variant">
+            Product name <span aria-hidden="true" className="text-error">*</span>
+          </label>
           <input
-            type="number"
-            min="0"
+            id="pf-name"
             className="input mt-1"
-            value={form.stock}
-            onChange={(e) => update('stock', Math.max(0, Number(e.target.value) || 0))}
+            value={form.name}
+            onChange={(e) => update('name', e.target.value)}
+            placeholder="e.g. Wireless Earbuds Pro"
+            aria-required="true"
+            aria-invalid={Boolean(errors.name) || undefined}
+            aria-describedby={errors.name ? 'pf-name-err' : 'pf-name-help'}
             required
           />
+          {errors.name ? (
+            <div id="pf-name-err" role="alert" className="text-error text-sm mt-1">{errors.name}</div>
+          ) : (
+            <div id="pf-name-help" className="text-label-sm text-on-surface-variant mt-1">
+              Use the brand name shoppers search for (e.g. “Anker Soundcore Life P3”).
+            </div>
+          )}
         </div>
-      </div>
 
-      <div>
-        <label className="text-label-md text-on-surface-variant">Price *</label>
-        <div className="mt-1 relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">$</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            className="input pl-7"
-            value={(form.priceCents / 100).toFixed(2)}
-            onChange={(e) => update('priceCents', Math.round(Number(e.target.value) * 100))}
-            required
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="pf-category" className="text-label-md text-on-surface-variant">
+              Category <span aria-hidden="true" className="text-error">*</span>
+            </label>
+            <CategoryPicker
+              id="pf-category"
+              value={form.category}
+              onChange={(v) => update('category', v)}
+              error={errors.category}
+            />
+            {errors.category && (
+              <div role="alert" className="text-error text-sm mt-1">{errors.category}</div>
+            )}
+          </div>
+          <div>
+            <label htmlFor="pf-stock" className="text-label-md text-on-surface-variant">
+              Stock <span aria-hidden="true" className="text-error">*</span>
+            </label>
+            <input
+              id="pf-stock"
+              type="number"
+              min="0"
+              className="input mt-1"
+              value={form.stock}
+              onChange={(e) => update('stock', Math.max(0, Number(e.target.value) || 0))}
+              aria-required="true"
+              aria-invalid={Boolean(errors.stock) || undefined}
+              aria-describedby="pf-stock-help"
+              required
+            />
+            <div id="pf-stock-help" className="text-label-sm text-on-surface-variant mt-1">
+              Units available. Set to 0 to mark “Out of stock” without removing the listing.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ───── Pricing ───── */}
+      <section aria-labelledby="pf-pricing" className="space-y-3 pt-3 border-t border-outline-variant/30">
+        <div>
+          <h3 id="pf-pricing" className="font-bold text-base">Pricing</h3>
+          <p className="text-label-md text-on-surface-variant">What shoppers pay at checkout.</p>
+        </div>
+        <div>
+          <label htmlFor="pf-price" className="text-label-md text-on-surface-variant">
+            Price (USD) <span aria-hidden="true" className="text-error">*</span>
+          </label>
+          <div className="mt-1 relative">
+            <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">$</span>
+            <input
+              id="pf-price"
+              type="number"
+              min="0"
+              step="0.01"
+              className="input pl-7"
+              value={(form.priceCents / 100).toFixed(2)}
+              onChange={(e) => update('priceCents', Math.round(Math.max(0, Number(e.target.value) || 0) * 100))}
+              aria-required="true"
+              aria-invalid={Boolean(errors.priceCents) || undefined}
+              aria-describedby={errors.priceCents ? 'pf-price-err' : 'pf-price-help'}
+              required
+            />
+          </div>
+          {errors.priceCents ? (
+            <div id="pf-price-err" role="alert" className="text-error text-sm mt-1">{errors.priceCents}</div>
+          ) : (
+            <div id="pf-price-help" className="text-label-sm text-on-surface-variant mt-1">
+              Stored in cents to avoid floating-point rounding on totals.
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ───── Description ───── */}
+      <section aria-labelledby="pf-desc" className="space-y-3 pt-3 border-t border-outline-variant/30">
+        <div>
+          <h3 id="pf-desc" className="font-bold text-base">Description</h3>
+          <p className="text-label-md text-on-surface-variant">Features, materials, dimensions, warranty — what a shopper needs to know.</p>
+        </div>
+        <div>
+          <label htmlFor="pf-description" className="sr-only">Product description</label>
+          <textarea
+            id="pf-description"
+            className="input min-h-32"
+            value={form.description}
+            onChange={(e) => update('description', e.target.value)}
+            placeholder="What makes this product special? What's in the box? Any warranty terms?"
           />
+          <div className="text-label-sm text-on-surface-variant mt-1">
+            Plain text is fine. Markdown is not rendered on the storefront yet.
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div>
-        <label className="text-label-md text-on-surface-variant">Description</label>
-        <textarea
-          className="input mt-1 min-h-32"
-          value={form.description}
-          onChange={(e) => update('description', e.target.value)}
-          placeholder="Describe features, materials, dimensions, warranty…"
-        />
-      </div>
-
-      <div>
-        <label className="text-label-md text-on-surface-variant">Product media</label>
+      {/* ───── Media ───── */}
+      <section aria-labelledby="pf-media" className="space-y-3 pt-3 border-t border-outline-variant/30">
+        <div>
+          <h3 id="pf-media" className="font-bold text-base">Media</h3>
+          <p className="text-label-md text-on-surface-variant">
+            The <strong>first image</strong> is the cover shoppers see in the catalog grid. Use a square or 4:3 photo for best results.
+          </p>
+        </div>
         <input
           ref={fileRef}
           type="file"
@@ -119,10 +233,22 @@ export default function ProductFormFields({ form, update }) {
           onChange={(e) => handleFiles(e.target.files)}
         />
         <div
+          role="button"
+          tabIndex={0}
+          aria-label="Upload product images"
           onClick={() => fileRef.current?.click()}
-          onDragOver={(e) => e.preventDefault()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              fileRef.current?.click();
+            }
+          }}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
-          className="mt-1 card border-dashed border-2 border-outline/40 p-6 flex flex-col items-center text-on-surface-variant text-center cursor-pointer hover:bg-surface-low transition-colors"
+          className={`card border-2 border-dashed p-6 flex flex-col items-center text-on-surface-variant text-center cursor-pointer transition-colors ${
+            dragging ? 'border-primary bg-primary/5' : 'border-outline/40 hover:bg-surface-low'
+          }`}
         >
           <div className="w-10 h-10 rounded-full bg-surface-low flex items-center justify-center mb-2">
             {uploading ? (
@@ -131,34 +257,89 @@ export default function ProductFormFields({ form, update }) {
               <Icon name="add_photo_alternate" className="text-[22px]" />
             )}
           </div>
-          <div className="text-sm font-medium text-on-surface">{uploading ? 'Uploading…' : 'Drag & drop or click to upload'}</div>
-          <div className="text-label-sm mt-1">PNG, JPG, WEBP up to 5 MB each</div>
+          <div className="text-sm font-medium text-on-surface">
+            {uploading ? 'Uploading…' : dragging ? 'Release to upload' : 'Drag & drop or click to upload'}
+          </div>
+          <div className="text-label-sm mt-1">PNG, JPG, WEBP up to 5 MB each · multiple files OK</div>
         </div>
 
         {uploadErr && (
-          <div className="text-error text-sm flex items-center gap-1 mt-2">
-            <Icon name="error" className="text-[18px]" /> {uploadErr}
+          <div role="alert" className="card p-3 bg-error/10 text-error text-sm flex items-start gap-2">
+            <Icon name="error" className="text-[18px] shrink-0" />
+            <span>{uploadErr}</span>
           </div>
         )}
 
-        {form.imageUrls?.length > 0 && (
-          <div className="mt-3 grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
-            {form.imageUrls.map((url, i) => (
-              <div key={`${url}-${i}`} className="relative aspect-square rounded-md overflow-hidden bg-surface-low group">
-                <img src={url} alt="" className="w-full h-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => removeImage(i)}
-                  className="absolute top-1 right-1 w-6 h-6 rounded-full bg-white/90 shadow-card text-error opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                  aria-label="Remove image"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
+        {imgs.length === 0 ? (
+          <div className="text-label-md text-on-surface-variant italic">
+            You haven't added images yet. Uploaded images will appear here and the cover will be the first one.
           </div>
+        ) : (
+          <ol
+            className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+            aria-label="Uploaded product images. Use the arrows or Set as cover buttons to reorder."
+          >
+            {imgs.map((url, i) => (
+              <li
+                key={`${url}-${i}`}
+                className={`relative aspect-square rounded-md overflow-hidden bg-surface-low border-2 ${
+                  i === 0 ? 'border-primary' : 'border-transparent'
+                }`}
+              >
+                <img src={url} alt={i === 0 ? 'Cover image' : `Image ${i + 1}`} className="w-full h-full object-cover" onError={onImgError} />
+                {i === 0 && (
+                  <span className="absolute top-1 left-1 chip bg-primary text-white text-[11px]">
+                    <Icon name="star" className="text-[12px]" /> Cover
+                  </span>
+                )}
+                <div className="absolute top-1 right-1 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setAsCover(i)}
+                    disabled={i === 0}
+                    className="w-7 h-7 rounded-full bg-white/90 shadow-card text-on-surface disabled:opacity-30"
+                    aria-label={`Set image ${i + 1} as cover`}
+                    title="Set as cover"
+                  >
+                    <Icon name="star" className="text-[16px]" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeImage(i)}
+                    className="w-7 h-7 rounded-full bg-white/90 shadow-card text-error"
+                    aria-label={`Remove image ${i + 1}`}
+                    title="Remove"
+                  >
+                    <Icon name="close" className="text-[16px]" />
+                  </button>
+                </div>
+                <div className="absolute bottom-1 left-1 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => moveImage(i, -1)}
+                    disabled={i === 0}
+                    className="w-7 h-7 rounded-full bg-white/90 shadow-card text-on-surface disabled:opacity-30"
+                    aria-label={`Move image ${i + 1} up`}
+                    title="Move up"
+                  >
+                    <Icon name="arrow_upward" className="text-[16px]" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveImage(i, 1)}
+                    disabled={i === imgs.length - 1}
+                    className="w-7 h-7 rounded-full bg-white/90 shadow-card text-on-surface disabled:opacity-30"
+                    aria-label={`Move image ${i + 1} down`}
+                    title="Move down"
+                  >
+                    <Icon name="arrow_downward" className="text-[16px]" />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ol>
         )}
-      </div>
+      </section>
     </div>
   );
 }
