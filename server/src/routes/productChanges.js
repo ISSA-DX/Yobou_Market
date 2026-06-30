@@ -4,7 +4,7 @@ const { z } = require('zod');
 const { prisma } = require('../prisma');
 const { productChangeCreate, adminReview } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
-const { notify, audit, notifyProductChange } = require('../lib/notifications');
+const { notify, audit, notifyProductChange, notifyAdminsProductChangeSubmitted } = require('../lib/notifications');
 const { applyVariants } = require('./products');
 
 const router = express.Router();
@@ -66,6 +66,17 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
         status: 'PENDING',
       },
     });
+
+    // Fan out to every admin so the bell rings immediately and the
+    // vendor's submission doesn't sit in the queue unnoticed.
+    await notifyAdminsProductChangeSubmitted({
+      changeId: change.id,
+      vendorId,
+      action: data.action,
+      productId: change.productId,
+      productName: data.name || null,
+    });
+
     res.status(201).json({ change: parseChange(change) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });

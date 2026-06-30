@@ -6,7 +6,7 @@ const { z } = require('zod');
 const { prisma } = require('../prisma');
 const { productUpsert } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
-const { audit, notifyProductChange } = require('../lib/notifications');
+const { audit, notifyProductChange, notifyAdminsProductChangeSubmitted } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -245,6 +245,13 @@ router.patch('/vendor/:id/stock', requireAuth, requireApprovedVendor, async (req
         status: 'PENDING',
       },
     });
+    await notifyAdminsProductChangeSubmitted({
+      changeId: change.id,
+      vendorId,
+      action: 'UPDATE',
+      productId: product.id,
+      productName: product.name,
+    });
     res.status(202).json({
       change: parseChange(change),
       product: parseImageUrls(product),
@@ -311,6 +318,13 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
         variantsAction: Array.isArray(variants) && variants.length > 0 ? 'replace' : null,
         status: 'PENDING',
       },
+    });
+    await notifyAdminsProductChangeSubmitted({
+      changeId: change.id,
+      vendorId: req.user.vendor.id,
+      action: 'CREATE',
+      productId: null,
+      productName: rest.name,
     });
     res.status(201).json({ change: parseChange(change) });
   } catch (err) {
@@ -424,6 +438,13 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         status: 'PENDING',
       },
     });
+    await notifyAdminsProductChangeSubmitted({
+      changeId: change.id,
+      vendorId: req.user.vendor.id,
+      action: 'UPDATE',
+      productId: product.id,
+      productName: data.name || product.name,
+    });
     res.status(202).json({ change: parseChange(change) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
@@ -465,6 +486,13 @@ router.delete('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res
         action: 'DELETE',
         status: 'PENDING',
       },
+    });
+    await notifyAdminsProductChangeSubmitted({
+      changeId: change.id,
+      vendorId: req.user.vendor.id,
+      action: 'DELETE',
+      productId: product.id,
+      productName: product.name,
     });
     res.status(202).json({ change });
   } catch (err) { next(err); }

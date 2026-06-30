@@ -1,12 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import { api } from '../api';
 import { useNotifications } from '../lib/useNotifications';
+import { useNotificationStream } from '../lib/useSse';
 import Icon from './Icon';
 
+// PendingBadges — counts for the sidebar (Changes / Refunds).
+//
+// Exposes a refresh trigger via a singleton ref so the SSE notification
+// handler (see NotificationBell below) can refetch the counts the moment
+// a `product_change_submitted` or refund-related notification arrives —
+// without waiting for the 30s poll. The poll is the fallback for cases
+// where the SSE connection is throttled (background tab) or the server
+// missed the event for any reason.
+const countsRefreshBus = { current: null };
 function PendingBadges() {
   const [counts, setCounts] = useState({ changes: 0, refunds: 0 });
+  const loadRef = useRef(null);
+
   useEffect(() => {
     let alive = true;
     async function load() {
@@ -24,9 +36,16 @@ function PendingBadges() {
         // Non-admin (e.g. before login) won't have access — ignore.
       }
     }
+    loadRef.current = load;
+    countsRefreshBus.current = () => load();
     load();
     const t = setInterval(load, 30000);
-    return () => { alive = false; clearInterval(t); };
+    return () => {
+      alive = false;
+      clearInterval(t);
+      if (countsRefreshBus.current === load) countsRefreshBus.current = null;
+      loadRef.current = null;
+    };
   }, []);
   return counts;
 }
@@ -68,6 +87,18 @@ function NotificationBell() {
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications(10);
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+
+  // When a notification that affects the sidebar counts arrives, refresh
+  // the PendingBadges bus synchronously. The bell already increments
+  // its own badge via useNotifications, but the sidebar Changes/Refunds
+  // counts are owned by a separate poller — without this hook they'd
+  // lag by up to 30 seconds.
+  useNotificationStream((note) => {
+    if (!note || !note.kind) return;
+    if (note.kind === 'product_change_submitted' || note.kind === 'refund_requested') {
+      countsRefreshBus.current?.();
+    }
+  });
 
   function handleClick(note) {
     markRead(note.id);
