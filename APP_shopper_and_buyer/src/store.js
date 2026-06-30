@@ -4,6 +4,7 @@ import { api, setAccessToken, onAuthChange } from './api';
 const THEME_KEY = 'yobou:theme';
 const DARK_KEY = 'yobou:dark';
 const WISHLIST_KEY = 'yobou:wishlist';
+const DATA_SAVER_KEY = 'yobou:data-saver';
 
 function safeGet(key, fallback) {
   try {
@@ -83,6 +84,7 @@ export const useStore = create((set, get) => ({
   theme: initialTheme(),
   dark: themeToDark(initialTheme(), safeGet(DARK_KEY, '0') === '1'),
   wishlist: readWishlist(),
+  dataSaver: safeGet(DATA_SAVER_KEY, '0') === '1',
 
   setUser(user) {
     set({ user });
@@ -123,6 +125,17 @@ export const useStore = create((set, get) => ({
 
   isWishlisted(productId) {
     return get().wishlist.includes(productId);
+  },
+
+  setDataSaver(v) {
+    safeSet(DATA_SAVER_KEY, v ? '1' : '0');
+    set({ dataSaver: v });
+  },
+
+  toggleDataSaver() {
+    const next = !get().dataSaver;
+    safeSet(DATA_SAVER_KEY, next ? '1' : '0');
+    set({ dataSaver: next });
   },
 
   async login(email, password) {

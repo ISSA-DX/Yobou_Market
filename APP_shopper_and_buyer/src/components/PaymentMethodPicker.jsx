@@ -4,6 +4,7 @@ import Icon from './Icon';
 const METHODS = [
   { id: 'CARD', label: 'Credit / Debit card', icon: 'credit_card', sub: 'Visa, Mastercard, Amex' },
   { id: 'PAYPAL', label: 'PayPal', icon: 'account_balance_wallet', sub: 'You will be redirected' },
+  { id: 'MOBILE_MONEY', label: 'Mobile Money', icon: 'phone_iphone', sub: 'M-Pesa, MTN MoMo, Airtel, Orange' },
   { id: 'COD', label: 'Cash on Delivery', icon: 'local_shipping', sub: 'Pay when your order arrives' },
 ];
 

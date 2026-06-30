@@ -41,7 +41,14 @@ export async function refreshAccessToken() {
   return refreshing;
 }
 
-export async function api(path, { method = 'GET', body, headers = {}, auth = true, retry = true } = {}) {
+const MAX_NETWORK_RETRIES = 2;
+const RETRY_BASE_MS = 300;
+
+function isIdempotent(method) {
+  return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+}
+
+export async function api(path, { method = 'GET', body, headers = {}, auth = true, retry = true, retryCount = 0 } = {}) {
   const opts = {
     method,
     credentials: 'include',
@@ -54,10 +61,17 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
   // TypeError("Failed to fetch") before we ever see a Response. Wrap the call
   // so the error carries a `code` and a useful `message`, so callers can
   // distinguish "no network" from a real HTTP error.
+  // Idempotent GETs are retried with exponential backoff so a brief dropout
+  // doesn't break the home feed or search.
   let res;
   try {
     res = await fetch(`${BASE}${path}`, opts);
   } catch (networkErr) {
+    if (retry && isIdempotent(method) && retryCount < MAX_NETWORK_RETRIES) {
+      const delay = RETRY_BASE_MS * 2 ** retryCount;
+      await new Promise((r) => setTimeout(r, delay));
+      return api(path, { method, body, headers, auth, retry, retryCount: retryCount + 1 });
+    }
     const err = new Error(
       networkErr?.message || 'Network request failed'
     );

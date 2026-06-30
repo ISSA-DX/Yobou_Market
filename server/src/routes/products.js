@@ -90,7 +90,7 @@ router.get('/', async (req, res, next) => {
       where,
       orderBy: { createdAt: 'desc' },
       take,
-      include: { vendor: { select: { id: true, businessName: true } } },
+      include: { vendor: { select: { id: true, businessName: true, status: true } } },
     });
     res.json({ products: products.map(parseImageUrls) });
   } catch (err) { next(err); }
@@ -113,6 +113,66 @@ router.get('/categories', async (_req, res, next) => {
     });
     const counts = Object.fromEntries(groups.map((g) => [g.category, g._count._all]));
     res.json({ categories: rows.map((c) => ({ name: c.name, count: counts[c.name] || 0 })) });
+  } catch (err) { next(err); }
+});
+
+function discountPercent(product) {
+  if (!product?.compareAtPriceCents || product.compareAtPriceCents <= product.priceCents) return 0;
+  return Math.round(((product.compareAtPriceCents - product.priceCents) / product.compareAtPriceCents) * 100);
+}
+
+// Public curated home feed — returns the data slices the customer homepage
+// needs in a single round-trip, so the app can render skeletons once and
+// fill content without multiple cascading requests.
+// Each product also gets a `soldCount` so the UI can show real social proof
+// ("X sold") without adding a new schema column.
+router.get('/feed', async (_req, res, next) => {
+  try {
+    const all = await prisma.product.findMany({
+      where: { status: 'LIVE' },
+      orderBy: { createdAt: 'desc' },
+      include: { vendor: { select: { id: true, businessName: true, status: true } } },
+    });
+
+    // Real sales counts across non-cancelled/refunded orders.
+    const soldAgg = await prisma.orderItem.groupBy({
+      by: ['productId'],
+      where: {
+        order: { status: { notIn: ['CANCELLED', 'REFUNDED'] } },
+      },
+      _sum: { quantity: true },
+    });
+    const soldByProduct = Object.fromEntries(
+      soldAgg.map((r) => [r.productId, r._sum.quantity || 0])
+    );
+
+    const parsed = all.map((p) => ({
+      ...parseImageUrls(p),
+      soldCount: soldByProduct[p.id] || 0,
+    }));
+
+    const deals = parsed
+      .filter((p) => p.compareAtPriceCents && p.compareAtPriceCents > p.priceCents)
+      .sort((a, b) => discountPercent(b) - discountPercent(a))
+      .slice(0, 10)
+      .map((p) => ({ ...p, discountPercent: discountPercent(p) }));
+
+    const newArrivals = parsed.slice(0, 10);
+
+    const featuredCategories = ['Electronics', 'Fashion', 'Home', 'Beauty', 'Gaming', 'Phones', 'Sports'];
+    const featured = parsed
+      .filter((p) => featuredCategories.includes(p.category))
+      .slice(0, 10);
+
+    const trending = parsed
+      .filter((p) => p.soldCount > 0)
+      .sort((a, b) => b.soldCount - a.soldCount)
+      .slice(0, 10);
+
+    const usedIds = new Set([...deals, ...newArrivals, ...featured, ...trending].map((p) => p.id));
+    const rest = parsed.filter((p) => !usedIds.has(p.id));
+
+    res.json({ deals, newArrivals, featured, trending, all: rest.slice(0, 100) });
   } catch (err) { next(err); }
 });
 
@@ -184,7 +244,7 @@ router.get('/:id', async (req, res, next) => {
   try {
     const product = await prisma.product.findUnique({
       where: { id: req.params.id },
-      include: { vendor: { select: { id: true, businessName: true } } },
+      include: { vendor: { select: { id: true, businessName: true, status: true } } },
     });
     if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
     // Hide non-live products from the public storefront unless owner/admin.

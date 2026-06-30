@@ -6,6 +6,7 @@ import PaymentMethodPicker from '../../components/PaymentMethodPicker';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useStore } from '../../store';
 import { formatPrice } from '../../lib/format';
+import MobileMoneyForm from '../../components/MobileMoneyForm';
 
 const SHIPPING_CENTS = 499;
 const FREE_SHIPPING_THRESHOLD_CENTS = 5000;
@@ -14,6 +15,7 @@ export default function CheckoutPayment() {
   const navigate = useNavigate();
   const currency = useStore((s) => s.user?.currency || 'USD');
   const [method, setMethod] = useState('CARD');
+  const [mobileMoney, setMobileMoney] = useState({ provider: 'MPESA', phone: '', country: 'KE' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const { data, error, loading, refetch } = useApi('/api/cart');
@@ -36,6 +38,7 @@ export default function CheckoutPayment() {
       if (!addressId) { navigate('/checkout/shipping'); return; }
       const body = { addressId, paymentMethod: method };
       if (method === 'CARD' && card) body.card = card;
+      if (method === 'MOBILE_MONEY') body.mobileMoney = mobileMoney;
       const { order, payment } = await api('/api/orders', { method: 'POST', body });
       if (!payment.ok) {
         setErr(payment.reason === 'DECLINED' ? 'Card was declined. Try another payment method.' : 'Payment failed.');
@@ -75,6 +78,10 @@ export default function CheckoutPayment() {
       <h2 className="text-headline-md font-bold">Payment method</h2>
       <PaymentMethodPicker value={method} onChange={setMethod} />
 
+      {method === 'MOBILE_MONEY' && (
+        <MobileMoneyForm value={mobileMoney} onChange={setMobileMoney} />
+      )}
+
       {/* Express wallets */}
       <div className="space-y-2">
         <div className="text-label-md text-on-surface-variant">Express wallets</div>
@@ -111,10 +118,25 @@ export default function CheckoutPayment() {
 
       {err && <div className="text-error text-sm">{err}</div>}
 
+      <div className="card p-3 space-y-2 text-sm">
+        <div className="flex items-center gap-2 text-on-surface-variant">
+          <Icon name="verified_user" className="text-[18px] text-primary" />
+          <span>Secure, encrypted checkout</span>
+        </div>
+        <div className="flex items-center gap-2 text-on-surface-variant">
+          <Icon name="payments" className="text-[18px] text-primary" />
+          <span>Pay on delivery & mobile money available</span>
+        </div>
+        <div className="flex items-center gap-2 text-on-surface-variant">
+          <Icon name="storefront" className="text-[18px] text-primary" />
+          <span>Pickup point delivery available in major cities</span>
+        </div>
+      </div>
+
       <div className="fixed bottom-0 inset-x-0 p-4 bg-white border-t border-outline-variant/30">
         <button
           onClick={() => method === 'CARD' ? navigate('/checkout/card/new') : placeOrder()}
-          disabled={busy || items.length === 0}
+          disabled={busy || items.length === 0 || (method === 'MOBILE_MONEY' && !isMobileMoneyValid(mobileMoney))}
           className="btn-primary w-full py-3 max-w-screen-md mx-auto disabled:opacity-60"
         >
           {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
@@ -142,4 +164,8 @@ function humanizeOrderError(code) {
     case 'PRODUCT_NOT_AVAILABLE': return 'A product in your cart is no longer available.';
     default: return 'Could not place order. Please try again.';
   }
+}
+
+function isMobileMoneyValid(mm) {
+  return mm && mm.provider && mm.country?.length === 2 && mm.phone?.replace(/\D/g, '').length >= 8;
 }

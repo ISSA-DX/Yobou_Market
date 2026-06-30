@@ -18,6 +18,8 @@ const addressesRoutes = require('./routes/addresses');
 const paymentsRoutes = require('./routes/payments');
 const categoriesRoutes = require('./routes/categories');
 const eventsRoutes = require('./routes/events');
+const { rateLimit } = require('./lib/rateLimit');
+const { securityHeaders } = require('./lib/securityHeaders');
 
 const app = express();
 
@@ -25,6 +27,9 @@ const app = express();
 // so req.ip, rate limiters, and security middleware see the real client IP.
 // Required for Render — without this, every request looks like 127.0.0.1.
 app.set('trust proxy', 1);
+
+// Security headers — applied to every request, before routing.
+app.use(securityHeaders);
 
 const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || './uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -148,19 +153,24 @@ if (fs.existsSync(publicDir)) {
 // Health
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
+// Rate limits (in-memory; swap for Redis in multi-instance production).
+const authRateLimit = rateLimit({ category: 'auth', windowMs: 15 * 60_000, maxRequests: 20 });
+const orderRateLimit = rateLimit({ category: 'orders', windowMs: 60_000, maxRequests: 10 });
+const paymentRateLimit = rateLimit({ category: 'payments', windowMs: 60_000, maxRequests: 15 });
+
 // Routes
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authRateLimit, authRoutes);
 app.use('/api/products', productsRoutes);
 app.use('/api/product-changes', productChangesRoutes);
 app.use('/api/cart', cartRoutes);
-app.use('/api/orders', ordersRoutes);
+app.use('/api/orders', orderRateLimit, ordersRoutes);
 app.use('/api/orders/vendor', vendorOrdersRoutes);
 app.use('/api/vendor', vendorAnalyticsRoutes);
 app.use('/api/vendors', vendorsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/refunds', refundsRoutes);
 app.use('/api/addresses', addressesRoutes);
-app.use('/api/payments', paymentsRoutes);
+app.use('/api/payments', paymentRateLimit, paymentsRoutes);
 app.use('/api/categories', categoriesRoutes);
 app.use('/api', eventsRoutes);
 

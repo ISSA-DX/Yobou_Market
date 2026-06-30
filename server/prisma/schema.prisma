@@ -123,16 +123,21 @@ model Address {
 }
 
 model PaymentMethod {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String   // 'CARD'
-  brand       String   // 'visa' | 'mastercard' | 'amex' | 'discover'
-  last4       String
-  expiryMonth String
-  expiryYear  String
-  isDefault   Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           String   // 'CARD' | 'MOBILE_MONEY'
+  // Card-only fields
+  brand          String?   // 'visa' | 'mastercard' | 'amex' | 'discover'
+  last4          String?
+  expiryMonth    String?
+  expiryYear     String?
+  // Mobile-money-only fields
+  mobileProvider String?  // 'MPESA' | 'MTN' | 'AIRTEL' | 'ORANGE'
+  mobileNumber   String?  // full phone number, masked on display
+  mobileCountry  String?  // ISO country code, e.g. 'KE', 'NG', 'GH', 'CI'
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
 
   @@index([userId])
 }
@@ -168,8 +173,30 @@ model Order {
   items          OrderItem[]
   timeline       TimelineEvent[]
   refunds        Refund[]
+  mobileMoneyTxns MobileMoneyTxn[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+}
+
+model MobileMoneyTxn {
+  id            String   @id @default(cuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId        String
+  provider      String   // 'MPESA' | 'MTN' | 'AIRTEL' | 'ORANGE'
+  country       String
+  amountCents   Int
+  currency      String   @default("USD")
+  status        String   @default("PENDING") // PENDING | SUCCESS | FAILED | TIMEOUT | CANCELLED
+  providerTxnId String?  // opaque reference returned by the provider simulation
+  maskedPhone   String   // last 4 digits of the phone number for display
+  failureReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([userId])
+  @@index([status])
 }
 
 model OrderItem {

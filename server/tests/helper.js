@@ -35,6 +35,7 @@ async function resetTestDb() {
     prisma.sseConnection.deleteMany(),
     prisma.adminAuditLog.deleteMany(),
     prisma.timelineEvent.deleteMany(),
+    prisma.mobileMoneyTxn.deleteMany(),
     prisma.refund.deleteMany(),
     prisma.orderItem.deleteMany(),
     prisma.order.deleteMany(),

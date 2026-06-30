@@ -48,6 +48,11 @@
     @apply w-full px-4 py-3 rounded-md bg-surface-low border border-outline-variant/40
            focus:border-primary focus:ring-2 focus:ring-primary/15 focus:outline-none transition;
   }
+  .input-pill {
+    @apply w-full pl-10 pr-4 h-10 rounded-full bg-surface-low border border-outline-variant/40
+           focus:border-primary focus:ring-2 focus:ring-primary/10 focus:outline-none transition
+           text-sm;
+  }
   .card {
     @apply bg-white rounded-lg shadow-card;
   }
@@ -62,7 +67,8 @@
 /* Dark mode */
 .dark body { background: #0b1c30; color: #eaf1ff; }
 .dark .card { background: #15243f; color: #eaf1ff; }
-.dark .input { background: #1f3052; border-color: #2d3f63; color: #eaf1ff; }
+.dark .input,
+.dark .input-pill { background: #1f3052; border-color: #2d3f63; color: #eaf1ff; }
 .dark .btn-secondary { background: #1f3052; color: #b8c3ff; }
 .dark .chip { background: #1f3052; color: #a3b1c9; }
 .dark .bento { background: #15243f; }
@@ -103,3 +109,27 @@
 /* Hide scrollbar on horizontal scroll containers */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Reusable line-clamp utility */
+.line-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Network status banner fade-out animation */
+@keyframes fade-out-up {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-100%); }
+}
+.animate-fade-out {
+  animation: fade-out-up 0.5s ease-out forwards;
+  animation-delay: 1.5s;
+}

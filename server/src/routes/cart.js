@@ -25,7 +25,7 @@ router.get('/', async (req, res, next) => {
   try {
     const items = await prisma.cartItem.findMany({
       where: { userId: req.user.id },
-      include: { product: { include: { vendor: { select: { id: true, businessName: true } } } } },
+      include: { product: { include: { vendor: { select: { id: true, businessName: true, status: true } } } } },
       orderBy: { id: 'asc' },
     });
     const subtotal = items.reduce((s, i) => s + i.product.priceCents * i.quantity, 0);
@@ -56,7 +56,7 @@ router.post('/', async (req, res, next) => {
       where: { userId_productId: { userId: req.user.id, productId: data.productId } },
       update: { quantity: { increment: data.quantity } },
       create: { userId: req.user.id, productId: data.productId, quantity: data.quantity },
-      include: { product: { include: { vendor: { select: { id: true, businessName: true } } } } },
+      include: { product: { include: { vendor: { select: { id: true, businessName: true, status: true } } } } },
     });
     res.status(201).json({ item: parseCartItem(item) });
   } catch (err) {
@@ -91,7 +91,7 @@ router.patch('/:productId', async (req, res, next) => {
     const item = await prisma.cartItem.update({
       where: { userId_productId: { userId: req.user.id, productId: req.params.productId } },
       data: { quantity },
-      include: { product: { include: { vendor: { select: { id: true, businessName: true } } } } },
+      include: { product: { include: { vendor: { select: { id: true, businessName: true, status: true } } } } },
     });
     res.json({ item: parseCartItem(item) });
   } catch (err) {
