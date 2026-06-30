@@ -9,7 +9,8 @@ import Icon from './Icon';
 export default function CategoryPicker({ value, onChange, id, error }) {
   const { data, refetch, error: fetchErr } = useApi('/api/categories');
   const [open, setOpen] = useState(false);
-  const [highlight, setHighlight] = useState(-1);
+  const [highlight, setHighlight] = useState(-1); // index in list+other
+  const [filterOpen, setFilterOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -19,16 +20,22 @@ export default function CategoryPicker({ value, onChange, id, error }) {
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
   const filterRef = useRef(null);
+  const filterButtonRef = useRef(null);
 
   const all = data?.categories || [];
   const list = useMemo(() => all.filter((c) => c.isActive !== false), [all]);
 
+  // Filtered view. When the user has not opened the filter, `filter` is
+  // empty and we return the full list — that is the show-all default.
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return list;
     return list.filter((c) => c.name.toLowerCase().includes(q));
   }, [list, filter]);
 
+  // The listbox has [categories..., "Other — Create new"]. Indexing the
+  // last element gives us the sentinel without polluting the category ID
+  // namespace.
   const optionCount = filtered.length + 1;
   const selectedName = value || '';
   const selectedCategory = list.find((c) => c.name === selectedName);
@@ -36,9 +43,12 @@ export default function CategoryPicker({ value, onChange, id, error }) {
   const closePanel = useCallback(() => {
     setOpen(false);
     setHighlight(-1);
+    setFilterOpen(false);
     setFilter('');
   }, []);
 
+  // Outside-click closes the panel. We listen at the document level so a
+  // click on the trigger itself doesn't simultaneously open + close.
   useEffect(() => {
     if (!open) return undefined;
     function onDocClick(e) {
@@ -51,6 +61,9 @@ export default function CategoryPicker({ value, onChange, id, error }) {
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [open, closePanel]);
 
+  // Keyboard navigation on the trigger (Enter / Space / ↓ opens; ↑ sets
+  // highlight at last item). When the panel is open, navigation happens
+  // on the panel via its own keydown handler.
   function onTriggerKeyDown(e) {
     if (open) return;
     if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
@@ -96,6 +109,7 @@ export default function CategoryPicker({ value, onChange, id, error }) {
   function activateHighlight() {
     if (highlight < 0 || highlight >= optionCount) return;
     if (highlight === filtered.length) {
+      // "Other" row.
       setCreating(true);
       closePanel();
       return;
@@ -106,26 +120,19 @@ export default function CategoryPicker({ value, onChange, id, error }) {
     triggerRef.current?.focus();
   }
 
-  const bufferRef = useRef({ value: '', at: 0 });
+  // When the panel opens, focus the panel itself so ↑/↓ works without
+  // first clicking. We do NOT focus the filter input — the show-all
+  // pattern is the default and the user must opt in to filtering.
   useEffect(() => {
-    if (!open) return undefined;
-    function onWindowKeyDown(e) {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key.length !== 1) return;
-      const now = Date.now();
-      const cur = now - bufferRef.current.at > 600 ? '' : bufferRef.current.value;
-      const next = (cur + e.key).toLowerCase();
-      bufferRef.current = { value: next, at: now };
-      const idx = filtered.findIndex((c) => c.name.toLowerCase().startsWith(next));
-      if (idx >= 0) setHighlight(idx);
-    }
-    window.addEventListener('keydown', onWindowKeyDown);
-    return () => window.removeEventListener('keydown', onWindowKeyDown);
-  }, [open, filtered]);
-
-  useEffect(() => {
-    if (open) filterRef.current?.focus();
+    if (open) panelRef.current?.focus();
   }, [open]);
+
+  // When the user explicitly opens the filter, focus its input. When they
+  // close it (icon click or Esc inside the input), drop the focus back
+  // on the filter button.
+  useEffect(() => {
+    if (filterOpen) filterRef.current?.focus();
+  }, [filterOpen]);
 
   async function createCategory(e) {
     e?.preventDefault?.();
@@ -151,9 +158,43 @@ export default function CategoryPicker({ value, onChange, id, error }) {
     }
   }
 
+  function onFilterKeyDown(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      setFilterOpen(false);
+      setFilter('');
+      filterButtonRef.current?.focus();
+    } else if (e.key === 'Enter') {
+      // Enter inside the filter input shouldn't submit the form; if
+      // there's exactly one visible match, pick it. Otherwise open the
+      // create modal so the user can add the term they typed.
+      e.preventDefault();
+      if (filtered.length === 1) {
+        onChange(filtered[0].name);
+        closePanel();
+        triggerRef.current?.focus();
+      } else if (filtered.length === 0) {
+        setNewName(filter.trim());
+        setCreating(true);
+        closePanel();
+      }
+    } else if (e.key === 'ArrowDown') {
+      // Hand off focus to the list.
+      e.preventDefault();
+      panelRef.current?.focus();
+      setHighlight(0);
+    }
+  }
+
+  // Display string in the trigger. "Choose a category…" makes the action
+  // obvious. The previous "Select a category…" read like an empty list
+  // when the trigger was in its idle state.
   const triggerLabel = selectedCategory
     ? `${selectedCategory.name}${selectedCategory.productCount != null ? ` (${selectedCategory.productCount})` : ''}`
-    : 'Select a category…';
+    : 'Choose a category…';
+
+  const empty = list.length === 0;
 
   return (
     <>
@@ -181,21 +222,55 @@ export default function CategoryPicker({ value, onChange, id, error }) {
             aria-labelledby={id}
             onKeyDown={onPanelKeyDown}
             tabIndex={-1}
-            className="absolute z-30 left-0 right-0 mt-1 bg-white border border-outline-variant rounded-md shadow-lg max-h-72 overflow-hidden flex flex-col"
+            className="absolute z-30 left-0 right-0 mt-1 bg-white border border-outline-variant rounded-md shadow-lg max-h-80 overflow-hidden flex flex-col"
           >
-            <div className="p-2 border-b border-outline-variant/40">
-              <input
-                ref={filterRef}
-                value={filter}
-                onChange={(e) => { setFilter(e.target.value); setHighlight(0); }}
-                placeholder="Filter categories…"
-                className="w-full px-2 py-1.5 text-sm rounded border border-outline-variant/40 focus:outline-none focus:border-primary"
-              />
+            {/* Header row: title on the left, search icon on the right.
+                The filter input is rendered inline only when the icon
+                is toggled, so the full list is visible by default. */}
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-outline-variant/40">
+              <span className="text-label-sm text-on-surface-variant">
+                {empty
+                  ? 'No categories yet'
+                  : `${list.length} categor${list.length === 1 ? 'y' : 'ies'}`}
+              </span>
+              {!empty && (
+                <button
+                  ref={filterButtonRef}
+                  type="button"
+                  onClick={() => setFilterOpen((v) => !v)}
+                  className={`w-8 h-8 rounded-md flex items-center justify-center text-on-surface-variant hover:bg-surface-low ${filterOpen ? 'bg-primary/10 text-primary' : ''}`}
+                  aria-label={filterOpen ? 'Hide filter' : 'Filter categories'}
+                  aria-expanded={filterOpen}
+                  title={filterOpen ? 'Hide filter' : 'Filter categories'}
+                >
+                  <Icon name="search" className="text-[18px]" />
+                </button>
+              )}
             </div>
+
+            {filterOpen && !empty && (
+              <div className="p-2 border-b border-outline-variant/40">
+                <input
+                  ref={filterRef}
+                  value={filter}
+                  onChange={(e) => { setFilter(e.target.value); setHighlight(0); }}
+                  onKeyDown={onFilterKeyDown}
+                  placeholder="Filter categories…"
+                  className="w-full px-2 py-1.5 text-sm rounded border border-outline-variant/40 focus:outline-none focus:border-primary"
+                  aria-label="Filter categories"
+                />
+              </div>
+            )}
+
             <ul className="overflow-y-auto flex-1 py-1" role="presentation">
-              {filtered.length === 0 && (
+              {empty && (
                 <li className="px-3 py-4 text-sm text-on-surface-variant">
-                  No categories match <span className="font-medium">“{filter}”</span>.
+                  No categories yet — use <span className="font-medium text-primary">Other</span> below to create your first one.
+                </li>
+              )}
+              {!empty && filtered.length === 0 && (
+                <li className="px-3 py-4 text-sm text-on-surface-variant">
+                  No categories match <span className="font-medium">“{filter}”</span>. Use <span className="font-medium text-primary">Other</span> below to create it.
                 </li>
               )}
               {filtered.map((c, idx) => {

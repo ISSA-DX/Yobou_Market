@@ -19,7 +19,7 @@
 import { useRef, useState } from 'react';
 import { apiForm } from '../api';
 import CategoryPicker from './CategoryPicker';
-import VariantsEditor from './VariantsEditor';
+import VariantsAccordion from './VariantsAccordion';
 import Icon from './Icon';
 
 export default function ProductFormFields({ form, update, errors = {} }) {
@@ -145,6 +145,11 @@ export default function ProductFormFields({ form, update, errors = {} }) {
               id="pf-stock"
               type="number"
               min="0"
+              // Once the product has variants, Product.stock is the
+              // sum-of-variants — the legacy single field is derived
+              // and read-only so the user can't type a contradictory
+              // number. The variants matrix is the only source of truth.
+              readOnly={Array.isArray(form.variants) && form.variants.length > 0}
               className="input mt-1"
               value={form.stock}
               onChange={(e) => update('stock', Math.max(0, Number(e.target.value) || 0))}
@@ -160,6 +165,11 @@ export default function ProductFormFields({ form, update, errors = {} }) {
             </div>
           </div>
         </div>
+
+        {/* Variants live in the Identity card, collapsed by default, so
+            the optional feature is visible without scrolling past the
+            rest of the form. */}
+        <VariantsAccordion form={form} update={update} errors={errors.variants || {}} />
       </section>
 
       {/* ───── Pricing ───── */}
@@ -344,8 +354,6 @@ export default function ProductFormFields({ form, update, errors = {} }) {
         )}
       </section>
 
-      {/* ───── Variants ───── */}
-      <VariantsEditor form={form} update={update} errors={errors.variants || {}} />
     </div>
   );
 }

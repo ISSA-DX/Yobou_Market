@@ -127,11 +127,13 @@ export default function ProductNew() {
       setErrors(fieldErrors);
       setErr('Please fix the highlighted fields before publishing.');
       // Move focus to the first invalid field. For variants, scroll to
-      // the variants section and focus the first invalid row's color
-      // input — otherwise the user has no idea which row is broken.
+      // the variants accordion and focus the first invalid row's color
+      // input — otherwise the user has no idea which row is broken. The
+      // VariantsAccordion also auto-expands itself when it sees errors.
       const first = Object.keys(fieldErrors)[0];
       if (first === 'variants') {
-        document.getElementById('pf-variants')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.querySelector('[aria-labelledby="pf-variants-accordion"]')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         const rowIdx = fieldErrors.variants.rows.findIndex(Boolean);
         const input = rowIdx >= 0
           ? document.querySelector(`input[aria-label="Variant ${rowIdx + 1} color"]`)

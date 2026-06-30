@@ -112,7 +112,8 @@ export default function ProductNew() {
       setErr('Please fix the highlighted fields before submitting.');
       const first = Object.keys(fieldErrors)[0];
       if (first === 'variants') {
-        document.getElementById('pf-variants')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.querySelector('[aria-labelledby="pf-variants-accordion"]')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         const rowIdx = fieldErrors.variants.rows.findIndex(Boolean);
         const input = rowIdx >= 0
           ? document.querySelector(`input[aria-label="Variant ${rowIdx + 1} color"]`)
