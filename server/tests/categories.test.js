@@ -218,3 +218,49 @@ test('categories — PATCH with empty body returns 400 (no fields to update)', a
   });
   assert.strictEqual(res.status, 400);
 });
+
+test('categories — POST /backfill populates the curated table from seed + live products', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const admin = await makeUser('ADMIN');
+  const token = signAccessFor(admin);
+
+  // Pre-condition: a live product references a free-form category that
+  // the curated table doesn't yet know about. This is exactly the
+  // situation that produced the empty-picker bug on the live Render
+  // database.
+  await prisma.product.create({
+    data: {
+      name: 'Test Headphones',
+      description: '',
+      priceCents: 999,
+      category: 'Electronics',
+      imageUrls: '[]',
+      status: 'LIVE',
+      stock: 5,
+    },
+  });
+
+  const before = await prisma.category.count();
+  assert.strictEqual(before, 0, 'curated table should be empty at start');
+
+  // Non-admin gets 403 — the backfill is a repair operation, not a free
+  // endpoint.
+  const customer = await makeUser('CUSTOMER');
+  const customerToken = signAccessFor(customer);
+  const denied = await request(app, 'POST', '/api/categories/backfill', { token: customerToken });
+  assert.strictEqual(denied.status, 403, `expected 403 for non-admin, got ${denied.status}`);
+
+  // Admin runs the backfill — should create the 4 seed categories.
+  const res = await request(app, 'POST', '/api/categories/backfill', { token });
+  assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+  assert.strictEqual(res.body.created, 4, `expected 4 created, got ${res.body.created}`);
+
+  const after = await prisma.category.findMany({ orderBy: { name: 'asc' } });
+  const names = after.map((c) => c.name);
+  assert.deepStrictEqual(names, ['Beauty', 'Electronics', 'Fashion', 'Home']);
+
+  // Idempotent: a second call creates 0.
+  const second = await request(app, 'POST', '/api/categories/backfill', { token });
+  assert.strictEqual(second.body.created, 0);
+});

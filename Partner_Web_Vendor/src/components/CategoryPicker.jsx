@@ -2,7 +2,7 @@
 // See Internal_Web_Admin/src/components/CategoryPicker.jsx for design notes.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '../useApi';
-import { api } from '../api';
+import { api, getAccessToken as accessToken } from '../api';
 import Modal from './Modal';
 import Icon from './Icon';
 
@@ -21,6 +21,30 @@ export default function CategoryPicker({ value, onChange, id, error }) {
   const panelRef = useRef(null);
   const filterRef = useRef(null);
   const filterButtonRef = useRef(null);
+
+  // Self-heal: when the curated Category table is empty in this
+  // environment (a known symptom of older Render free-tier redeploys
+  // that didn't cycle the process), POST /backfill populates it
+  // idempotently. We fire-and-forget; refetch picks up the new rows.
+  // Guarded so it runs at most once per mount, only when the GET
+  // returned an empty list, and only when the user is authenticated
+  // (the endpoint is admin-gated).
+  useEffect(() => {
+    if (!data || fetchErr) return;
+    if (data.categories && data.categories.length > 0) return;
+    if (!accessToken()) return; // would 401 the backfill
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api('/api/categories/backfill', { method: 'POST' });
+        if (!cancelled && res?.created > 0) await refetch();
+      } catch {
+        // Silent — the user can still create categories manually
+        // via the "Other" row even if the backfill endpoint 403s.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [data, fetchErr, refetch]);
 
   const all = data?.categories || [];
   const list = useMemo(() => all.filter((c) => c.isActive !== false), [all]);

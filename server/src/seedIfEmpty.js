@@ -18,50 +18,10 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-function slugify(s) {
-  return String(s || '')
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-}
-
-const SEED_CATEGORIES = ['Electronics', 'Fashion', 'Home', 'Beauty'];
-
-async function backfillCategories() {
-  // Collect every distinct category name that appears on a live product.
-  // This repairs older DBs that pre-date the curated Category table
-  // feature, where products referenced a free-form category name that
-  // the picker doesn't yet know about.
-  const liveNames = await prisma.product.findMany({
-    where: { status: 'LIVE' },
-    select: { category: true },
-    distinct: ['category'],
-  });
-  const productCategories = liveNames.map((p) => p.category).filter(Boolean);
-  const wanted = new Set([...SEED_CATEGORIES, ...productCategories]);
-
-  let created = 0;
-  for (const name of wanted) {
-    const existing = await prisma.category.findUnique({ where: { name } });
-    if (existing) continue;
-    const slug = slugify(name);
-    if (!slug) continue;
-    try {
-      await prisma.category.create({
-        data: { name, slug, isActive: true },
-      });
-      created += 1;
-    } catch (e) {
-      // P2002 (unique constraint) can race if two processes boot at once;
-      // safe to ignore here.
-      if (e?.code !== 'P2002') throw e;
-    }
-  }
-  if (created > 0) console.log(`[seed] backfill created ${created} categories`);
-}
+// Reuse the helper exposed by the categories route so the boot path
+// stays in lockstep with the public /api/categories/backfill endpoint.
+const categoriesRouter = require('./routes/categories');
+const backfillCategories = categoriesRouter.backfillCategories;
 
 (async () => {
   try {
@@ -76,7 +36,10 @@ async function backfillCategories() {
       console.log(`[seed] DB already has ${userCount} users, skipping full seed`);
     }
     // Always run the category backfill — idempotent.
-    await backfillCategories();
+    const created = await backfillCategories(prisma);
+    if (created.length > 0) {
+      console.log(`[seed] backfill created ${created.length} categories`);
+    }
   } catch (err) {
     console.error('[seed] failed:', err.message);
   } finally {

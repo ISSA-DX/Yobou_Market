@@ -36,6 +36,51 @@ function slugify(s) {
     .slice(0, 80);
 }
 
+// The four seed categories that the curated Category table should always
+// contain, even if the seed script was last run before this table existed.
+const SEED_CATEGORIES = ['Electronics', 'Fashion', 'Home', 'Beauty'];
+
+/**
+ * Backfill the curated Category table from the seed list and from any
+ * category name that already appears on a live product. Idempotent —
+ * `findUnique` short-circuits existing rows, and the `create` is
+ * guarded against P2002 (race with a concurrent boot backfill).
+ *
+ * Exposed as `router.backfillCategories` so the admin UI can trigger a
+ * one-shot backfill on demand if the table happens to be empty in a
+ * given environment (e.g. a Render free-tier redeploy that didn't
+ * cycle the process and re-run boot.js).
+ */
+async function backfillCategories(prisma) {
+  const liveNames = await prisma.product.findMany({
+    where: { status: 'LIVE' },
+    select: { category: true },
+    distinct: ['category'],
+  });
+  const productCategories = liveNames.map((p) => p.category).filter(Boolean);
+  const wanted = new Set([...SEED_CATEGORIES, ...productCategories]);
+
+  const created = [];
+  for (const name of wanted) {
+    const existing = await prisma.category.findUnique({ where: { name } });
+    if (existing) continue;
+    const slug = slugify(name);
+    if (!slug) continue;
+    try {
+      const row = await prisma.category.create({
+        data: { name, slug, isActive: true },
+      });
+      created.push(row);
+    } catch (e) {
+      if (e?.code !== 'P2002') throw e;
+    }
+  }
+  return created;
+}
+
+router.backfillCategories = backfillCategories;
+router.SEED_CATEGORIES = SEED_CATEGORIES;
+
 async function getCategoryCounts(activeOnly = true) {
   // Counts per category name for LIVE products. Done in one query.
   const groups = await prisma.product.groupBy({
@@ -72,6 +117,28 @@ router.get('/', requireAuth, async (req, res, next) => {
         isActive: c.isActive,
         productCount: counts[c.name] || 0,
       })),
+    });
+  } catch (err) { next(err); }
+});
+
+/**
+ * POST /api/categories/backfill
+ *
+ * One-shot repair endpoint: populates the curated Category table from
+ * the seed list and from any category name that already appears on a
+ * live product. Idempotent. Admin-only because it mutates global state.
+ *
+ * Used as a self-heal for environments where boot.js's backfill hasn't
+ * run (e.g. Render free-tier redeploys that didn't cycle the process).
+ * The admin UI calls this automatically on mount if GET / returns an
+ * empty list.
+ */
+router.post('/backfill', requireAuth, requireRole('ADMIN'), async (req, res, next) => {
+  try {
+    const created = await backfillCategories(prisma);
+    res.json({
+      created: created.length,
+      categories: created,
     });
   } catch (err) { next(err); }
 });
