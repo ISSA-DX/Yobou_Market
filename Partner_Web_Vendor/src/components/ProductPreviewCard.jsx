@@ -6,18 +6,10 @@
 // Reuses productImage so the same image-render fix applies here.
 import Icon from './Icon';
 import { productImage } from '../lib/productImage';
+import { colorToHex } from '../lib/colorSwatch';
 import { useStore } from '../store';
 
 const FALLBACK = `${import.meta.env.BASE_URL || '/'}seed-images/placeholder.svg`;
-
-function variantColor(name) {
-  if (!name) return '#9ca3af';
-  let h = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  }
-  return `hsl(${h % 360}, 70%, 50%)`;
-}
 
 export default function ProductPreviewCard({ form }) {
   const user = useStore((s) => s.user);
@@ -70,7 +62,7 @@ export default function ProductPreviewCard({ form }) {
               >
                 <span
                   className="w-2.5 h-2.5 rounded-full border border-outline-variant/40"
-                  style={{ backgroundColor: variantColor(v.color) }}
+                  style={{ backgroundColor: colorToHex(v.color) }}
                   aria-hidden="true"
                 />
                 {v.size}

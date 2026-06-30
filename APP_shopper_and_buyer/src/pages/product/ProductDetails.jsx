@@ -5,21 +5,9 @@ import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImages } from '../../lib/productImage';
+import { colorToHex } from '../../lib/colorSwatch';
 import { formatPrice } from '../../lib/format';
 import { useCatalogStream } from '../../lib/useSse';
-
-// Naïve name → hex colour hash so a swatch appears next to each color
-// label. Matches the admin's VariantsEditor so the visual contract is
-// consistent. Not accessible as the only signal — the typed name is
-// always rendered too.
-function nameToHex(name) {
-  if (!name) return '#9ca3af';
-  let h = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  }
-  return `hsl(${h % 360}, 70%, 50%)`;
-}
 
 export default function ProductDetails() {
   const { id } = useParams();
@@ -244,7 +232,7 @@ export default function ProductDetails() {
                 >
                   <span
                     className="w-5 h-5 rounded-full border border-outline-variant/40 shrink-0"
-                    style={{ background: nameToHex(c) }}
+                    style={{ background: colorToHex(c) }}
                   />
                   <span className="text-sm font-medium">{c}</span>
                 </button>
