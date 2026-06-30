@@ -19,6 +19,7 @@
 import { useRef, useState } from 'react';
 import { apiForm } from '../api';
 import CategoryPicker from './CategoryPicker';
+import VariantsEditor from './VariantsEditor';
 import Icon from './Icon';
 
 export default function ProductFormFields({ form, update, errors = {} }) {
@@ -153,7 +154,9 @@ export default function ProductFormFields({ form, update, errors = {} }) {
               required
             />
             <div id="pf-stock-help" className="text-label-sm text-on-surface-variant mt-1">
-              Units available. Set to 0 to mark “Out of stock” without removing the listing.
+              {Array.isArray(form.variants) && form.variants.length > 0
+                ? 'Auto-calculated as the sum of variant stocks. Edit per-row stock below.'
+                : 'Units available. Set to 0 to mark “Out of stock” without removing the listing.'}
             </div>
           </div>
         </div>
@@ -340,6 +343,9 @@ export default function ProductFormFields({ form, update, errors = {} }) {
           </ol>
         )}
       </section>
+
+      {/* ───── Variants ───── */}
+      <VariantsEditor form={form} update={update} errors={errors.variants || {}} />
     </div>
   );
 }

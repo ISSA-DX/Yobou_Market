@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { api } from '../../api';
 import { useStore } from '../../store';
@@ -8,7 +8,18 @@ import { productImages } from '../../lib/productImage';
 import { formatPrice } from '../../lib/format';
 import { useCatalogStream } from '../../lib/useSse';
 
-const COLORS = ['#0034b9', '#005121', '#fdc003', '#ba1a1a'];
+// Naïve name → hex colour hash so a swatch appears next to each color
+// label. Matches the admin's VariantsEditor so the visual contract is
+// consistent. Not accessible as the only signal — the typed name is
+// always rendered too.
+function nameToHex(name) {
+  if (!name) return '#9ca3af';
+  let h = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return `hsl(${h % 360}, 70%, 50%)`;
+}
 
 export default function ProductDetails() {
   const { id } = useParams();
@@ -19,23 +30,74 @@ export default function ProductDetails() {
   const wishlist = useStore((s) => s.wishlist);
   const currency = useStore((s) => s.user?.currency || 'USD');
   const { data, error, loading, refetch } = useApi(`/api/products/${id}`);
-  // Live sync — only refetch when the event targets THIS product. We have
-  // a `meta.productId` available — check both shapes since the server has
-  // occasionally emitted productId at the top level too.
+  // Live sync — refetch when an event targets THIS product. Includes
+  // product_variants_changed so a vendor/admin editing the variant
+  // matrix updates the storefront without a manual refresh.
   useCatalogStream((frame) => {
     if (!frame?.event) return;
-    if (frame.event !== 'product_updated' && frame.event !== 'product_deleted') return;
+    if (
+      frame.event !== 'product_updated'
+      && frame.event !== 'product_deleted'
+      && frame.event !== 'product_variants_changed'
+    ) return;
     const targetId = frame.productId || frame.meta?.productId;
     if (targetId && targetId !== id) return;
     refetch();
   });
   const p = data?.product;
   const [qty, setQty] = useState(1);
-  const [color, setColor] = useState(0);
   const [activeImage, setActiveImage] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const carouselRef = useRef(null);
+
+  // Variant selection state. Initialised lazily from `p.variants` so
+  // we don't re-pick on every refetch — the chosen variant stays sticky
+  // until the user changes it or the variant list itself changes.
+  const variants = Array.isArray(p?.variants) ? p.variants : [];
+  const [pickedColor, setPickedColor] = useState('');
+  const [pickedSize, setPickedSize] = useState('');
+  useEffect(() => {
+    if (variants.length === 0) {
+      setPickedColor('');
+      setPickedSize('');
+      return;
+    }
+    if (!variants.some((v) => v.color === pickedColor)) setPickedColor(variants[0].color);
+    if (!variants.some((v) => v.size === pickedSize)) setPickedSize(variants[0].size);
+  }, [variants, pickedColor, pickedSize]);
+
+  const uniqueColors = useMemo(() => {
+    const s = new Set();
+    variants.forEach((v) => v.color && s.add(v.color));
+    return Array.from(s);
+  }, [variants]);
+  const uniqueSizes = useMemo(() => {
+    const s = new Set();
+    variants.forEach((v) => v.size && s.add(v.size));
+    return Array.from(s);
+  }, [variants]);
+
+  // Look up the matching variant row from the (color, size) pair. If
+  // the pair doesn't exist (e.g. Black × XL not stocked) we still let
+  // the shopper see the price + images but the "Add to cart" button
+  // stays disabled with an explanatory message.
+  const selectedVariant = useMemo(() => {
+    if (variants.length === 0) return null;
+    const exact = variants.find((v) => v.color === pickedColor && v.size === pickedSize);
+    if (exact) return exact;
+    // Fall back to "any variant with the picked color" so the live
+    // stock hint still reflects something sensible.
+    return variants.find((v) => v.color === pickedColor) || variants[0];
+  }, [variants, pickedColor, pickedSize]);
+
+  const hasVariants = variants.length > 0;
+  const variantStock = selectedVariant ? selectedVariant.stock : null;
+  const outOfStock = hasVariants
+    ? (variantStock === null || variantStock === 0)
+    : p.stock === 0;
+  const exactMatch = hasVariants
+    && variants.some((v) => v.color === pickedColor && v.size === pickedSize);
 
   useEffect(() => {
     const el = carouselRef.current;
@@ -59,13 +121,19 @@ export default function ProductDetails() {
   if (!p) return <div className="p-8 text-center text-on-surface-variant">Loading…</div>;
 
   const images = productImages(p);
-  const outOfStock = p.stock === 0;
   const saved = wishlist.includes(p.id);
 
   async function add() {
     setErr(''); setBusy(true);
     try {
-      await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: qty } });
+      await api('/api/cart', {
+        method: 'POST',
+        body: {
+          productId: p.id,
+          variantId: hasVariants && selectedVariant ? selectedVariant.id : null,
+          quantity: qty,
+        },
+      });
       await refreshCart();
       navigate('/cart');
     } catch (e) {
@@ -78,7 +146,14 @@ export default function ProductDetails() {
   async function buy() {
     setErr(''); setBusy(true);
     try {
-      await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: qty } });
+      await api('/api/cart', {
+        method: 'POST',
+        body: {
+          productId: p.id,
+          variantId: hasVariants && selectedVariant ? selectedVariant.id : null,
+          quantity: qty,
+        },
+      });
       await refreshCart();
       navigate('/checkout/shipping');
     } catch (e) {
@@ -145,27 +220,89 @@ export default function ProductDetails() {
             <div className="flex items-center gap-0.5 text-secondary">
               {[1,2,3,4,5].map((s) => <Icon key={s} name="star" fill={s <= 4} className="text-[16px]" />)}
             </div>
-            <span className="text-label-md text-on-surface-variant">4.0 · {p.stock} in stock</span>
+            <span className="text-label-md text-on-surface-variant">
+              4.0 · {hasVariants ? `${p.stock} in stock` : `${p.stock} in stock`}
+            </span>
           </div>
           <div className="mt-3">
             <span className="text-headline-lg font-bold text-primary">{formatPrice(p.priceCents, currency)}</span>
           </div>
         </div>
 
-        <div>
-          <div className="text-label-md text-on-surface-variant mb-2">Color</div>
-          <div className="flex gap-2">
-            {COLORS.map((c, i) => (
-              <button
-                key={c}
-                onClick={() => setColor(i)}
-                className={`w-10 h-10 rounded-full border-2 transition`}
-                style={{ background: c, borderColor: color === i ? '#0034b9' : 'transparent' }}
-                aria-label={`Color ${i+1}`}
-              />
-            ))}
+        {hasVariants && (
+          <div>
+            <div className="text-label-md text-on-surface-variant mb-2">Color</div>
+            <div className="flex flex-wrap gap-2">
+              {uniqueColors.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setPickedColor(c)}
+                  className={`flex items-center gap-2 px-3 h-10 rounded-full border transition ${pickedColor === c ? 'border-primary bg-primary-container/30' : 'border-outline-variant/40 bg-white'}`}
+                  aria-pressed={pickedColor === c}
+                  aria-label={`Color ${c}`}
+                >
+                  <span
+                    className="w-5 h-5 rounded-full border border-outline-variant/40 shrink-0"
+                    style={{ background: nameToHex(c) }}
+                  />
+                  <span className="text-sm font-medium">{c}</span>
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+
+        {hasVariants && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-label-md text-on-surface-variant">Size</div>
+              {variantStock !== null && (
+                <div className={`text-label-md ${variantStock === 0 ? 'text-error' : 'text-on-surface-variant'}`}>
+                  {variantStock === 0
+                    ? 'Out of stock'
+                    : `Available: ${variantStock}`}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {uniqueSizes.map((s) => {
+                // Per-size stock = sum across colors for this size, so the
+                // shopper sees a useful number even when the picked color
+                // doesn't have this size in stock.
+                const stockForSize = variants
+                  .filter((v) => v.size === s)
+                  .reduce((acc, v) => acc + (typeof v.stock === 'number' ? v.stock : 0), 0);
+                const isPicked = pickedSize === s;
+                const disabled = stockForSize === 0;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setPickedSize(s)}
+                    disabled={disabled}
+                    className={`min-w-[3rem] h-10 px-3 rounded-full border text-sm font-medium transition ${
+                      isPicked
+                        ? 'border-primary bg-primary text-white'
+                        : disabled
+                          ? 'border-outline-variant/30 bg-surface-low text-on-surface-variant/40 line-through cursor-not-allowed'
+                          : 'border-outline-variant/40 bg-white text-on-surface'
+                    }`}
+                    aria-pressed={isPicked}
+                    aria-label={`Size ${s}${disabled ? ' (out of stock)' : ''}`}
+                  >
+                    {s}
+                  </button>
+                );
+              })}
+            </div>
+            {!exactMatch && (
+              <div className="mt-2 text-label-md text-error">
+                This {pickedColor} × {pickedSize} combination isn't available — try another size or color.
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <div className="text-label-md text-on-surface-variant">Quantity</div>
@@ -179,8 +316,13 @@ export default function ProductDetails() {
             </button>
             <span className="font-semibold w-6 text-center">{qty}</span>
             <button
-              onClick={() => setQty((q) => Math.min(p.stock || 99, Math.max(1, q + 1)))}
-              disabled={qty >= p.stock || outOfStock}
+              onClick={() => setQty((q) => {
+                const cap = hasVariants
+                  ? (exactMatch && variantStock !== null ? variantStock : 0)
+                  : (p.stock || 99);
+                return Math.min(cap || 99, Math.max(1, q + 1));
+              })}
+              disabled={qty >= (hasVariants ? (variantStock || 0) : (p.stock || 99)) || outOfStock}
               className="w-7 h-7 rounded-full bg-white shadow-card flex items-center justify-center disabled:opacity-50"
             >
               <Icon name="add" className="text-[16px]" />
@@ -211,10 +353,23 @@ export default function ProductDetails() {
       {/* Sticky CTA */}
       <div className="fixed bottom-0 inset-x-0 p-4 bg-white border-t border-outline-variant/30 shadow-float">
         <div className="max-w-screen-md mx-auto grid grid-cols-2 gap-3">
-          <button onClick={add} disabled={busy || outOfStock} className="btn-secondary py-3 disabled:opacity-60">
-            <Icon name="shopping_bag" /> {outOfStock ? 'Sold out' : 'Add to Cart'}
+          <button
+            onClick={add}
+            disabled={busy || outOfStock || (hasVariants && !exactMatch)}
+            className="btn-secondary py-3 disabled:opacity-60"
+          >
+            <Icon name="shopping_bag" />
+            {hasVariants && !exactMatch
+              ? 'Unavailable combo'
+              : outOfStock
+                ? 'Sold out'
+                : 'Add to Cart'}
           </button>
-          <button onClick={buy} disabled={busy || outOfStock} className="btn-primary py-3 disabled:opacity-60">
+          <button
+            onClick={buy}
+            disabled={busy || outOfStock || (hasVariants && !exactMatch)}
+            className="btn-primary py-3 disabled:opacity-60"
+          >
             Buy Now
           </button>
         </div>
@@ -228,6 +383,7 @@ function humanizeCartError(code) {
     case 'UNAUTHENTICATED': return 'Please sign in first.';
     case 'INSUFFICIENT_STOCK': return 'Not enough stock for the requested quantity.';
     case 'PRODUCT_NOT_AVAILABLE': return 'This product is no longer available.';
+    case 'INVALID_VARIANT': return 'That color/size combination is no longer available.';
     default: return 'Could not add to cart.';
   }
 }

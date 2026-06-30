@@ -317,6 +317,20 @@ async function notifyProductChange({ action, product, title, body, link, tx }) {
   };
   pushCatalog('catalog', { event: kind, ...catalogPayload });
 
+  // 1b. When the product carries a variant list, also fire a dedicated
+  //     catalog frame so list pages subscribed via the variants-specific
+  //     SSE channel can refetch without parsing the catalogue payload.
+  //     No inbox row — same as the main catalog event.
+  if (Array.isArray(product.variants) && product.variants.length > 0) {
+    pushCatalog('catalog', {
+      event: 'product_variants_changed',
+      productId: product.id,
+      variants: product.variants.map((v) => ({
+        id: v.id, color: v.color, size: v.size, stock: v.stock,
+      })),
+    });
+  }
+
   // 2. Inbox rows for admins (so the bell increments and they can audit).
   const admins = await db.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
   for (const a of admins) {

@@ -33,6 +33,10 @@ const EMPTY_FORM = {
   stock: 0,
   imageUrls: [],
   status: 'LIVE',
+  // Optional color/size variants. When the array is empty, the legacy
+  // single-stock UX is preserved. When non-empty, the server computes
+  // Product.stock as sum-of-variant-stock on save.
+  variants: [],
 };
 
 const DRAFT_KEY = 'yobou-admin-product-draft';
@@ -42,7 +46,24 @@ function validate(form) {
   if (!form.name.trim()) errors.name = 'Product name is required.';
   if (!form.category || !form.category.trim()) errors.category = 'Pick a category — or create a new one.';
   if (form.priceCents < 0) errors.priceCents = 'Price must be zero or more.';
-  if (form.stock < 0 || !Number.isInteger(form.stock)) errors.stock = 'Stock must be a whole number, zero or more.';
+  // Legacy stock validation only applies when there are no variants —
+  // when variants exist, Product.stock is derived server-side and the
+  // per-row validation below is what matters.
+  const hasVariants = Array.isArray(form.variants) && form.variants.length > 0;
+  if (!hasVariants && (form.stock < 0 || !Number.isInteger(form.stock))) {
+    errors.stock = 'Stock must be a whole number, zero or more.';
+  }
+  if (hasVariants) {
+    const rowErrors = form.variants.map((v) => {
+      if (!v.color || !v.color.trim()) return 'Color is required.';
+      if (!v.size || !v.size.trim()) return 'Size is required.';
+      if (!Number.isFinite(v.stock) || v.stock < 0 || !Number.isInteger(v.stock)) return 'Stock must be a whole number, zero or more.';
+      return null;
+    });
+    if (rowErrors.some(Boolean)) {
+      errors.variants = { variants: 'Some variant rows need attention.', rows: rowErrors };
+    }
+  }
   return errors;
 }
 
@@ -85,6 +106,9 @@ export default function ProductNew() {
         stock: p.stock || 0,
         imageUrls: Array.isArray(p.imageUrls) ? p.imageUrls : [],
         status: p.status || 'LIVE',
+        variants: Array.isArray(p.variants)
+          ? p.variants.map((v) => ({ id: v.id, color: v.color, size: v.size, stock: v.stock }))
+          : [],
       };
       setForm(next);
       initialFormRef.current = JSON.stringify(next);
@@ -102,10 +126,22 @@ export default function ProductNew() {
     if (Object.keys(fieldErrors).length) {
       setErrors(fieldErrors);
       setErr('Please fix the highlighted fields before publishing.');
-      // Move focus to the first invalid field.
+      // Move focus to the first invalid field. For variants, scroll to
+      // the variants section and focus the first invalid row's color
+      // input — otherwise the user has no idea which row is broken.
       const first = Object.keys(fieldErrors)[0];
-      const el = document.getElementById(`pf-${first}`);
-      el?.focus?.();
+      if (first === 'variants') {
+        document.getElementById('pf-variants')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const rowIdx = fieldErrors.variants.rows.findIndex(Boolean);
+        const input = rowIdx >= 0
+          ? document.querySelector(`input[aria-label="Variant ${rowIdx + 1} color"]`)
+          : null;
+        input?.focus?.();
+      } else {
+        const el = document.getElementById(`pf-${first}`);
+        el?.focus?.();
+        el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      }
       return;
     }
     setErrors({});

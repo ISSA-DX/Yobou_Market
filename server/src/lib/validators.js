@@ -24,6 +24,17 @@ const vendorRegister = z.object({
   categories: z.array(z.string()).default([]),
 });
 
+// One row in a product's color/size variant matrix. Free-text color +
+// size (the admin UI offers preset datalists but allows custom values);
+// per-row stock; id is present on PATCH (existing row) and absent on
+// POST (new row).
+const variantInput = z.object({
+  id: z.string().optional(),
+  color: z.string().min(1).max(40),
+  size: z.string().min(1).max(40),
+  stock: z.number().int().nonnegative().default(0),
+});
+
 const productUpsert = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).default(''),
@@ -32,10 +43,19 @@ const productUpsert = z.object({
   imageUrls: z.array(z.string()).default([]),
   stock: z.number().int().nonnegative().default(0),
   status: z.enum(['LIVE', 'DRAFT', 'HIDDEN']).default('LIVE'),
+  // Optional color/size variants. When at least one row is provided the
+  // server computes Product.stock = sum(variants.stock). When empty,
+  // the legacy single stock value is used. Capped at 200 rows per
+  // product to guard against oversize bodies.
+  variants: z.array(variantInput).max(200).default([]),
 });
 
 const cartAdd = z.object({
   productId: z.string(),
+  // Optional. When the product has variants, the shopper's selected
+  // (color, size) row is sent so the cart's stock check is per-variant.
+  // Null on legacy single-stock products.
+  variantId: z.string().nullable().optional(),
   quantity: z.number().int().positive().max(99),
 });
 
@@ -100,6 +120,9 @@ const productChangeCreate = z.object({
   imageUrls: z.array(z.string()).optional(),
   stock: z.number().int().nonnegative().optional(),
   status: z.enum(['LIVE', 'DRAFT', 'HIDDEN']).optional(),
+  // Vendor's proposed variant snapshot. When present, admin approval
+  // applies it; when absent, existing variants (if any) are left alone.
+  variants: z.array(variantInput).max(200).optional(),
 }).refine(
   (d) => d.action === 'CREATE' || !!d.productId,
   { message: 'productId is required for UPDATE/DELETE', path: ['productId'] }
@@ -159,6 +182,7 @@ module.exports = {
   vendorSelfUpdate,
   productUpsert,
   productChangeCreate,
+  variantInput,
   adminReview,
   refundCreate,
   adminVendorCreate,

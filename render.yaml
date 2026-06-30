@@ -77,5 +77,12 @@ services:
       # is alive and to wake it from idle.
       - key: HEALTHCHECK_PATH
         value: /api/health
+      # When set, boot.js runs `prisma migrate deploy` against the
+      # persistent disk instead of `prisma db push`. Production-safe —
+      # migrations are idempotent and traceable. The dev path (db push)
+      # stays the default so `npm run dev` keeps working without
+      # bookkeeping. See server/prisma/migrations/.
+      - key: MIGRATIONS_ENABLED
+        value: "1"
     healthCheckPath: /api/health
     autoDeploy: true  # redeploy on every push to the repo's default branch

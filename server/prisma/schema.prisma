@@ -12,74 +12,101 @@ datasource db {
 // server/src/lib/validators.js). Postgres would let us upgrade
 // these to real enums by switching the datasource provider.
 model User {
-  id             String           @id @default(cuid())
-  email          String           @unique
-  passwordHash   String
-  name           String
-  role           String           // 'ADMIN' | 'VENDOR' | 'CUSTOMER'
-  vendor         Vendor?
-  addresses      Address[]
-  paymentMethods PaymentMethod[]
-  orders         Order[]
-  cartItems      CartItem[]
-  refundsRequested     Refund[]         @relation("RefundRequester")
-  refundsReviewed      Refund[]         @relation("RefundReviewer")
+  id                     String          @id @default(cuid())
+  email                  String          @unique
+  passwordHash           String
+  name                   String
+  role                   String // 'ADMIN' | 'VENDOR' | 'CUSTOMER'
+  vendor                 Vendor?
+  addresses              Address[]
+  paymentMethods         PaymentMethod[]
+  orders                 Order[]
+  cartItems              CartItem[]
+  refundsRequested       Refund[]        @relation("RefundRequester")
+  refundsReviewed        Refund[]        @relation("RefundReviewer")
   productChangesReviewed ProductChange[] @relation("ProductChangeReviewer")
-  auditLogEntries      AdminAuditLog[]
-  notifications        Notification[]
+  auditLogEntries        AdminAuditLog[]
+  notifications          Notification[]
 
   // Preferences
-  language          String   @default("en")
-  currency          String   @default("USD")
-  theme             String   @default("system") // light | dark | system
+  language           String  @default("en")
+  currency           String  @default("USD")
+  theme              String  @default("system") // light | dark | system
   notifyOrderUpdates Boolean @default(true)
   notifyPromotions   Boolean @default(false)
   notifyShipping     Boolean @default(true)
   marketingConsent   Boolean @default(false)
 
   // Soft disable: when set, auth middleware blocks login/refresh.
-  disabledAt        DateTime?
+  disabledAt DateTime?
 
   // Last activity timestamp used by the SSE connection housekeeper.
-  lastSeenAt        DateTime?
+  lastSeenAt DateTime?
 
-  createdAt      DateTime         @default(now())
+  createdAt DateTime @default(now())
 }
 
 model Vendor {
-  id           String       @id @default(cuid())
-  userId       String       @unique
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String          @id @default(cuid())
+  userId       String          @unique
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   businessName String
   phone        String
   licenseUrl   String?
-  categories   String        @default("[]") // JSON array of selected categories
+  categories   String          @default("[]") // JSON array of selected categories
   // Public-facing brand assets — URL strings because uploads are served
   // by the same /uploads/* route as product images.
   logoUrl      String?
   bannerUrl    String?
-  status       String       @default("PENDING") // PENDING | APPROVED | REJECTED
+  status       String          @default("PENDING") // PENDING | APPROVED | REJECTED
   approvedAt   DateTime?
   products     Product[]
   changes      ProductChange[]
-  createdAt    DateTime     @default(now())
+  createdAt    DateTime        @default(now())
 }
 
 model Product {
-  id          String      @id @default(cuid())
+  id          String           @id @default(cuid())
   vendorId    String?
-  vendor      Vendor?     @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  vendor      Vendor?          @relation(fields: [vendorId], references: [id], onDelete: SetNull)
   name        String
   description String
   priceCents  Int
   category    String
-  imageUrls   String      @default("[]") // JSON array
-  stock       Int         @default(0)
-  status      String      @default("LIVE") // LIVE / DRAFT / HIDDEN
-  createdAt   DateTime    @default(now())
+  imageUrls   String           @default("[]") // JSON array
+  // `stock` is the canonical available-quantity count for the storefront:
+  // when the product has variants, it's the SUM(variants.stock); when no
+  // variants exist, it's the legacy single number the admin entered.
+  // Server routes keep this in sync inside the same transaction as any
+  // variant write (see server/src/routes/products.js applyVariants).
+  stock       Int              @default(0)
+  status      String           @default("LIVE") // LIVE / DRAFT / HIDDEN
+  createdAt   DateTime         @default(now())
   orderItems  OrderItem[]
   cartItems   CartItem[]
   changes     ProductChange[]
+  variants    ProductVariant[]
+}
+
+// Color/size variants with per-option stock. A product with at least one
+// variant shows a Color+Size picker on the storefront; without variants
+// the product uses the legacy single-stock UX. See
+// server/src/lib/validators.js `productUpsert.variants` for the wire shape.
+model ProductVariant {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  color     String // free-text: "Black", "Dark Red", or anything the admin typed
+  size      String // free-text: "S", "XL", "42", "One Size"
+  stock     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // Back-relation so cart-items can resolve to the source variant
+  // row for inventory accounting.
+  cartItems CartItem[]
+
+  @@unique([productId, color, size]) // prevent duplicate variant rows for the same combo
+  @@index([productId])
 }
 
 // Curated catalogue of product categories. Replaces the free-form
@@ -100,11 +127,20 @@ model CartItem {
   id        String  @id @default(cuid())
   userId    String
   productId String
+  // VariantId is set when the shopper picked a specific color/size
+  // row of a variant-enabled product. Null on legacy single-stock
+  // products. Per-variant inventory accounting lives here so the
+  // cart's stock check is accurate.
+  variantId String?
   quantity  Int     @default(1)
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
-  @@unique([userId, productId])
+  // A user can only have one cart row per (product, variant) combo;
+  // for legacy products variantId is null and the unique still works
+  // because SQLite treats NULL as distinct.
+  @@unique([userId, productId, variantId])
 }
 
 model Address {
@@ -126,8 +162,8 @@ model PaymentMethod {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String   // 'CARD'
-  brand       String   // 'visa' | 'mastercard' | 'amex' | 'discover'
+  type        String // 'CARD'
+  brand       String // 'visa' | 'mastercard' | 'amex' | 'discover'
   last4       String
   expiryMonth String
   expiryYear  String
@@ -138,17 +174,17 @@ model PaymentMethod {
 }
 
 model Order {
-  id             String          @id @default(cuid())
+  id             String  @id @default(cuid())
   userId         String
-  user           User            @relation(fields: [userId], references: [id])
-  status         String          @default("PLACED") // PLACED | PAID | PROCESSING | SHIPPED | DELIVERED | CANCELLED | REFUNDED
-  subtotalCents  Int             @default(0)
-  shippingCents  Int             @default(0)
+  user           User    @relation(fields: [userId], references: [id])
+  status         String  @default("PLACED") // PLACED | PAID | PROCESSING | SHIPPED | DELIVERED | CANCELLED | REFUNDED
+  subtotalCents  Int     @default(0)
+  shippingCents  Int     @default(0)
   totalCents     Int
-  paymentMethod  String          // CARD | PAYPAL | COD
+  paymentMethod  String // CARD | PAYPAL | COD
   paymentTxnId   String?
   addressId      String
-  address        Address         @relation(fields: [addressId], references: [id], onDelete: Restrict)
+  address        Address @relation(fields: [addressId], references: [id], onDelete: Restrict)
   snapshotName   String?
   snapshotLine1  String?
   snapshotCity   String?
@@ -157,19 +193,19 @@ model Order {
 
   // Delivery tracking — populated when status transitions to SHIPPED.
   trackingNumber    String?
-  carrier           String?       // 'DHL' | 'FedEx' | 'UPS' | 'USPS' | 'YobouDirect' | 'Other'
+  carrier           String? // 'DHL' | 'FedEx' | 'UPS' | 'USPS' | 'YobouDirect' | 'Other'
   shippedAt         DateTime?
   estimatedDelivery DateTime?
 
   // Cancellation record — populated when admin cancels.
-  cancelReason      String?
-  cancelledBy       String?       // userId of the admin who initiated
+  cancelReason String?
+  cancelledBy  String? // userId of the admin who initiated
 
-  items          OrderItem[]
-  timeline       TimelineEvent[]
-  refunds        Refund[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  items     OrderItem[]
+  timeline  TimelineEvent[]
+  refunds   Refund[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 }
 
 model OrderItem {
@@ -183,60 +219,67 @@ model OrderItem {
 }
 
 model TimelineEvent {
-  id        String      @id @default(cuid())
+  id        String   @id @default(cuid())
   orderId   String
-  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   status    String
-  at        DateTime    @default(now())
+  at        DateTime @default(now())
   // Actor attribution — who or what caused this transition. Optional
   // because pre-existing rows and system-driven events (payment
   // confirmation, refund approval) may not have a user attached.
   actorId   String?
-  actorRole String?     // 'ADMIN' | 'VENDOR' | 'SYSTEM'
+  actorRole String? // 'ADMIN' | 'VENDOR' | 'SYSTEM'
   note      String?
 }
 
 model ProductChange {
-  id           String   @id @default(cuid())
-  vendorId     String
-  vendor       Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  productId    String?  // null for CREATE
-  product      Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-  action       String   // CREATE | UPDATE | DELETE
+  id                  String    @id @default(cuid())
+  vendorId            String
+  vendor              Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  productId           String? // null for CREATE
+  product             Product?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  action              String // CREATE | UPDATE | DELETE
   // Proposed snapshot for CREATE/UPDATE; null fields ignored on UPDATE
   proposedName        String?
   proposedDescription String?
   proposedPriceCents  Int?
   proposedCategory    String?
-  proposedImageUrls   String?  // JSON array
+  proposedImageUrls   String? // JSON array
   proposedStock       Int?
   proposedStatus      String?
+  // JSON snapshot of proposed variants [{color, size, stock}] — vendor
+  // proposals go through this column and the admin-approval path applies
+  // them in a transaction alongside Product.stock. `variantsAction`
+  // distinguishes "replace all variants" (the default for any UPDATE
+  // that sets the field) from a no-op leave-existing.
+  proposedVariants    String?
+  variantsAction      String? // 'replace' | null — currently always 'replace' when set
   // Review
-  status       String   @default("PENDING") // PENDING | APPROVED | REJECTED
-  reviewedById String?
-  reviewedAt   DateTime?
-  adminNote    String?
-  createdAt    DateTime @default(now())
-  reviewedBy   User?    @relation("ProductChangeReviewer", fields: [reviewedById], references: [id])
+  status              String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  reviewedById        String?
+  reviewedAt          DateTime?
+  adminNote           String?
+  createdAt           DateTime  @default(now())
+  reviewedBy          User?     @relation("ProductChangeReviewer", fields: [reviewedById], references: [id])
 
   @@index([vendorId, status])
 }
 
 model Refund {
-  id           String   @id @default(cuid())
-  orderId      String
-  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id            String    @id @default(cuid())
+  orderId       String
+  order         Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   requestedById String
-  requestedBy   User    @relation("RefundRequester", fields: [requestedById], references: [id])
-  reason       String
-  amountCents  Int
-  status       String   @default("PENDING") // PENDING | APPROVED | REJECTED | PROCESSED
-  reviewedById String?
-  reviewedAt   DateTime?
-  adminNote    String?
-  refundTxnId  String?
-  createdAt    DateTime @default(now())
-  reviewedBy   User?    @relation("RefundReviewer", fields: [reviewedById], references: [id])
+  requestedBy   User      @relation("RefundRequester", fields: [requestedById], references: [id])
+  reason        String
+  amountCents   Int
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED | PROCESSED
+  reviewedById  String?
+  reviewedAt    DateTime?
+  adminNote     String?
+  refundTxnId   String?
+  createdAt     DateTime  @default(now())
+  reviewedBy    User?     @relation("RefundReviewer", fields: [reviewedById], references: [id])
 
   @@index([orderId])
   @@index([status])
@@ -246,19 +289,19 @@ model Refund {
 // via the inbox endpoint and SSE push. We don't send email/SMS/push in
 // this iteration; the inbox is the only delivery channel.
 model Notification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kind      String   // 'order_status' | 'order_placed' | 'order_cancelled'
-                     // | 'product_approved' | 'product_rejected'
-                     // | 'vendor_approved' | 'vendor_rejected'
-                     // | 'tracking_updated' | 'admin_broadcast'
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // 'order_status' | 'order_placed' | 'order_cancelled'
+  // | 'product_approved' | 'product_rejected'
+  // | 'vendor_approved' | 'vendor_rejected'
+  // | 'tracking_updated' | 'admin_broadcast'
   title     String
   body      String
-  link      String?  // app-internal path like "/orders/abc/track" or "/products/xyz"
-  meta      String?  // JSON of kind-specific payload (orderId, status, etc.)
+  link      String? // app-internal path like "/orders/abc/track" or "/products/xyz"
+  meta      String? // JSON of kind-specific payload (orderId, status, etc.)
   readAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
@@ -271,7 +314,7 @@ model Notification {
 model SseConnection {
   id        String   @id @default(cuid())
   userId    String
-  role      String   // 'ADMIN' | 'VENDOR' | 'CUSTOMER'
+  role      String // 'ADMIN' | 'VENDOR' | 'CUSTOMER'
   lastSeen  DateTime @updatedAt
   createdAt DateTime @default(now())
 
@@ -284,15 +327,15 @@ model AdminAuditLog {
   id         String   @id @default(cuid())
   actorId    String
   actor      User     @relation(fields: [actorId], references: [id])
-  action     String   // 'order.cancel' | 'order.ship' | 'order.status'
-                        // | 'product.create' | 'product.update' | 'product.delete'
-                        // | 'vendor.approve' | 'vendor.reject' | 'vendor.suspend'
-                        // | 'refund.approve' | 'refund.reject'
-                        // | 'broadcast.send'
-                        // | 'user.role' | 'user.disable'
-  entityType String   // 'order' | 'product' | 'vendor' | 'refund' | 'user' | 'broadcast'
+  action     String // 'order.cancel' | 'order.ship' | 'order.status'
+  // | 'product.create' | 'product.update' | 'product.delete'
+  // | 'vendor.approve' | 'vendor.reject' | 'vendor.suspend'
+  // | 'refund.approve' | 'refund.reject'
+  // | 'broadcast.send'
+  // | 'user.role' | 'user.disable'
+  entityType String // 'order' | 'product' | 'vendor' | 'refund' | 'user' | 'broadcast'
   entityId   String?
-  meta       String?  // JSON of relevant fields (reason, tracking, etc.)
+  meta       String? // JSON of relevant fields (reason, tracking, etc.)
   createdAt  DateTime @default(now())
 
   @@index([actorId, createdAt])

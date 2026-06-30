@@ -62,13 +62,26 @@ console.log(`[boot] UPLOAD_DIR = ${UPLOAD_DIR}`);
 console.log(`[boot] DATABASE_URL = ${process.env.DATABASE_URL}`);
 
 try {
-  console.log('[boot] Running prisma db push...');
-  execSync('npx prisma db push --skip-generate', {
-    stdio: 'inherit',
-    env: process.env,
-  });
+  // MIGRATIONS_ENABLED=1 → use `prisma migrate deploy` (production-safe,
+  // requires server/prisma/migrations/ to exist and be in sync with the
+  // schema). Off → fall back to `prisma db push` (dev convenience).
+  // See server/prisma/migrations/20260630_add_product_variants/ for the
+  // first migration that introduces the ProductVariant table.
+  if (process.env.MIGRATIONS_ENABLED === '1') {
+    console.log('[boot] Running prisma migrate deploy (MIGRATIONS_ENABLED=1)...');
+    execSync('npx prisma migrate deploy', {
+      stdio: 'inherit',
+      env: process.env,
+    });
+  } else {
+    console.log('[boot] Running prisma db push (dev mode)...');
+    execSync('npx prisma db push --skip-generate', {
+      stdio: 'inherit',
+      env: process.env,
+    });
+  }
 } catch (err) {
-  console.error('[boot] prisma db push failed:', err.message);
+  console.error('[boot] prisma schema sync failed:', err.message);
   process.exit(1);
 }
 

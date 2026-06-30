@@ -30,6 +30,9 @@ const EMPTY_FORM = {
   stock: 0,
   imageUrls: [],
   status: 'LIVE',
+  // Optional color/size variants. When non-empty the admin-approve
+  // path writes them to ProductVariant and recomputes Product.stock.
+  variants: [],
 };
 
 const DRAFT_KEY = 'yobou-partner-product-draft';
@@ -39,7 +42,21 @@ function validate(form) {
   if (!form.name.trim()) errors.name = 'Product name is required.';
   if (!form.category || !form.category.trim()) errors.category = 'Pick a category.';
   if (form.priceCents < 0) errors.priceCents = 'Price must be zero or more.';
-  if (form.stock < 0 || !Number.isInteger(form.stock)) errors.stock = 'Stock must be a whole number.';
+  const hasVariants = Array.isArray(form.variants) && form.variants.length > 0;
+  if (!hasVariants && (form.stock < 0 || !Number.isInteger(form.stock))) {
+    errors.stock = 'Stock must be a whole number.';
+  }
+  if (hasVariants) {
+    const rowErrors = form.variants.map((v) => {
+      if (!v.color || !v.color.trim()) return 'Color is required.';
+      if (!v.size || !v.size.trim()) return 'Size is required.';
+      if (!Number.isFinite(v.stock) || v.stock < 0 || !Number.isInteger(v.stock)) return 'Stock must be a whole number, zero or more.';
+      return null;
+    });
+    if (rowErrors.some(Boolean)) {
+      errors.variants = { variants: 'Some variant rows need attention.', rows: rowErrors };
+    }
+  }
   return errors;
 }
 
@@ -74,6 +91,9 @@ export default function ProductNew() {
         stock: p.stock || 0,
         imageUrls: Array.isArray(p.imageUrls) ? p.imageUrls : [],
         status: p.status || 'LIVE',
+        variants: Array.isArray(p.variants)
+          ? p.variants.map((v) => ({ id: v.id, color: v.color, size: v.size, stock: v.stock }))
+          : [],
       };
       setForm(next);
       initialFormRef.current = JSON.stringify(next);
@@ -91,7 +111,18 @@ export default function ProductNew() {
       setErrors(fieldErrors);
       setErr('Please fix the highlighted fields before submitting.');
       const first = Object.keys(fieldErrors)[0];
-      document.getElementById(`pf-${first}`)?.focus?.();
+      if (first === 'variants') {
+        document.getElementById('pf-variants')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const rowIdx = fieldErrors.variants.rows.findIndex(Boolean);
+        const input = rowIdx >= 0
+          ? document.querySelector(`input[aria-label="Variant ${rowIdx + 1} color"]`)
+          : null;
+        input?.focus?.();
+      } else {
+        const el = document.getElementById(`pf-${first}`);
+        el?.focus?.();
+        el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      }
       return;
     }
     setErrors({});

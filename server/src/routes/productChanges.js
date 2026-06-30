@@ -5,18 +5,32 @@ const { prisma } = require('../prisma');
 const { productChangeCreate, adminReview } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
 const { notify, audit, notifyProductChange } = require('../lib/notifications');
+const { applyVariants } = require('./products');
 
 const router = express.Router();
 
-// Parses the JSON-stored proposedImageUrls string back to an array on read.
+// Parses the JSON-stored proposedImageUrls + proposedVariants strings
+// back to arrays on read. Both columns are nullable, so check each
+// independently rather than bailing out when one is missing.
 function parseChange(change) {
-  if (!change || typeof change.proposedImageUrls !== 'string') return change;
-  let imgs = [];
-  try { imgs = JSON.parse(change.proposedImageUrls); } catch { imgs = []; }
-  return { ...change, proposedImageUrls: imgs };
+  if (!change) return change;
+  const out = { ...change };
+  if (typeof change.proposedImageUrls === 'string') {
+    try { out.proposedImageUrls = JSON.parse(change.proposedImageUrls); }
+    catch { out.proposedImageUrls = []; }
+  }
+  if (typeof change.proposedVariants === 'string' && change.proposedVariants) {
+    try { out.proposedVariants = JSON.parse(change.proposedVariants); }
+    catch { out.proposedVariants = []; }
+  }
+  return out;
 }
 
 function stringifyImageUrls(arr) {
+  return JSON.stringify(Array.isArray(arr) ? arr : []);
+}
+
+function stringifyVariants(arr) {
   return JSON.stringify(Array.isArray(arr) ? arr : []);
 }
 
@@ -47,6 +61,8 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
         proposedImageUrls: data.imageUrls !== undefined ? stringifyImageUrls(data.imageUrls) : null,
         proposedStock: data.stock ?? null,
         proposedStatus: data.status ?? null,
+        proposedVariants: data.variants !== undefined ? stringifyVariants(data.variants) : null,
+        variantsAction: data.variants !== undefined ? 'replace' : null,
         status: 'PENDING',
       },
     });
@@ -119,6 +135,15 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
       let appliedProductId = change.productId;
 
       if (change.action === 'CREATE') {
+        // If the vendor proposed variants, Product.stock is the sum —
+        // else the legacy proposedStock is used.
+        let proposedVariants = [];
+        try {
+          if (change.proposedVariants) proposedVariants = JSON.parse(change.proposedVariants);
+        } catch { /* ignore */ }
+        const stock = Array.isArray(proposedVariants) && proposedVariants.length > 0
+          ? proposedVariants.reduce((s, v) => s + (typeof v.stock === 'number' ? v.stock : 0), 0)
+          : (change.proposedStock ?? 0);
         const created = await tx.product.create({
           data: {
             vendorId: change.vendorId,
@@ -127,10 +152,13 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
             priceCents: change.proposedPriceCents ?? 0,
             category: change.proposedCategory || 'Uncategorized',
             imageUrls: change.proposedImageUrls || '[]',
-            stock: change.proposedStock ?? 0,
+            stock,
             status: change.proposedStatus || 'LIVE',
           },
         });
+        if (Array.isArray(proposedVariants) && proposedVariants.length > 0) {
+          await applyVariants(tx, created.id, proposedVariants);
+        }
         appliedProductId = created.id;
       } else if (change.action === 'UPDATE') {
         // Build the update payload from non-null proposed fields only.
@@ -142,7 +170,28 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
         if (change.proposedImageUrls !== null) data.imageUrls = change.proposedImageUrls;
         if (change.proposedStock !== null) data.stock = change.proposedStock;
         if (change.proposedStatus !== null) data.status = change.proposedStatus;
+        // Variants: when the vendor set proposedVariants, replace the
+        // existing variant set (variantsAction='replace') and recompute
+        // Product.stock to keep the storefront's "in stock" filter honest.
+        let proposedVariants = null;
+        if (typeof change.proposedVariants === 'string' && change.proposedVariants) {
+          try { proposedVariants = JSON.parse(change.proposedVariants); }
+          catch { proposedVariants = []; }
+        }
+        if (Array.isArray(proposedVariants)) {
+          if (proposedVariants.length > 0) {
+            data.stock = proposedVariants.reduce((s, v) => s + (typeof v.stock === 'number' ? v.stock : 0), 0);
+          } else {
+            // Empty list — drop all variants. Stock is intentionally
+            // untouched here so a vendor clearing variants doesn't
+            // silently zero their inventory.
+            data.stock = change.proposedStock ?? 0;
+          }
+        }
         await tx.product.update({ where: { id: change.productId }, data });
+        if (Array.isArray(proposedVariants)) {
+          await applyVariants(tx, change.productId, proposedVariants);
+        }
       } else if (change.action === 'DELETE') {
         // Preserve order history by hiding instead of hard-deleting.
         const ordered = await tx.orderItem.findFirst({ where: { productId: change.productId } });
@@ -179,7 +228,10 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
     if (result.productId) {
       productForFanout = await prisma.product.findUnique({
         where: { id: result.productId },
-        include: { vendor: { select: { userId: true } } },
+        include: {
+          vendor: { select: { userId: true } },
+          variants: { select: { id: true, color: true, size: true, stock: true } },
+        },
       });
     }
     if (productForFanout) {

@@ -10,6 +10,15 @@ import { useStore } from '../store';
 
 const FALLBACK = `${import.meta.env.BASE_URL || '/'}seed-images/placeholder.svg`;
 
+function variantColor(name) {
+  if (!name) return '#9ca3af';
+  let h = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return `hsl(${h % 360}, 70%, 50%)`;
+}
+
 export default function ProductPreviewCard({ form }) {
   const user = useStore((s) => s.user);
   const vendorName = user?.vendor?.businessName || user?.name || 'Your store';
@@ -51,6 +60,29 @@ export default function ProductPreviewCard({ form }) {
             </span>
           )}
         </div>
+        {Array.isArray(form.variants) && form.variants.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1" aria-label={`${form.variants.length} variants`}>
+            {form.variants.slice(0, 6).map((v, i) => (
+              <span
+                key={v.id || `${v.color}-${v.size}-${i}`}
+                className="chip bg-surface-low text-on-surface-variant text-[11px] inline-flex items-center gap-1"
+                title={`${v.color} / ${v.size} — stock ${v.stock}`}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full border border-outline-variant/40"
+                  style={{ backgroundColor: variantColor(v.color) }}
+                  aria-hidden="true"
+                />
+                {v.size}
+              </span>
+            ))}
+            {form.variants.length > 6 && (
+              <span className="chip bg-surface-low text-on-surface-variant text-[11px]">
+                +{form.variants.length - 6}
+              </span>
+            )}
+          </div>
+        )}
         <div className="text-label-sm text-on-surface-variant pt-1 flex items-center justify-between">
           <span className="truncate">{vendorName}</span>
           <span className={`chip ${status === 'LIVE' ? 'bg-tertiary-container/20 text-tertiary' : status === 'DRAFT' ? 'bg-secondary/20 text-secondary' : 'bg-error/10 text-error'}`}>
