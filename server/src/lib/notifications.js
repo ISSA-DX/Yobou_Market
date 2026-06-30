@@ -404,6 +404,20 @@ function safeParseJson(s) {
 }
 
 /**
+ * Notify every connected client that a product's reviews changed.
+ * Reviews are not in the inbox — they're a derived, public count, and
+ * the PDP refetches on its own. The SSE frame just nudges any other
+ * open surface (a list page, a related-products rail, a cart-side
+ * "X% of buyers liked this" badge, if we add one) to refetch.
+ *
+ * No DB writes.
+ */
+function notifyReviewChange({ productId, action }) {
+  if (!productId) return;
+  pushCatalog('catalog', { event: 'reviews_changed', productId, action });
+}
+
+/**
  * Notify many users in one call. Used by /api/admin/broadcast.
  *
  * Returns { created: number, suppressed: number } so the caller can
@@ -459,5 +473,6 @@ module.exports = {
   notifyOrderAudience,
   notifyProductChange,
   notifyAdminsProductChangeSubmitted,
+  notifyReviewChange,
   audit,
 };

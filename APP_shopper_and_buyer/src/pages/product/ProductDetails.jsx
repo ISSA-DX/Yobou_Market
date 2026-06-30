@@ -9,6 +9,8 @@ import { colorToHex } from '../../lib/colorSwatch';
 import { formatPrice } from '../../lib/format';
 import { useCatalogStream } from '../../lib/useSse';
 import { useRecentlyViewed } from '../../lib/useRecentlyViewed';
+import ProductDescriptionTabs from './ProductDescriptionTabs';
+import RelatedProducts from './RelatedProducts';
 
 export default function ProductDetails() {
   const { id } = useParams();
@@ -228,14 +230,14 @@ export default function ProductDetails() {
                     <Icon key={s} name="star" fill={s <= Math.round(p.rating)} className="text-[16px]" />
                   ))}
                 </div>
-                <span className="text-label-md text-on-surface-variant">
+                <a href="#reviews" className="text-label-md text-on-surface-variant hover:text-primary">
                   {p.rating.toFixed(1)}{typeof p.reviewCount === 'number' && p.reviewCount > 0 ? ` (${p.reviewCount} review${p.reviewCount === 1 ? '' : 's'})` : ''} · {p.stock} in stock
-                </span>
+                </a>
               </>
             ) : (
-              <span className="text-label-md text-on-surface-variant/70 italic">
+              <a href="#reviews" className="text-label-md text-on-surface-variant/70 italic hover:text-primary">
                 No reviews yet · {p.stock} in stock
-              </span>
+              </a>
             )}
           </div>
           <div className="mt-3">
@@ -344,10 +346,7 @@ export default function ProductDetails() {
           </div>
         </div>
 
-        <div>
-          <h3 className="font-bold mb-2">Description</h3>
-          <p className="text-sm text-on-surface-variant leading-relaxed">{p.description || 'No description provided.'}</p>
-        </div>
+        <ProductDescriptionTabs product={p} onChanged={() => refetch()} />
 
         <div className="card p-4 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-tertiary-container/20 flex items-center justify-center">
@@ -362,6 +361,8 @@ export default function ProductDetails() {
         </div>
 
         {err && <div className="text-error text-sm">{err}</div>}
+
+        <RelatedProducts productId={p.id} onAdd={add} />
       </div>
 
       {/* Sticky CTA */}

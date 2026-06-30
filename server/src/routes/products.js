@@ -276,6 +276,33 @@ const parseChange = (change) => {
   return out;
 };
 
+// "Customers also viewed" — products in the same category, excluding
+// the current product. Public, no auth. In-stock items sort before
+// out-of-stock; ties broken by recency. We do not fall back across
+// categories — when the rail is empty we return [] and the shopper
+// UI hides the section silently. This route is declared BEFORE
+// `/:id` so the literal "related" path doesn't get captured as an ID.
+router.get('/:id/related', async (req, res, next) => {
+  try {
+    const limit = Math.max(1, Math.min(20, Number(req.query.limit) || 10));
+    const target = await prisma.product.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, category: true, status: true },
+    });
+    if (!target) return res.status(404).json({ error: 'NOT_FOUND' });
+    const rows = await prisma.product.findMany({
+      where: { status: 'LIVE', category: target.category, NOT: { id: target.id } },
+      orderBy: [{ stock: 'desc' }, { createdAt: 'desc' }],
+      take: limit,
+      include: {
+        vendor: { select: { id: true, businessName: true } },
+        variants: { select: { id: true, color: true, size: true, stock: true } },
+      },
+    });
+    res.json({ products: rows.map((p) => parseVariants(parseImageUrls(p))) });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const product = await prisma.product.findUnique({

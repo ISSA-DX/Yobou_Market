@@ -217,6 +217,27 @@ const categoryUpdate = z.object({
   isActive: z.boolean().optional(),
 }).refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
 
+// Review payload submitted by a customer. rating is the only numeric
+// field; title is the headline shown in the list, body is the long
+// text. The 1..5 range and the size caps are the only hard rules —
+// profanity / moderation is out of scope for this iteration.
+const reviewCreate = z.object({
+  rating: z.number().int().min(1).max(5),
+  title: z.string().min(1).max(200),
+  body: z.string().min(1).max(2000),
+});
+
+// Query string for the public review list. `rating` filters the list
+// down to a single histogram bucket (the user clicked a bar). `sort`
+// is the obvious three: most recent, highest first, lowest first.
+// `offset` is capped to keep the deep-pagination scan bounded.
+const reviewListQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).max(10000).default(0),
+  sort: z.enum(['recent', 'highest', 'lowest']).default('recent'),
+  rating: z.coerce.number().int().min(1).max(5).optional(),
+});
+
 module.exports = {
   registerCustomer,
   login,
@@ -238,4 +259,6 @@ module.exports = {
   CARRIERS,
   categoryCreate,
   categoryUpdate,
+  reviewCreate,
+  reviewListQuery,
 };

@@ -18,6 +18,7 @@ const addressesRoutes = require('./routes/addresses');
 const paymentsRoutes = require('./routes/payments');
 const categoriesRoutes = require('./routes/categories');
 const eventsRoutes = require('./routes/events');
+const reviewsRoutes = require('./routes/reviews');
 
 const app = express();
 
@@ -163,6 +164,11 @@ app.use('/api/addresses', addressesRoutes);
 app.use('/api/payments', paymentsRoutes);
 app.use('/api/categories', categoriesRoutes);
 app.use('/api', eventsRoutes);
+// Mounted after /api/products so the products router's `/` list and
+// `/:id` single-product routes still win. Reviews has no overlap with
+// any product route, so it picks up `/products/:id/reviews` and
+// `/reviews/:id` cleanly.
+app.use('/api', reviewsRoutes);
 
 // Serve the built React apps in production (single-deploy mode).
 // The shopper portal has two build targets: APP_shopper_and_buyer (the Capacitor /

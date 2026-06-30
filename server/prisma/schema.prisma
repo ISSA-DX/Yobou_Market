@@ -27,6 +27,7 @@ model User {
   productChangesReviewed ProductChange[] @relation("ProductChangeReviewer")
   auditLogEntries        AdminAuditLog[]
   notifications          Notification[]
+  reviews                Review[]
 
   // Preferences
   language           String  @default("en")
@@ -93,6 +94,7 @@ model Product {
   cartItems   CartItem[]
   changes     ProductChange[]
   variants    ProductVariant[]
+  reviews     Review[]
 }
 
 // Color/size variants with per-option stock. A product with at least one
@@ -353,4 +355,32 @@ model AdminAuditLog {
 
   @@index([actorId, createdAt])
   @@index([entityType, entityId])
+}
+
+// Customer-submitted product review. One review per (user, product) —
+// the @@unique below enforces that at the DB layer; the route handler
+// also maps a P2002 violation to 409 REVIEW_EXISTS so the UI gets a
+// clean error instead of a stack trace.
+//
+// "Verified purchase" is computed at read time in the reviews route
+// (a `verifiedPurchase` boolean is attached per row when an OrderItem
+// for this product exists on a PAID/PROCESSING/SHIPPED/DELIVERED
+// order belonging to the reviewer). We do NOT cache it on the row —
+// an order moving to SHIPPED after the review was written would
+// otherwise need a back-fill.
+model Review {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int // 1..5
+  title     String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId]) // one review per shopper per product
+  @@index([productId, createdAt]) // list-by-recent path
+  @@index([productId, rating]) // histogram + rating-filter path
 }

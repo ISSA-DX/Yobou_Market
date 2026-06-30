@@ -31,6 +31,7 @@ const { prisma } = require('../src/prisma');
 async function resetTestDb() {
   // Wipe tables in dependency order for a clean slate per test suite.
   await prisma.$transaction([
+    prisma.review.deleteMany(),
     prisma.notification.deleteMany(),
     prisma.sseConnection.deleteMany(),
     prisma.adminAuditLog.deleteMany(),
