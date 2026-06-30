@@ -93,6 +93,19 @@ async function main() {
     });
   }
 
+  // Curated Category table — the admin/partner Add Product pickers
+  // read from this list via GET /api/categories. We upsert the four
+  // seed categories so the dropdown is non-empty after seeding. Using
+  // upsert (not create) makes the function idempotent — re-running the
+  // seed does not throw on the second pass.
+  for (const name of CATEGORIES) {
+    await prisma.category.upsert({
+      where: { name },
+      update: {},
+      create: { name, slug: name.toLowerCase(), isActive: true },
+    });
+  }
+
   // One default shipping address for the shopper.
   await prisma.address.create({
     data: {
