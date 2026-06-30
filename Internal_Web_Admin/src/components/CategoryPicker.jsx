@@ -324,16 +324,34 @@ export default function CategoryPicker({ value, onChange, id, error }) {
               {filtered.map((c, idx) => {
                 const isSelected = c.name === selectedName;
                 const isHighlight = idx === highlight;
+                // Live-sourced rows: free-form category names pulled
+                // off in-use products but not yet promoted to the
+                // curated table. We still let the user pick them so
+                // the form publishes against the same name that's
+                // already on the storefront, and the next backfill
+                // promotes the row to curated. A small "In use" chip
+                // distinguishes them visually.
+                const isLive = c.source === 'live';
                 return (
                   <li
-                    key={c.id}
+                    key={c.id ? `curated-${c.id}` : `live-${c.name}`}
                     role="option"
                     aria-selected={isSelected}
                     onMouseEnter={() => setHighlight(idx)}
                     onClick={() => { onChange(c.name); closePanel(); triggerRef.current?.focus(); }}
                     className={`flex items-center justify-between gap-2 px-3 py-2 text-sm cursor-pointer ${isHighlight ? 'bg-primary/10' : ''} ${isSelected ? 'font-semibold' : ''}`}
                   >
-                    <span className="truncate">{c.name}</span>
+                    <span className="truncate flex items-center gap-2">
+                      <span className="truncate">{c.name}</span>
+                      {isLive && (
+                        <span
+                          className="text-[10px] uppercase tracking-wide text-on-surface-variant bg-surface-low rounded-full px-1.5 py-0.5 shrink-0"
+                          title="Already in use on a live product. The next backfill will promote it to the curated list."
+                        >
+                          In use
+                        </span>
+                      )}
+                    </span>
                     <span className="flex items-center gap-2 shrink-0">
                       {c.productCount != null && (
                         <span className="text-xs text-on-surface-variant bg-surface-low rounded-full px-2 py-0.5">

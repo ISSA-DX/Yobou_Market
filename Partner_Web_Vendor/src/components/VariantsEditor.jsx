@@ -35,20 +35,109 @@ const SIZE_PRESETS = [
   '36', '38', '40', '42', '44', 'One Size',
 ];
 
-// Naïve name → hex colour hash so a swatch next to the typed name is
-// instant feedback. Collisions on similar names ("Dark Red" / "Crimson")
-// are acceptable; the typed name is also rendered next to the swatch
-// so the colour is never the only signal.
+// Color names → hex. The previous version hashed the typed name into a
+// random HSL hue, which meant picking "Red" sometimes rendered purple
+// and "Blue" sometimes rendered green. The user is right: the swatch
+// should match the color. We match by lower-casing the typed name and
+// also test common synonyms ("Sky Blue" → blue, "Forest Green" → green)
+// and the Material 3 "50/100/..." tints ("Red 300", "Blue 700"). Free-
+// text names that don't match fall back to a neutral grey.
+const COLOR_HEX = {
+  black:   '#000000',
+  white:   '#ffffff',
+  red:     '#ef4444',
+  blue:    '#3b82f6',
+  green:   '#22c55e',
+  yellow:  '#eab308',
+  pink:    '#ec4899',
+  purple:  '#a855f7',
+  orange:  '#f97316',
+  brown:   '#92400e',
+  gray:    '#9ca3af',
+  grey:    '#9ca3af',
+  beige:   '#d6c7a3',
+  navy:    '#1e3a8a',
+  teal:    '#14b8a6',
+  cyan:    '#06b6d4',
+  magenta: '#d946ef',
+  lime:    '#84cc16',
+  olive:   '#65715b',
+  maroon:  '#800000',
+  silver:  '#c0c0c0',
+  gold:    '#d4af37',
+  ivory:   '#fffff0',
+  cream:   '#fffdd0',
+};
+
+// Material 3 tint offsets — "Red 100" should still read as red, just
+// lighter/darker. Map every "100/200/..." step to a multiplier on the
+// base hex's lightness so "Blue 300" is a darker blue and "Blue 50" is
+// a pale blue. Keys are case-insensitive.
+const TINT_FACTORS = {
+  '50':  1.35, // lighter
+  '100': 1.25,
+  '200': 1.15,
+  '300': 1.05,
+  '400': 1.0,
+  '500': 1.0,  // base
+  '600': 0.85,
+  '700': 0.7,
+  '800': 0.55,
+  '900': 0.4,  // darker
+};
+
+// Parse "#rrggbb" → [r, g, b] 0–255.
+function hexToRgb(hex) {
+  const m = hex.replace('#', '').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return [128, 128, 128];
+  return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+}
+function rgbToHex(r, g, b) {
+  const c = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+// Apply a lightness factor in HSL space: factor > 1 lightens, < 1 darkens.
+function applyTint(hex, factor) {
+  const [r, g, b] = hexToRgb(hex);
+  // Simple linear blend toward white (factor > 1) or black (< 1).
+  if (factor >= 1) {
+    const f = factor - 1; // 0..0.35
+    return rgbToHex(
+      r + (255 - r) * f,
+      g + (255 - g) * f,
+      b + (255 - b) * f,
+    );
+  }
+  return rgbToHex(r * factor, g * factor, b * factor);
+}
+
+// Returns a hex string for the swatch. Falls back to a neutral grey
+// for unknown names, but the typed name is always rendered next to
+// the swatch so the colour is never the only signal.
 function nameToHex(name) {
   if (!name) return '#9ca3af';
-  let h = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const raw = String(name).trim();
+  // Strip common modifiers so "Dark Red" still matches red. Order
+  // matters: "dark" must come before "red" would be detected.
+  const MODIFIERS = new Set(['dark', 'light', 'pale', 'deep', 'bright',
+    'sky', 'forest', 'sea', 'royal', 'hot', 'cold', 'mid',
+    'pastel', 'muted', 'vivid', 'neon', 'matte', 'glossy',
+    'metallic', 'navy', 'olive', 'teal', 'maroon', 'silver', 'gold',
+    'crimson', 'scarlet', 'magenta', 'cyan', 'lime',
+    'tan', 'khaki', 'salmon', 'coral', 'turquoise', 'lavender']);
+  // Walk words from the end backwards so "Royal Blue" finds blue,
+  // "Light Forest Green" finds green.
+  const words = raw.split(/\s+/);
+  let baseWord = null;
+  for (let i = words.length - 1; i >= 0; i -= 1) {
+    const w = words[i].toLowerCase();
+    if (COLOR_HEX[w]) { baseWord = w; break; }
+    if (!MODIFIERS.has(w)) continue;
   }
-  // Map hash to HSL with high saturation + light range so the swatch
-  // is never muddy. Cycle hue through 360, fixed S=70%, L=50%.
-  const hue = h % 360;
-  return `hsl(${hue}, 70%, 50%)`;
+  if (!baseWord) return '#9ca3af';
+  const tintMatch = raw.match(/\b(50|100|200|300|400|500|600|700|800|900)\b/);
+  const tint = tintMatch ? TINT_FACTORS[tintMatch[1]] || 1 : 1;
+  return applyTint(COLOR_HEX[baseWord], tint);
 }
 
 export default function VariantsEditor({ form, update, errors = {} }) {

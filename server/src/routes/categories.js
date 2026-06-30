@@ -96,28 +96,84 @@ async function getCategoryCounts(activeOnly = true) {
 /**
  * GET /api/categories
  *
- * Query: ?includeInactive=1 to also list archived categories (admin UI).
+ * Query:
+ *   ?includeInactive=1 — also list archived categories (admin UI).
+ *   ?curatedOnly=1     — only return rows from the curated Category table
+ *                       (used by admin pages that manage the table itself).
+ *   ?includeLive=1     — (default) also include any free-form category
+ *                       names currently in use on LIVE products but not
+ *                       yet in the curated table. Marked with
+ *                       `source: 'live'` so the picker can badge them.
  *
- * Response: { categories: [{ id, name, slug, isActive, productCount }] }
+ * Response: { categories: [{
+ *     id, name, slug, isActive, productCount, source: 'curated' | 'live'
+ *   }] }
  *  - productCount counts only LIVE products.
+ *  - The free-form rows have id=null and slug derived from name.
  */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const includeInactive = req.query.includeInactive === '1' || req.query.includeInactive === 'true';
+    const curatedOnly = req.query.curatedOnly === '1' || req.query.curatedOnly === 'true';
+    // Default to true: the picker is the dominant caller, and showing
+    // live product categories is the whole point. Admin table-management
+    // pages opt out with ?curatedOnly=1.
+    const includeLive = curatedOnly
+      ? false
+      : req.query.includeLive === undefined
+        ? true
+        : req.query.includeLive === '1' || req.query.includeLive === 'true';
+
     const rows = await prisma.category.findMany({
       orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
       where: includeInactive ? undefined : { isActive: true },
     });
     const counts = await getCategoryCounts();
-    res.json({
-      categories: rows.map((c) => ({
-        id: c.id,
-        name: c.name,
-        slug: c.slug,
-        isActive: c.isActive,
-        productCount: counts[c.name] || 0,
-      })),
-    });
+
+    // Curated rows first.
+    const out = rows.map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      isActive: c.isActive,
+      productCount: counts[c.name] || 0,
+      source: 'curated',
+    }));
+
+    if (includeLive) {
+      // Pull every distinct category name currently in use on LIVE
+      // products, drop any that match a curated row (curated wins —
+      // those are the canonical entries), and synthesise a virtual
+      // row for the picker. No DB writes here; the next backfill
+      // promotes them to curated.
+      const liveNames = await prisma.product.findMany({
+        where: { status: 'LIVE' },
+        select: { category: true },
+        distinct: ['category'],
+      });
+      const curatedNames = new Set(rows.map((r) => r.name.toLowerCase()));
+      for (const { category } of liveNames) {
+        if (!category) continue;
+        if (curatedNames.has(category.toLowerCase())) continue;
+        out.push({
+          id: null,
+          name: category,
+          slug: slugify(category),
+          isActive: true,
+          productCount: counts[category] || 0,
+          source: 'live',
+        });
+      }
+      out.sort((a, b) => {
+        // Curated first, then by name. Active before inactive within
+        // each source.
+        if (a.source !== b.source) return a.source === 'curated' ? -1 : 1;
+        if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+    }
+
+    res.json({ categories: out });
   } catch (err) { next(err); }
 });
 
@@ -175,8 +231,9 @@ router.post('/', requireAuth, requireRole('ADMIN'), async (req, res, next) => {
         slug: created.slug,
         isActive: created.isActive,
         productCount: 0,
+        source: 'curated',
       }));
-      res.status(201).json({ category: { ...created, productCount: 0 } });
+      res.status(201).json({ category: { ...created, productCount: 0, source: 'curated' } });
     } catch (e) {
       if (e && e.code === 'P2002') {
         return res.status(409).json({ error: 'CATEGORY_EXISTS', message: 'A category with that name or slug already exists.' });
@@ -220,6 +277,7 @@ router.patch('/:id', requireAuth, requireRole('ADMIN'), async (req, res, next) =
         slug: updated.slug,
         isActive: updated.isActive,
         productCount: counts[updated.name] || 0,
+        source: 'curated',
       };
       pushPublic('category_updated', JSON.stringify(payload));
       res.json({ category: payload });
@@ -271,7 +329,7 @@ router.delete('/:id', requireAuth, requireRole('ADMIN'), async (req, res, next) 
     pushPublic(action === 'category.archive' ? 'category_archived' : 'category_deleted', JSON.stringify({
       id: existing.id, name: existing.name, hardDelete: action === 'category.delete',
     }));
-    res.json({ category: { id: result.id, name: result.name, slug: result.slug, isActive: result.isActive, productCount } });
+    res.json({ category: { id: result.id, name: result.name, slug: result.slug, isActive: result.isActive, productCount, source: 'curated' } });
   } catch (err) { next(err); }
 });
 

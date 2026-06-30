@@ -264,3 +264,59 @@ test('categories — POST /backfill populates the curated table from seed + live
   const second = await request(app, 'POST', '/api/categories/backfill', { token });
   assert.strictEqual(second.body.created, 0);
 });
+
+test('categories — GET includes free-form live product categories with source="live"', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const admin = await makeUser('ADMIN');
+  const token = signAccessFor(admin);
+
+  // One curated row.
+  await request(app, 'POST', '/api/categories', { token, body: { name: 'Electronics' } });
+
+  // Two LIVE products, one in a curated name, one in a free-form
+  // name not yet in the curated table.
+  await prisma.product.create({
+    data: { name: 'Earbuds', description: 'd', priceCents: 100, category: 'Electronics', imageUrls: '[]', status: 'LIVE', stock: 1 },
+  });
+  await prisma.product.create({
+    data: { name: 'Pixel 9', description: 'd', priceCents: 900, category: 'Phone', imageUrls: '[]', status: 'LIVE', stock: 3 },
+  });
+
+  const res = await request(app, 'GET', '/api/categories', { token });
+  assert.strictEqual(res.status, 200);
+  const list = res.body.categories;
+
+  // "Electronics" is curated (not duplicated as a live row).
+  const electronics = list.filter((c) => c.name === 'Electronics');
+  assert.strictEqual(electronics.length, 1, 'curated name should appear exactly once');
+  assert.strictEqual(electronics[0].source, 'curated');
+
+  // "Phone" is synthesised from live products.
+  const phone = list.find((c) => c.name === 'Phone');
+  assert.ok(phone, 'expected free-form "Phone" in the response');
+  assert.strictEqual(phone.source, 'live');
+  assert.strictEqual(phone.id, null);
+  assert.strictEqual(phone.productCount, 1);
+
+  // Curated rows sort before live rows.
+  const electronicsIdx = list.findIndex((c) => c.name === 'Electronics');
+  const phoneIdx = list.findIndex((c) => c.name === 'Phone');
+  assert.ok(electronicsIdx < phoneIdx, 'curated rows should sort before live rows');
+});
+
+test('categories — GET ?curatedOnly=1 hides live-sourced rows', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const admin = await makeUser('ADMIN');
+  const token = signAccessFor(admin);
+  await request(app, 'POST', '/api/categories', { token, body: { name: 'Electronics' } });
+  await prisma.product.create({
+    data: { name: 'P', description: 'd', priceCents: 1, category: 'Phone', imageUrls: '[]', status: 'LIVE', stock: 1 },
+  });
+
+  const res = await request(app, 'GET', '/api/categories?curatedOnly=1', { token });
+  assert.strictEqual(res.status, 200);
+  const names = res.body.categories.map((c) => c.name);
+  assert.deepStrictEqual(names, ['Electronics'], 'curatedOnly should exclude live-sourced rows');
+});
