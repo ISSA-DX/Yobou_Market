@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const multer = require('multer');
 const { z } = require('zod');
 const { prisma } = require('../prisma');
-const { productUpsert, productUpsertPartial } = require('../lib/validators');
+const { productUpsert, productUpsertPartial, productListQuery } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
 const { audit, notifyProductChange, notifyAdminsProductChangeSubmitted } = require('../lib/notifications');
 
@@ -37,6 +37,15 @@ function parseVariants(product) {
     size: v.size,
     stock: v.stock,
   })) };
+}
+
+// Reshape the CategoryExtra join-table rows into a clean
+// { name } array on the product wire shape. Mirrors parseImageUrls'
+// JSON-string → array pattern. Returns the product unchanged when
+// the field is absent (e.g. legacy include without the relation).
+function parseExtraCategories(product) {
+  if (!product || !Array.isArray(product.extraCategories)) return product;
+  return { ...product, extraCategories: product.extraCategories.map((e) => ({ id: e.id, name: e.name })) };
 }
 
 /**
@@ -108,6 +117,39 @@ function requireAdminOrApprovedVendor(req, res, next) {
   return requireApprovedVendor(req, res, next);
 }
 
+// Normalize the extraCategories array. Mirrors the invariants the
+// admin form applies client-side (trim, drop empties, dedupe) plus a
+// 10-entry cap and an 80-char per-name cap to match `Product.category`.
+// Idempotent — safe to call on every write.
+function normalizeExtraCategories(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of input) {
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) continue;
+    if (trimmed.length > 80) continue;
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
+// Reconcile the CategoryExtra rows for a product with the caller's
+// array. The reconciliation matches the variant helper: delete all
+// existing rows for the product, then create the new ones. ≤10
+// inserts makes this trivially cheap. Run inside a transaction that
+// already holds the product row.
+async function applyExtraCategories(tx, productId, names) {
+  await tx.categoryExtra.deleteMany({ where: { productId } });
+  for (const name of names) {
+    await tx.categoryExtra.create({ data: { productId, name } });
+  }
+}
+
 // Build an absolute URL from the live request so <img src=...> resolves
 // correctly when the SPA is served from a different origin than the API
 // (e.g. the GitHub-Pages deployment where the API is on Render and the
@@ -150,29 +192,42 @@ router.post('/upload', requireAuth, requireAdminOrApprovedVendor, upload.single(
 // Public list — anyone (including guests) can browse products.
 router.get('/', async (req, res, next) => {
   try {
-    const { category, q, limit } = req.query;
+    // zod-parsed query so the placement filters (`?showOnHome=`,
+    // `?showOnDeals=`, etc.) have a single source of truth. Unset
+    // filters stay null and are skipped on the where clause.
+    const parsed = productListQuery.parse(req.query);
     const where = { status: 'LIVE' };
-    if (category) where.category = String(category);
-    if (q) {
-      const term = String(q);
+    if (parsed.category) where.category = parsed.category;
+    if (parsed.q) {
+      const term = parsed.q;
       where.OR = [
         { name: { contains: term } },
         { category: { contains: term } },
         { description: { contains: term } },
       ];
     }
-    const take = limit ? Math.max(1, Math.min(100, Number(limit) || 100)) : 100;
+    // Each showOn* predicate is opt-in: only applied when the caller
+    // actually passed the filter. The shopper Home page never sets
+    // them (its rail filters happen client-side from one
+    // unfiltered fetch); the admin preview is the main consumer.
+    if (parsed.showOnHome != null) where.showOnHome = parsed.showOnHome;
+    if (parsed.showOnDeals != null) where.showOnDeals = parsed.showOnDeals;
+    if (parsed.showOnFlashDeals != null) where.showOnFlashDeals = parsed.showOnFlashDeals;
+    if (parsed.showOnSearch != null) where.showOnSearch = parsed.showOnSearch;
     const products = await prisma.product.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take,
+      take: parsed.limit,
       include: {
         vendor: { select: { id: true, businessName: true } },
         variants: { select: { id: true, color: true, size: true, stock: true } },
       },
     });
     res.json({ products: products.map((p) => parseVariants(parseImageUrls(p))) });
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
 });
 
 // Backwards-compatible legacy list — derived from the curated Category
@@ -310,6 +365,7 @@ router.get('/:id', async (req, res, next) => {
       include: {
         vendor: { select: { id: true, businessName: true } },
         variants: { select: { id: true, color: true, size: true, stock: true } },
+        extraCategories: { select: { id: true, name: true } },
       },
     });
     if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
@@ -319,7 +375,7 @@ router.get('/:id', async (req, res, next) => {
     if (product.status !== 'LIVE' && !isOwner && !isAdmin) {
       return res.status(404).json({ error: 'NOT_FOUND' });
     }
-    res.json({ product: parseVariants(parseImageUrls(product)) });
+    res.json({ product: parseExtraCategories(parseVariants(parseImageUrls(product))) });
   } catch (err) { next(err); }
 });
 
@@ -327,7 +383,11 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
   try {
     const data = productUpsert.parse(req.body);
-    const { variants, ...rest } = data;
+    const { variants, extraCategories, ...rest } = data;
+    // Normalize extras once at submit time so the admin can read the
+    // proposal exactly as it will land after approval. Stored as a
+    // JSON string on the change row.
+    const normalizedExtras = normalizeExtraCategories(extraCategories);
     const change = await prisma.productChange.create({
       data: {
         vendorId: req.user.vendor.id,
@@ -348,6 +408,16 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
           ? JSON.stringify(variants.map((v) => ({ color: v.color, size: v.size, stock: v.stock || 0 })))
           : null,
         variantsAction: Array.isArray(variants) && variants.length > 0 ? 'replace' : null,
+        // Placement flags for CREATE. We pass through the values
+        // directly (not the schema defaults) so the admin can see
+        // what the vendor submitted. Approval falls through to the
+        // schema defaults on a null value so vendors who don't care
+        // about placements don't have to fill this in.
+        proposedShowOnHome:       rest.showOnHome       ?? null,
+        proposedShowOnDeals:      rest.showOnDeals      ?? null,
+        proposedShowOnFlashDeals: rest.showOnFlashDeals ?? null,
+        proposedShowOnSearch:     rest.showOnSearch     ?? null,
+        proposedExtraCategories:  JSON.stringify(normalizedExtras),
         status: 'PENDING',
       },
     });
@@ -370,7 +440,12 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
   try {
     const data = productUpsert.parse(req.body);
     const product = await prisma.$transaction(async (tx) => {
-      const { variants, ...rest } = data;
+      // Pull out the relation-only fields that don't belong on the
+      // Product row itself. The 4 booleans DO go on Product; the
+      // extraCategories array is normalized then persisted via the
+      // CategoryExtra join table.
+      const { variants, extraCategories, ...rest } = data;
+      const normalizedExtras = normalizeExtraCategories(extraCategories);
       // If variants are provided, Product.stock is the sum — server is
       // the source of truth, not the client.
       const stock = Array.isArray(variants) && variants.length > 0
@@ -382,10 +457,14 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
       if (Array.isArray(variants) && variants.length > 0) {
         await applyVariants(tx, created.id, variants.map((v) => ({ ...v, id: undefined })));
       }
+      if (normalizedExtras.length > 0) {
+        await applyExtraCategories(tx, created.id, normalizedExtras);
+      }
       return tx.product.findUnique({
         where: { id: created.id },
         include: {
           variants: { select: { id: true, color: true, size: true, stock: true } },
+          extraCategories: { select: { id: true, name: true } },
         },
       });
     });
@@ -398,7 +477,7 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
       meta: { name: product.name, category: product.category, vendorId: product.vendorId, variantCount: product.variants.length },
     });
     await notifyProductChange({ action: 'create', product });
-    res.status(201).json({ product: parseVariants(parseImageUrls(product)) });
+    res.status(201).json({ product: parseExtraCategories(parseVariants(parseImageUrls(product))) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
     next(err);
@@ -433,7 +512,12 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
     // Admin updates apply immediately; vendor updates go through approval.
     if (isAdmin) {
       const updated = await prisma.$transaction(async (tx) => {
-        const { variants, ...rest } = data;
+        // Pull out the relation-only fields. The 4 booleans stay on
+        // the Product row (the partial schema makes them optional,
+        // so an admin PATCH that only updates a price doesn't have
+        // to send them). extraCategories is normalized then
+        // reconciled against the CategoryExtra join table.
+        const { variants, extraCategories, ...rest } = data;
         const updateData = stringifyImageUrls(rest);
         // If variants are provided, recompute Product.stock. If variants
         // is an empty array, that's "clear all variants" — stock falls
@@ -450,10 +534,18 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         if (Array.isArray(variants)) {
           await applyVariants(tx, req.params.id, variants);
         }
+        // Only reconcile CategoryExtra when the field was actually
+        // sent in the body. An admin PATCH that doesn't touch
+        // placements leaves existing rows alone.
+        if (extraCategories !== undefined) {
+          const normalizedExtras = normalizeExtraCategories(extraCategories);
+          await applyExtraCategories(tx, req.params.id, normalizedExtras);
+        }
         return tx.product.findUnique({
           where: { id: req.params.id },
           include: {
             variants: { select: { id: true, color: true, size: true, stock: true } },
+            extraCategories: { select: { id: true, name: true } },
           },
         });
       });
@@ -464,7 +556,7 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         meta: { name: updated.name, category: updated.category, vendorId: updated.vendorId, variantCount: updated.variants.length },
       });
       await notifyProductChange({ action: 'update', product: updated });
-      return res.json({ product: parseVariants(parseImageUrls(updated)) });
+      return res.json({ product: parseExtraCategories(parseVariants(parseImageUrls(updated))) });
     }
 
     const change = await prisma.productChange.create({
@@ -488,6 +580,21 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         proposedStatus: data.status ?? null,
         proposedVariants: data.variants !== undefined ? JSON.stringify(data.variants || []) : null,
         variantsAction: data.variants !== undefined ? 'replace' : null,
+        // Placement flags. null = "leave alone" (the standard
+        // proposed* convention on UPDATE). On admin approval the
+        // change-apply path only writes the Product column when the
+        // proposed value is non-null, so an empty placement section
+        // on the form is a true no-op.
+        proposedShowOnHome:       data.showOnHome       ?? null,
+        proposedShowOnDeals:      data.showOnDeals      ?? null,
+        proposedShowOnFlashDeals: data.showOnFlashDeals ?? null,
+        proposedShowOnSearch:     data.showOnSearch     ?? null,
+        // Extra categories: normalize then JSON-encode. The change
+        // record only carries a JSON snapshot; the approval path
+        // reconciles the join table.
+        proposedExtraCategories: data.extraCategories !== undefined
+          ? JSON.stringify(normalizeExtraCategories(data.extraCategories))
+          : null,
         status: 'PENDING',
       },
     });

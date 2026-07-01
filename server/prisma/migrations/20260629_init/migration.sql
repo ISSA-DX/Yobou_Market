@@ -313,3 +313,41 @@ CREATE INDEX "Review_productId_rating_idx" ON "Review"("productId", "rating");
 -- CreateIndex
 CREATE UNIQUE INDEX "Review_userId_productId_key" ON "Review"("userId", "productId");
 
+-- ============================================================
+-- Placements v1: admin "where shoppers see this product" flags
+-- + CategoryExtra join model for additional category pin targets.
+-- All additive. SQLite applies the column defaults to every
+-- existing row, so LIVE products implicitly become
+-- (showOnHome=true, showOnDeals=true, showOnFlashDeals=false,
+-- showOnSearch=true) — the correct "show everywhere by default"
+-- behavior for the new toggles.
+-- ============================================================
+
+-- AlterTable
+ALTER TABLE "Product" ADD COLUMN "showOnHome" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Product" ADD COLUMN "showOnDeals" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "Product" ADD COLUMN "showOnFlashDeals" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Product" ADD COLUMN "showOnSearch" BOOLEAN NOT NULL DEFAULT true;
+
+-- AlterTable
+ALTER TABLE "ProductChange" ADD COLUMN "proposedShowOnHome" BOOLEAN;
+ALTER TABLE "ProductChange" ADD COLUMN "proposedShowOnDeals" BOOLEAN;
+ALTER TABLE "ProductChange" ADD COLUMN "proposedShowOnFlashDeals" BOOLEAN;
+ALTER TABLE "ProductChange" ADD COLUMN "proposedShowOnSearch" BOOLEAN;
+ALTER TABLE "ProductChange" ADD COLUMN "proposedExtraCategories" TEXT;
+
+-- CreateTable
+CREATE TABLE "CategoryExtra" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "productId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "CategoryExtra_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CategoryExtra_productId_name_key" ON "CategoryExtra"("productId", "name");
+
+-- CreateIndex
+CREATE INDEX "CategoryExtra_name_idx" ON "CategoryExtra"("name");
+

@@ -54,6 +54,21 @@ const productUpsert = z.object({
   // the legacy single stock value is used. Capped at 200 rows per
   // product to guard against oversize bodies.
   variants: z.array(variantInput).max(200).default([]),
+  // Placement flags — which shopper surfaces this product should
+  // appear on. Defaults: home/deals/search ON, flash OFF. The route
+  // handlers (admin POST/PATCH, change approve) write these to the
+  // Product row; the public list endpoint filters on them. See
+  // server/src/routes/products.js for the read side.
+  showOnHome: z.boolean().default(true),
+  showOnDeals: z.boolean().default(true),
+  showOnFlashDeals: z.boolean().default(false),
+  showOnSearch: z.boolean().default(true),
+  // Additional category pin targets (in addition to the primary
+  // `category` string). Free-text, max 10 entries, each trimmed +
+  // deduped + capped at 80 chars to match `category`. Server-side
+  // normalization happens in the route handler so the form can
+  // send whatever shape is convenient.
+  extraCategories: z.array(z.string()).max(10).default([]),
 }).refine(
   // A deal is only valid if it's strictly more expensive than the
   // current price. A non-null compareAtPriceCents <= priceCents would
@@ -155,6 +170,17 @@ const productChangeCreate = z.object({
   // Vendor's proposed variant snapshot. When present, admin approval
   // applies it; when absent, existing variants (if any) are left alone.
   variants: z.array(variantInput).max(200).optional(),
+  // Placement flags. Same null-vs-explicit convention as the other
+  // proposed* fields on UPDATE (null = "leave the existing Product
+  // value alone"). On CREATE the approve path falls through to the
+  // schema defaults when null, so vendors don't have to opt in to
+  // publish a new product.
+  showOnHome: z.boolean().optional(),
+  showOnDeals: z.boolean().optional(),
+  showOnFlashDeals: z.boolean().optional(),
+  showOnSearch: z.boolean().optional(),
+  // Additional category pin targets. Server-side normalized on apply.
+  extraCategories: z.array(z.string()).max(10).optional(),
 }).refine(
   (d) => d.action === 'CREATE' || !!d.productId,
   { message: 'productId is required for UPDATE/DELETE', path: ['productId'] }
@@ -238,6 +264,36 @@ const reviewListQuery = z.object({
   rating: z.coerce.number().int().min(1).max(5).optional(),
 });
 
+// Query string for the public product list (GET /api/products).
+// `category` is the existing exact-string match on Product.category.
+// `q` is a contains search across name + category + description.
+// The four showOn* filters let the admin preview a specific surface
+// and (eventually) let the shopper pick "show only on flash" / etc.
+// All four default to "no filter" (null = skip the predicate).
+// Query-string booleans need explicit coercion: z.coerce.boolean() would
+// turn 'false' into true (Boolean('false') === true), which would make
+// `?showOnHome=false` match products with showOnHome: true. This preprocessor
+// accepts the common truthy/falsy spellings and rejects anything else so the
+// route's where-clause can rely on the parsed value.
+const queryBool = z.preprocess((v) => {
+  if (typeof v === 'boolean') return v;
+  if (typeof v !== 'string') return v;
+  const s = v.toLowerCase();
+  if (s === 'true' || s === '1') return true;
+  if (s === 'false' || s === '0') return false;
+  return v; // z.boolean() below will reject
+}, z.boolean());
+
+const productListQuery = z.object({
+  category: z.string().min(1).max(80).optional(),
+  q: z.string().min(1).max(200).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(100),
+  showOnHome: queryBool.optional(),
+  showOnDeals: queryBool.optional(),
+  showOnFlashDeals: queryBool.optional(),
+  showOnSearch: queryBool.optional(),
+});
+
 module.exports = {
   registerCustomer,
   login,
@@ -261,4 +317,5 @@ module.exports = {
   categoryUpdate,
   reviewCreate,
   reviewListQuery,
+  productListQuery,
 };

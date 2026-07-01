@@ -40,6 +40,20 @@ const EMPTY_FORM = {
   // Optional color/size variants. When non-empty the admin-approve
   // path writes them to ProductVariant and recomputes Product.stock.
   variants: [],
+  // Placement flags — which shopper surfaces this product should
+  // appear on. Defaults match the Product schema (home/deals/search
+  // ON, flash OFF), so a freshly published product is visible
+  // everywhere by default and the vendor only opts in to Flash.
+  // Edit-mode hydrate pulls these from the live product so an
+  // existing placement isn't silently reset.
+  showOnHome: true,
+  showOnDeals: true,
+  showOnFlashDeals: false,
+  showOnSearch: true,
+  // Additional category pin targets. Empty by default; the primary
+  // `category` is the product's main page. Server-side normalize
+  // (trim / dedupe / cap 10 / cap 80 chars) happens on submit.
+  extraCategories: [],
 };
 
 const DRAFT_KEY = 'yobou-partner-product-draft';
@@ -110,6 +124,20 @@ export default function ProductNew() {
         status: p.status || 'LIVE',
         variants: Array.isArray(p.variants)
           ? p.variants.map((v) => ({ id: v.id, color: v.color, size: v.size, stock: v.stock }))
+          : [],
+        // Placement flags — fall through to schema defaults if the
+        // product was created before the migration that added the
+        // columns (defensive; the migration backfills them, but a
+        // stale read could still be missing).
+        showOnHome: p.showOnHome !== undefined ? p.showOnHome : true,
+        showOnDeals: p.showOnDeals !== undefined ? p.showOnDeals : true,
+        showOnFlashDeals: p.showOnFlashDeals !== undefined ? p.showOnFlashDeals : false,
+        showOnSearch: p.showOnSearch !== undefined ? p.showOnSearch : true,
+        // extraCategories arrives as an array of {id, name} from the
+        // /api/products/:id response; flatten to the string[] the
+        // form / submit payload expects.
+        extraCategories: Array.isArray(p.extraCategories)
+          ? p.extraCategories.map((e) => (typeof e === 'string' ? e : e.name))
           : [],
       };
       setForm(next);

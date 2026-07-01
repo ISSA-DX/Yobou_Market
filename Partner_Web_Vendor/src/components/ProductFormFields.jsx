@@ -3,6 +3,7 @@ import { apiForm } from '../api';
 import CategoryPicker from './CategoryPicker';
 import VariantsAccordion from './VariantsAccordion';
 import Icon from './Icon';
+import PlacementSection from './PlacementSection';
 
 export default function ProductFormFields({ form, update, errors = {} }) {
   const fileRef = useRef(null);
@@ -248,6 +249,11 @@ export default function ProductFormFields({ form, update, errors = {} }) {
             placeholder="What makes this product special?"
           />
         </div>
+      </section>
+
+      {/* ───── Placements (where shoppers see it) ───── */}
+      <section className="pt-3 border-t border-outline-variant/30">
+        <PlacementSection form={form} update={update} errors={errors.placement || {}} />
       </section>
 
       {/* ───── Media ───── */}

@@ -42,6 +42,18 @@ const EMPTY_FORM = {
   // single-stock UX is preserved. When non-empty, the server computes
   // Product.stock as sum-of-variant-stock on save.
   variants: [],
+  // Placement flags — which shopper surfaces this product appears on.
+  // Defaults match the Product schema (home/deals/search ON, flash
+  // OFF) so a newly-published product is visible everywhere by default
+  // and the admin only has to opt in to Flash / opt out of Search.
+  showOnHome: true,
+  showOnDeals: true,
+  showOnFlashDeals: false,
+  showOnSearch: true,
+  // Additional category pin targets. Empty by default; the primary
+  // `category` is the product's main page. Server-side normalize
+  // (trim / dedupe / cap 10 / cap 80 chars) happens on save.
+  extraCategories: [],
 };
 
 const DRAFT_KEY = 'yobou-admin-product-draft';
@@ -129,6 +141,19 @@ export default function ProductNew() {
         status: p.status || 'LIVE',
         variants: Array.isArray(p.variants)
           ? p.variants.map((v) => ({ id: v.id, color: v.color, size: v.size, stock: v.stock }))
+          : [],
+        // Placement flags — fall through to schema defaults if the
+        // product was created before the migration that added the
+        // columns (defensive; the migration backfills them, but a
+        // stale read could still be missing).
+        showOnHome: p.showOnHome !== undefined ? p.showOnHome : true,
+        showOnDeals: p.showOnDeals !== undefined ? p.showOnDeals : true,
+        showOnFlashDeals: p.showOnFlashDeals !== undefined ? p.showOnFlashDeals : false,
+        showOnSearch: p.showOnSearch !== undefined ? p.showOnSearch : true,
+        // extraCategories arrives as [{id, name}]; flatten to string[]
+        // for the form / submit payload.
+        extraCategories: Array.isArray(p.extraCategories)
+          ? p.extraCategories.map((e) => (typeof e === 'string' ? e : e.name))
           : [],
       };
       setForm(next);

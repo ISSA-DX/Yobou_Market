@@ -89,12 +89,36 @@ model Product {
   // variant write (see server/src/routes/products.js applyVariants).
   stock       Int              @default(0)
   status      String           @default("LIVE") // LIVE / DRAFT / HIDDEN
+  // Placement flags. Each controls whether the product appears on a
+  // given shopper surface. Defaults: home/deals/search ON, flash OFF
+  // (Flash is meant to be a curated subset, not a free-for-all).
+  //   - showOnHome: Home main grid (and anywhere the unfiltered
+  //     /api/products list is rendered, except Deals/Flash which have
+  //     their own flags).
+  //   - showOnDeals: Home Deals rail. Auto-detection
+  //     (compareAt > price) is still applied on top of this flag, so
+  //     a product with showOnDeals=false is never in the rail even
+  //     if it has a strikethrough price.
+  //   - showOnFlashDeals: Home Flash deals rail. New curated surface.
+  //   - showOnSearch: surfaces that match buyer search queries
+  //     (APP_shopper_and_buyer /api/products?q= and the partner app).
+  showOnHome        Boolean         @default(true)
+  showOnDeals       Boolean         @default(true)
+  showOnFlashDeals  Boolean         @default(false)
+  showOnSearch      Boolean         @default(true)
   createdAt   DateTime         @default(now())
   orderItems  OrderItem[]
   cartItems   CartItem[]
   changes     ProductChange[]
   variants    ProductVariant[]
   reviews     Review[]
+  // Additional category pin targets (in addition to the primary
+  // `category` string). Free-text names, matching the convention of
+  // the primary `category` column — the curated `Category` table is a
+  // subset, not the source of truth. This round stores them but does
+  // not yet expose them via the public /api/products?category=
+  // filter; see plan "Deferred work".
+  extraCategories CategoryExtra[]
 }
 
 // Color/size variants with per-option stock. A product with at least one
@@ -130,6 +154,24 @@ model Category {
   slug      String   @unique
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+}
+
+// Many-to-many opt-in: a product's additional category pin targets
+// (in addition to the primary `Product.category` string). One row per
+// (product, name); deduped via @@unique. Cascade-deleted with the
+// product so admin delete stays clean. This is metadata-only this
+// round — the public /api/products?category= filter still uses the
+// primary `category` string, not this table. The plan calls out a
+// 30-line follow-up to wire the OR clause when the user wants it.
+model CategoryExtra {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+
+  @@unique([productId, name]) // same product can't be pinned twice to the same name
+  @@index([name]) // future multi-cat filter would look up by name
 }
 
 model CartItem {
@@ -269,6 +311,21 @@ model ProductChange {
   // that sets the field) from a no-op leave-existing.
   proposedVariants    String?
   variantsAction      String? // 'replace' | null — currently always 'replace' when set
+  // Proposed placement flags. Mirror Product.showOn* and apply on
+  // admin approval. Null fields on UPDATE mean "leave the existing
+  // Product value alone" (the standard proposed* convention in this
+  // model); on CREATE, null fields fall through to the schema
+  // defaults (home=true, deals=true, flash=false, search=true) so
+  // vendors don't have to opt in just to publish a new product.
+  proposedShowOnHome       Boolean?
+  proposedShowOnDeals      Boolean?
+  proposedShowOnFlashDeals Boolean?
+  proposedShowOnSearch     Boolean?
+  // JSON-encoded string[] of extra category names. Mirrors the
+  // existing proposedImageUrls / proposedVariants pattern. On
+  // approval the route handler deletes-and-recreates the
+  // CategoryExtra rows for the affected product.
+  proposedExtraCategories  String?
   // Review
   status              String    @default("PENDING") // PENDING | APPROVED | REJECTED
   reviewedById        String?

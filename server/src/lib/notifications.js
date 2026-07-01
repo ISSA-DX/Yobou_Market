@@ -349,7 +349,10 @@ async function notifyProductChange({ action, product, title, body, link, tx }) {
   const l = link || defaultLink;
 
   // 1. Catalog event to every connected client (customer + admin + partner).
-  //    No DB row, just an SSE frame.
+  //    No DB row, just an SSE frame. The placement flags are included
+  //    so client pages can filter the event without refetching the
+  //    full list — a product_created with showOnHome=false shouldn't
+  //    trigger a Home-page refetch.
   const catalogPayload = {
     action,
     productId: product.id,
@@ -362,6 +365,14 @@ async function notifyProductChange({ action, product, title, body, link, tx }) {
       ? safeParseJson(product.imageUrls) || []
       : (product.imageUrls || []),
     stock: product.stock != null ? product.stock : null,
+    // Placement flags. Defaults match the Product schema defaults so
+    // an older product row that somehow lacks the column (shouldn't
+    // happen post-migration, but defensive) still produces a coherent
+    // event frame.
+    showOnHome:       product.showOnHome       != null ? product.showOnHome       : true,
+    showOnDeals:      product.showOnDeals      != null ? product.showOnDeals      : true,
+    showOnFlashDeals: product.showOnFlashDeals != null ? product.showOnFlashDeals : false,
+    showOnSearch:     product.showOnSearch     != null ? product.showOnSearch     : true,
   };
   pushCatalog('catalog', { event: kind, ...catalogPayload });
 

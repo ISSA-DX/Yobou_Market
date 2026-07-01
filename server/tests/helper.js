@@ -43,6 +43,10 @@ async function resetTestDb() {
     // ProductVariant must be cleared before Product — Cascade in schema
     // handles fresh rows but the test DB reset is manual.
     prisma.productVariant.deleteMany(),
+    // CategoryExtra references Product and is cascade-deleted in
+    // production; the test reset is manual so we wipe it explicitly
+    // before deleting the products it points at.
+    prisma.categoryExtra.deleteMany(),
     prisma.productChange.deleteMany(),
     prisma.product.deleteMany(),
     prisma.address.deleteMany(),

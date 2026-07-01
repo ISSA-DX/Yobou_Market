@@ -206,6 +206,22 @@ function ChangeDiff({ change }) {
   if (change.proposedCategory !== null) fields.push({ label: 'Category', value: change.proposedCategory });
   if (change.proposedStock !== null) fields.push({ label: 'Stock', value: change.proposedStock });
   if (change.proposedStatus !== null) fields.push({ label: 'Visibility', value: change.proposedStatus });
+  // Placements — only show the row when the vendor touched the flag
+  // (null = "leave the existing Product column alone" on UPDATE, the
+  // standard proposed* convention). On CREATE any non-null value
+  // should render; null falls through to the schema defaults.
+  if (change.proposedShowOnHome !== null) {
+    fields.push({ label: 'Show on Home', value: change.proposedShowOnHome ? 'On' : 'Off' });
+  }
+  if (change.proposedShowOnDeals !== null) {
+    fields.push({ label: 'Show on Deals', value: change.proposedShowOnDeals ? 'On' : 'Off' });
+  }
+  if (change.proposedShowOnFlashDeals !== null) {
+    fields.push({ label: 'Show on Flash', value: change.proposedShowOnFlashDeals ? 'On' : 'Off' });
+  }
+  if (change.proposedShowOnSearch !== null) {
+    fields.push({ label: 'Show in Search', value: change.proposedShowOnSearch ? 'On' : 'Off' });
+  }
 
   return (
     <div className="bg-surface-low rounded-md p-3">
@@ -236,6 +252,32 @@ function ChangeDiff({ change }) {
             alt=""
             className="w-16 h-16 rounded-md object-cover bg-surface-high"
           />
+        </div>
+      )}
+      {/* Extra categories — render as a chip row when the vendor
+          proposed any. Empty array means "clear all extras", which is
+          itself a meaningful edit; null means "leave the existing
+          CategoryExtra rows alone" (UPDATE) or "no extras proposed"
+          (CREATE). */}
+      {Array.isArray(change.proposedExtraCategories) && (
+        <div className="mt-2">
+          <div className="text-on-surface-variant text-sm">Extra categories: </div>
+          {change.proposedExtraCategories.length === 0 ? (
+            <div className="text-sm italic text-on-surface-variant mt-0.5">
+              (none — will clear all extras)
+            </div>
+          ) : (
+            <ul className="flex flex-wrap gap-1.5 mt-1">
+              {change.proposedExtraCategories.map((name) => (
+                <li
+                  key={name}
+                  className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium"
+                >
+                  {name}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </div>

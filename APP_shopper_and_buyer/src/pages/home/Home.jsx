@@ -72,6 +72,21 @@ export default function Home() {
   const topDeal = deals[0] || null;
   const dealCount = deals.length;
 
+  // "Flash deals" — handpicked subset of products the admin / vendor
+  // opted in to via Product.showOnFlashDeals. Hidden when nothing is
+  // flagged, so an empty shop doesn't render a dead section. Sorted by
+  // newest first (createdAt desc) so the freshest promotion leads.
+  // Capped at 8 cards so the rail stays a single row of horizontal
+  // scroll, matching the Deals rail above it.
+  const flashDeals = all
+    .filter((p) => p.showOnFlashDeals === true && p.stock > 0)
+    .sort((a, b) => {
+      const ta = new Date(a.createdAt || 0).getTime();
+      const tb = new Date(b.createdAt || 0).getTime();
+      return tb - ta;
+    })
+    .slice(0, 8);
+
   async function quickAdd(p) {
     try {
       await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
@@ -226,6 +241,30 @@ export default function Home() {
           </div>
           <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4">
             {deals.slice(0, 8).map((p) => (
+              <div key={p.id} className="min-w-[170px] sm:min-w-[200px]">
+                <ProductCard product={p} onAdd={quickAdd} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Flash deals rail — curated subset of products the admin/vendor
+          flagged as `showOnFlashDeals`. Sits between Deals and Recently
+          viewed so a handpicked promotion gets prominent placement
+          without overwhelming the main grid. Empty state is hidden. */}
+      {flashDeals.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-headline-md font-bold flex items-center gap-2">
+              <Icon name="flash_on" className="text-tertiary" /> Flash deals
+            </h2>
+            <span className="text-label-md text-on-surface-variant">
+              {flashDeals.length} pick{flashDeals.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4">
+            {flashDeals.map((p) => (
               <div key={p.id} className="min-w-[170px] sm:min-w-[200px]">
                 <ProductCard product={p} onAdd={quickAdd} />
               </div>
