@@ -21,6 +21,7 @@ import Users from './pages/users/Users';
 import Broadcast from './pages/broadcast/Broadcast';
 import AuditLog from './pages/audit/AuditLog';
 import NotificationPrefs from './pages/preferences/Notifications';
+import Appearance from './pages/preferences/Appearance';
 
 function Boot() {
   const boot = useStore((s) => s.boot);
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="/broadcast" element={<ErrorBoundary><Broadcast /></ErrorBoundary>} />
           <Route path="/audit" element={<ErrorBoundary><AuditLog /></ErrorBoundary>} />
           <Route path="/preferences/notifications" element={<ErrorBoundary><NotificationPrefs /></ErrorBoundary>} />
+          <Route path="/preferences/appearance" element={<ErrorBoundary><Appearance /></ErrorBoundary>} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

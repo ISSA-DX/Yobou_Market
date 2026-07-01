@@ -397,7 +397,7 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
         where: { id: result.productId },
         include: {
           vendor: { select: { userId: true } },
-          variants: { select: { id: true, color: true, size: true, stock: true } },
+          variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
         },
       });
     }

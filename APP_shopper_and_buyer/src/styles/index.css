@@ -103,3 +103,17 @@
 /* Hide scrollbar on horizontal scroll containers */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/*
+  Contrast bumps in dark mode. The default `text-error` is the light-mode
+  red (#ba1a1a); against the dark navy surface that red is hard to read.
+  We swap to the lighter `error-container` token (#ffb4ab) which the
+  design system ships specifically for "on-error-container" surfaces
+  and which has a contrast ratio of ~7:1 against our `#0b1c30` body.
+  Same logic for the active-state brand tint: the primary-container
+  background at 30% opacity is nearly invisible on a navy surface, so
+  we use a more saturated primary/40 in dark mode.
+*/
+.dark .text-error { color: #ffb4ab; }
+.dark .bg-primary\/30 { background: rgba(0, 52, 185, 0.4) !important; }
+.dark .bg-primary-container\/30 { background: rgba(140, 158, 255, 0.3) !important; }

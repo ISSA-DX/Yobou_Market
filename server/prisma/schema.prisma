@@ -132,6 +132,11 @@ model ProductVariant {
   color     String // free-text: "Black", "Dark Red", or anything the admin typed
   size      String // free-text: "S", "XL", "42", "One Size"
   stock     Int      @default(0)
+  // Per-color photo gallery override. Empty array = fall back to the
+  // product-level imageUrls on the storefront. Each row is an absolute
+  // URL the same shape as Product.imageUrls. Capped at 10 by the
+  // zod validator (see server/src/lib/validators.js variantInput).
+  imageUrls String   @default("[]") // JSON array
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   // Back-relation so cart-items can resolve to the source variant

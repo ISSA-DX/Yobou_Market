@@ -302,3 +302,93 @@ test('variants — vendor UPDATE change replaces existing variants on approval',
   assert.strictEqual(updated.variants.length, 2);
   assert.strictEqual(updated.stock, 8);
 });
+
+test('variants — admin POST carries variant imageUrls and GET returns them', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const admin = await makeUser('ADMIN');
+  const token = signAccessFor(admin);
+
+  const res = await request(app, 'POST', '/api/products/admin', {
+    token,
+    body: {
+      name: 'Bag',
+      description: '',
+      priceCents: 2000,
+      category: 'Accessories',
+      stock: 0,
+      variants: [
+        { color: 'Red', size: 'M', stock: 3, imageUrls: ['/uploads/red-front.png', '/uploads/red-back.png'] },
+        { color: 'Black', size: 'M', stock: 1, imageUrls: [] },
+      ],
+    },
+  });
+  assert.strictEqual(res.status, 201, JSON.stringify(res.body));
+  const rows = res.body.product.variants;
+  const red = rows.find((v) => v.color === 'Red');
+  const black = rows.find((v) => v.color === 'Black');
+  assert.deepStrictEqual(red.imageUrls, ['/uploads/red-front.png', '/uploads/red-back.png']);
+  assert.deepStrictEqual(black.imageUrls, [], 'empty imageUrls round-trips as []');
+
+  // Read-side: GET /api/products/:id also returns the field.
+  const get = await request(app, 'GET', `/api/products/${res.body.product.id}`, {});
+  assert.strictEqual(get.status, 200);
+  const redRead = get.body.product.variants.find((v) => v.color === 'Red');
+  assert.deepStrictEqual(redRead.imageUrls, ['/uploads/red-front.png', '/uploads/red-back.png']);
+
+  // The DB row stores the JSON string, not the array.
+  const dbRow = await prisma.productVariant.findFirst({
+    where: { productId: res.body.product.id, color: 'Red' },
+  });
+  assert.deepStrictEqual(JSON.parse(dbRow.imageUrls), ['/uploads/red-front.png', '/uploads/red-back.png']);
+});
+
+test('variants — vendor UPDATE change with variant imageUrls applies on approval', async () => {
+  await resetTestDb();
+  const app = getApp();
+  const vendor = await makeApprovedVendor();
+  const vendorUser = await prisma.user.findUnique({ where: { id: vendor.userId } });
+  const vToken = signAccessFor(vendorUser);
+  const admin = await makeUser('ADMIN');
+  const aToken = signAccessFor(admin);
+
+  // Seed: one variant, no per-color images.
+  const seed = await prisma.product.create({
+    data: {
+      vendorId: vendor.id,
+      name: 'Shoe', description: '', priceCents: 5000, category: 'Footwear',
+      imageUrls: '[]', stock: 2, status: 'LIVE',
+      variants: { create: [{ color: 'White', size: '10', stock: 2 }] },
+    },
+  });
+
+  // Vendor submits UPDATE with new imageUrls for the existing row + a new variant.
+  const submit = await request(app, 'POST', '/api/product-changes', {
+    token: vToken,
+    body: {
+      action: 'UPDATE',
+      productId: seed.id,
+      variants: [
+        { color: 'White', size: '10', stock: 2, imageUrls: ['/uploads/white-side.png'] },
+        { color: 'Black', size: '10', stock: 1, imageUrls: ['/uploads/black-top.png', '/uploads/black-side.png'] },
+      ],
+    },
+  });
+  assert.strictEqual(submit.status, 201, JSON.stringify(submit.body));
+
+  const approve = await request(app, 'POST', `/api/product-changes/${submit.body.change.id}/approve`, {
+    token: aToken,
+    body: {},
+  });
+  assert.strictEqual(approve.status, 200, JSON.stringify(approve.body));
+
+  // Live product: the imageUrls reached the ProductVariant rows.
+  const updated = await prisma.product.findUnique({
+    where: { id: seed.id },
+    include: { variants: true },
+  });
+  const white = updated.variants.find((v) => v.color === 'White');
+  const black = updated.variants.find((v) => v.color === 'Black');
+  assert.deepStrictEqual(JSON.parse(white.imageUrls), ['/uploads/white-side.png']);
+  assert.deepStrictEqual(JSON.parse(black.imageUrls), ['/uploads/black-top.png', '/uploads/black-side.png']);
+});

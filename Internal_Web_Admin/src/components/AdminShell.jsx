@@ -204,12 +204,19 @@ export default function AdminShell() {
           ))}
         </nav>
         <div className="border-t border-outline-variant/30 pt-3 space-y-1">
+          <div className="px-3 pt-1 pb-1 text-label-sm text-on-surface-variant uppercase tracking-wide font-semibold">
+            Settings
+          </div>
+          <NavItem to="/preferences/appearance" label="Appearance" icon="palette" />
+          <NavItem to="/preferences/notifications" label="Notifications" icon="notifications" />
           <button
             onClick={toggleDark}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-on-surface-variant hover:bg-surface-low"
+            aria-label={`Switch to ${dark ? 'light' : 'dark'} mode`}
           >
             <Icon name={dark ? 'light_mode' : 'dark_mode'} className="text-[20px]" />
             {dark ? 'Light' : 'Dark'} mode
+            <span className="ml-auto text-label-sm text-on-surface-variant">quick</span>
           </button>
           <button
             onClick={handleLogout}

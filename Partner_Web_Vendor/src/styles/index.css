@@ -101,6 +101,16 @@
 .dark .sticky.bg-white\/80,
 .dark .sticky.bg-white\/90 { background: rgba(21, 36, 63, 0.94) !important; color: #eaf1ff; }
 
+/*
+  Contrast bumps in dark mode. text-error (the light-mode red #ba1a1a)
+  is hard to read on a navy surface; swap to the lighter error-container
+  token (#ffb4ab) for ~7:1 contrast. Same logic for primary-container
+  at 30% opacity, which is nearly invisible against the dark surface.
+*/
+.dark .text-error { color: #ffb4ab; }
+.dark .bg-primary\/30 { background: rgba(0, 52, 185, 0.4) !important; }
+.dark .bg-primary-container\/30 { background: rgba(140, 158, 255, 0.3) !important; }
+
 /* Hide scrollbar on horizontal scroll containers */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

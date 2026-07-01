@@ -27,12 +27,16 @@ const vendorRegister = z.object({
 // One row in a product's color/size variant matrix. Free-text color +
 // size (the admin UI offers preset datalists but allows custom values);
 // per-row stock; id is present on PATCH (existing row) and absent on
-// POST (new row).
+// POST (new row). imageUrls is the per-color photo gallery override —
+// empty array means "fall back to the product-level imageUrls" on the
+// storefront; populated array swaps the carousel when the shopper picks
+// this color.
 const variantInput = z.object({
   id: z.string().optional(),
   color: z.string().min(1).max(40),
   size: z.string().min(1).max(40),
   stock: z.number().int().nonnegative().default(0),
+  imageUrls: z.array(z.string()).max(10).default([]),
 });
 
 const productUpsert = z.object({

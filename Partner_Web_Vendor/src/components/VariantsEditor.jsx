@@ -8,17 +8,22 @@
 // when `form.variants` is empty.
 //
 // Wire shape (matches server/src/lib/validators.js `variantInput`):
-//   { id?: string, color: string, size: string, stock: number }
+//   { id?: string, color: string, size: string, stock: number,
+//     imageUrls?: string[] }
 //
 // Per-row rules:
 //   - color and size are free-text, with a <datalist> hint of common
 //     values. The datalist is a hint, not a constraint — typing "Dark
 //     Crimson" is allowed.
 //   - stock is a non-negative integer.
+//   - imageUrls is the per-color photo gallery override. Empty array
+//     means "fall back to the product-level imageUrls" on the storefront.
+//     Cap is 10 per row, enforced server-side by the zod validator.
 //   - The row's id is set after the server creates the row; PATCH sends
 //     the id back so the server can reconcile (delete-removed, update-
 //     kept, create-new) inside a single transaction.
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { apiForm } from '../api';
 import Icon from './Icon';
 
 // Common color suggestions — same as Material Design 3's "Suggested colors"
@@ -140,6 +145,8 @@ function nameToHex(name) {
   return applyTint(COLOR_HEX[baseWord], tint);
 }
 
+const MAX_VARIANT_IMAGES = 10; // matches zod validator cap
+
 export default function VariantsEditor({ form, update, errors = {} }) {
   const variants = Array.isArray(form.variants) ? form.variants : [];
   // Quick-add inputs are local until "Add variant" commits them — that
@@ -148,6 +155,14 @@ export default function VariantsEditor({ form, update, errors = {} }) {
   const [draftSize, setDraftSize] = useState('');
   const [draftStock, setDraftStock] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
+  // Per-row upload state: which row is mid-upload + the last error.
+  // Tracked by row key so multiple rows can show their own spinner.
+  const [rowUploading, setRowUploading] = useState({});
+  const [rowUploadErr, setRowUploadErr] = useState({});
+  // Hidden <input type=file> elements, one per row, ref'd by index.
+  // We use a Map of refs so each row can be clicked independently.
+  const fileRefs = useRef(new Map());
+  const FALLBACK = `${import.meta.env.BASE_URL || '/'}seed-images/placeholder.svg`;
 
   // Row-level error flags. The form's validate() runs the same checks
   // and surfaces a top-level "errors.variants" message, but highlighting
@@ -165,7 +180,7 @@ export default function VariantsEditor({ form, update, errors = {} }) {
     const size = draftSize.trim();
     const stock = Math.max(0, parseInt(draftStock, 10) || 0);
     if (!color || !size) return false;
-    const next = [...variants, { color, size, stock }];
+    const next = [...variants, { color, size, stock, imageUrls: [] }];
     update('variants', next);
     // Mirror stock to the legacy field so the form-level "Stock" input
     // stays visually consistent until the admin types into it directly.
@@ -197,6 +212,55 @@ export default function VariantsEditor({ form, update, errors = {} }) {
       e.preventDefault();
       commitDraft();
     }
+  }
+
+  // Per-row file picker plumbing. Reuses the same /api/products/upload
+  // endpoint as the product-level gallery so we don't need a second
+  // route. The server's multer config caps at 5 MB and restricts to
+  // image/* — the validator caps the array length at 10.
+  function pickFileFor(i) {
+    const ref = fileRefs.current.get(i);
+    if (ref) ref.click();
+  }
+
+  async function uploadForRow(i, files) {
+    const images = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (!images.length) {
+      setRowUploadErr((s) => ({ ...s, [i]: 'Only image files (PNG, JPG, WEBP) are supported.' }));
+      return;
+    }
+    const existing = Array.isArray(variants[i].imageUrls) ? variants[i].imageUrls : [];
+    const room = Math.max(0, MAX_VARIANT_IMAGES - existing.length);
+    if (room === 0) {
+      setRowUploadErr((s) => ({ ...s, [i]: `Max ${MAX_VARIANT_IMAGES} images per variant.` }));
+      return;
+    }
+    const accepted = images.slice(0, room);
+    setRowUploading((s) => ({ ...s, [i]: true }));
+    setRowUploadErr((s) => ({ ...s, [i]: '' }));
+    try {
+      const urls = [];
+      for (const file of accepted) {
+        const body = new FormData();
+        body.append('image', file);
+        const { url } = await apiForm('/api/products/upload', { body });
+        urls.push(url);
+      }
+      updateRow(i, { imageUrls: [...existing, ...urls] });
+    } catch (e) {
+      const msg = e?.data?.message || e?.message || 'Could not upload image(s).';
+      setRowUploadErr((s) => ({ ...s, [i]: msg }));
+    } finally {
+      setRowUploading((s) => ({ ...s, [i]: false }));
+      const ref = fileRefs.current.get(i);
+      if (ref) ref.value = '';
+    }
+  }
+
+  function removeVariantImage(i, j) {
+    const arr = Array.isArray(variants[i].imageUrls) ? [...variants[i].imageUrls] : [];
+    arr.splice(j, 1);
+    updateRow(i, { imageUrls: arr });
   }
 
   return (
@@ -282,49 +346,140 @@ export default function VariantsEditor({ form, update, errors = {} }) {
         <ol className="space-y-2" aria-label="Product variants">
           {variants.map((v, i) => {
             const err = rowErrors[i];
+            const imgs = Array.isArray(v.imageUrls) ? v.imageUrls : [];
+            const uploadingRow = !!rowUploading[i];
+            const errMsg = rowUploadErr[i];
             return (
               <li
                 key={v.id || `${v.color}-${v.size}-${i}`}
-                className={`flex items-center gap-3 p-3 rounded-md border ${err ? 'border-error bg-error/5' : 'border-outline-variant/40 bg-surface-low'}`}
+                className={`flex flex-col gap-2 p-3 rounded-md border ${err ? 'border-error bg-error/5' : 'border-outline-variant/40 bg-surface-low'}`}
               >
-                <span
-                  className="w-6 h-6 rounded-full border border-outline-variant/40 shrink-0"
-                  style={{ backgroundColor: nameToHex(v.color) }}
-                  aria-hidden="true"
-                />
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-[1fr_1fr_5rem] gap-2">
-                  <input
-                    aria-label={`Variant ${i + 1} color`}
-                    className="input"
-                    list="ve-color-list"
-                    value={v.color}
-                    onChange={(e) => updateRow(i, { color: e.target.value })}
+                <div className="flex items-center gap-3">
+                  <span
+                    className="w-6 h-6 rounded-full border border-outline-variant/40 shrink-0"
+                    style={{ backgroundColor: nameToHex(v.color) }}
+                    aria-hidden="true"
                   />
-                  <input
-                    aria-label={`Variant ${i + 1} size`}
-                    className="input"
-                    list="ve-size-list"
-                    value={v.size}
-                    onChange={(e) => updateRow(i, { size: e.target.value })}
-                  />
-                  <input
-                    aria-label={`Variant ${i + 1} stock`}
-                    type="number"
-                    min="0"
-                    className="input"
-                    value={v.stock}
-                    onChange={(e) => updateRow(i, { stock: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-                  />
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-[1fr_1fr_5rem] gap-2">
+                    <input
+                      aria-label={`Variant ${i + 1} color`}
+                      className="input"
+                      list="ve-color-list"
+                      value={v.color}
+                      onChange={(e) => updateRow(i, { color: e.target.value })}
+                    />
+                    <input
+                      aria-label={`Variant ${i + 1} size`}
+                      className="input"
+                      list="ve-size-list"
+                      value={v.size}
+                      onChange={(e) => updateRow(i, { size: e.target.value })}
+                    />
+                    <input
+                      aria-label={`Variant ${i + 1} stock`}
+                      type="number"
+                      min="0"
+                      className="input"
+                      value={v.stock}
+                      onChange={(e) => updateRow(i, { stock: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeRow(i)}
+                    className="w-9 h-9 rounded-md text-error hover:bg-error/10 shrink-0"
+                    aria-label={`Remove variant ${v.color} / ${v.size}`}
+                    title="Remove variant"
+                  >
+                    <Icon name="delete" className="text-[20px]" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => removeRow(i)}
-                  className="w-9 h-9 rounded-md text-error hover:bg-error/10 shrink-0"
-                  aria-label={`Remove variant ${v.color} / ${v.size}`}
-                  title="Remove variant"
-                >
-                  <Icon name="delete" className="text-[20px]" />
-                </button>
+
+                {/* Per-color photo gallery. Hidden on the quick-add row
+                    (which doesn't exist in the variants array) and
+                    optional in general — empty means "fall back to the
+                    product-level images on the storefront". The picker
+                    button is shown only for committed rows; new draft
+                    rows are added with imageUrls=[] and the user can
+                    upload after they're added. */}
+                <div className="pl-9 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-label-sm text-on-surface-variant">
+                      {imgs.length === 0
+                        ? 'Cover image (optional) — falls back to product images'
+                        : `${imgs.length} / ${MAX_VARIANT_IMAGES} image${imgs.length === 1 ? '' : 's'} for this color`}
+                    </div>
+                    <input
+                      ref={(el) => {
+                        if (el) fileRefs.current.set(i, el);
+                        else fileRefs.current.delete(i);
+                      }}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => uploadForRow(i, e.target.files)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => pickFileFor(i)}
+                      disabled={uploadingRow || imgs.length >= MAX_VARIANT_IMAGES}
+                      className="btn-secondary py-1 px-2 text-label-sm"
+                      aria-label={`Upload images for ${v.color} / ${v.size}`}
+                    >
+                      {uploadingRow ? (
+                        <>
+                          <Icon name="progress_activity" className="text-[16px] animate-spin" />
+                          Uploading…
+                        </>
+                      ) : (
+                        <>
+                          <Icon name="add_photo_alternate" className="text-[16px]" />
+                          {imgs.length === 0 ? 'Add cover image' : 'Add image'}
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {imgs.length > 0 && (
+                    <ol
+                      className="flex flex-wrap gap-2"
+                      aria-label={`Images for ${v.color} / ${v.size}`}
+                    >
+                      {imgs.map((url, j) => (
+                        <li
+                          key={`${url}-${j}`}
+                          className="relative w-14 h-14 rounded-md overflow-hidden bg-white border border-outline-variant/40"
+                        >
+                          <img
+                            src={url}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            onError={(e) => { e.currentTarget.src = FALLBACK; }}
+                          />
+                          {j === 0 && (
+                            <span className="absolute bottom-0 left-0 right-0 text-center text-[10px] bg-primary text-white px-1">
+                              Cover
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeVariantImage(i, j)}
+                            className="absolute top-0 right-0 w-5 h-5 rounded-full bg-white/90 text-error shadow-card flex items-center justify-center"
+                            aria-label={`Remove image ${j + 1} from ${v.color} / ${v.size}`}
+                            title="Remove"
+                          >
+                            <Icon name="close" className="text-[14px]" />
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+
+                  {errMsg && (
+                    <div role="alert" className="text-error text-label-sm">{errMsg}</div>
+                  )}
+                </div>
               </li>
             );
           })}

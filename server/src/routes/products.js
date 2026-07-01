@@ -27,8 +27,19 @@ function stringifyImageUrls(data) {
   return { ...data, imageUrls: JSON.stringify(data.imageUrls || []) };
 }
 
+// JSON.parse wrapper used for the per-row ProductVariant.imageUrls
+// column. Returns null on any parse failure so the caller can fall back
+// to an empty array; the variant input validator (see
+// server/src/lib/validators.js variantInput) guarantees well-formed
+// values on write, so a non-null result on read is the happy path.
+function safeParse(raw) {
+  if (typeof raw !== 'string') return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
 // Re-shape Product.variants into a clean client-facing array. Caller may
 // pass either the raw Prisma row or a transformed one (without variants).
+// imageUrls is the per-color photo gallery override (JSON-string in DB).
 function parseVariants(product) {
   if (!product || !Array.isArray(product.variants)) return product;
   return { ...product, variants: product.variants.map((v) => ({
@@ -36,6 +47,7 @@ function parseVariants(product) {
     color: v.color,
     size: v.size,
     stock: v.stock,
+    imageUrls: safeParse(v.imageUrls) || [],
   })) };
 }
 
@@ -79,6 +91,7 @@ async function applyVariants(tx, productId, variants) {
           color: v.color,
           size: v.size,
           stock: typeof v.stock === 'number' ? v.stock : 0,
+          imageUrls: JSON.stringify(Array.isArray(v.imageUrls) ? v.imageUrls : []),
         },
       });
     }
@@ -94,6 +107,7 @@ async function applyVariants(tx, productId, variants) {
             color: v.color,
             size: v.size,
             stock: typeof v.stock === 'number' ? v.stock : 0,
+            imageUrls: JSON.stringify(Array.isArray(v.imageUrls) ? v.imageUrls : []),
           },
         });
       } else {
@@ -103,6 +117,7 @@ async function applyVariants(tx, productId, variants) {
             color: v.color,
             size: v.size,
             stock: typeof v.stock === 'number' ? v.stock : 0,
+            imageUrls: JSON.stringify(Array.isArray(v.imageUrls) ? v.imageUrls : []),
           },
         });
       }
@@ -220,7 +235,7 @@ router.get('/', async (req, res, next) => {
       take: parsed.limit,
       include: {
         vendor: { select: { id: true, businessName: true } },
-        variants: { select: { id: true, color: true, size: true, stock: true } },
+        variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
       },
     });
     res.json({ products: products.map((p) => parseVariants(parseImageUrls(p))) });
@@ -272,7 +287,7 @@ router.get('/vendor/mine', requireAuth, requireApprovedVendor, async (req, res, 
       where,
       orderBy: { createdAt: 'desc' },
       include: {
-        variants: { select: { id: true, color: true, size: true, stock: true } },
+        variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
       },
     });
     res.json({ products: products.map((p) => parseVariants(parseImageUrls(p))) });
@@ -351,7 +366,7 @@ router.get('/:id/related', async (req, res, next) => {
       take: limit,
       include: {
         vendor: { select: { id: true, businessName: true } },
-        variants: { select: { id: true, color: true, size: true, stock: true } },
+        variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
       },
     });
     res.json({ products: rows.map((p) => parseVariants(parseImageUrls(p))) });
@@ -364,7 +379,7 @@ router.get('/:id', async (req, res, next) => {
       where: { id: req.params.id },
       include: {
         vendor: { select: { id: true, businessName: true } },
-        variants: { select: { id: true, color: true, size: true, stock: true } },
+        variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
         extraCategories: { select: { id: true, name: true } },
       },
     });
@@ -463,7 +478,7 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
       return tx.product.findUnique({
         where: { id: created.id },
         include: {
-          variants: { select: { id: true, color: true, size: true, stock: true } },
+          variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
           extraCategories: { select: { id: true, name: true } },
         },
       });
@@ -544,7 +559,7 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         return tx.product.findUnique({
           where: { id: req.params.id },
           include: {
-            variants: { select: { id: true, color: true, size: true, stock: true } },
+            variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
             extraCategories: { select: { id: true, name: true } },
           },
         });

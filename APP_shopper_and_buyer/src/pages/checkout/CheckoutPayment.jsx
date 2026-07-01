@@ -79,7 +79,7 @@ export default function CheckoutPayment() {
       <div className="space-y-2">
         <div className="text-label-md text-on-surface-variant">Express wallets</div>
         <button onClick={() => setMethod('PAYPAL')} className="w-full card p-3 flex items-center gap-3 hover:border-primary/40">
-          <div className="w-10 h-10 rounded-lg bg-[#003087] text-white flex items-center justify-center font-black">P</div>
+          <div className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center font-black">P</div>
           <span className="font-semibold flex-1 text-left">PayPal</span>
           {method === 'PAYPAL' && <Icon name="check_circle" className="text-tertiary" />}
         </button>

@@ -86,6 +86,27 @@
       #boot-error h1 { margin: 0 0 8px; font-size: 22px; font-weight: 800; }
       #boot-error p { margin: 0; max-width: 320px; opacity: 0.85; font-size: 14px; line-height: 1.5; }
     </style>
+    <script>
+      /*
+        No-flash theme bootstrap. Runs synchronously before any module
+        script, so the `dark` class is already on <html> by the time the
+        stylesheet + React tree apply. Without this, users with a saved
+        dark theme see a single frame of light mode on every cold load.
+        Reads the localStorage key the partner store uses; resolves
+        'system' to the OS preference via matchMedia.
+      */
+      (function () {
+        try {
+          var stored = localStorage.getItem('yobou-partner:theme');
+          if (stored == null) return;
+          var dark = stored === 'dark'
+            || (stored === 'system'
+              && window.matchMedia
+              && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) { /* localStorage blocked — fall through, store reapplies on mount */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="boot-error" role="alert" aria-live="assertive">

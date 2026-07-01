@@ -63,6 +63,22 @@ export default function ProductDetails() {
   const variants = Array.isArray(p?.variants) ? p.variants : [];
   const [pickedColor, setPickedColor] = useState('');
   const [pickedSize, setPickedSize] = useState('');
+
+  // Amazon-style "quick-pick" default size: pick the size that's most
+  // commonly available across colors (the one with the most variant
+  // rows). Ties break in iteration order. This gives the shopper a
+  // sensible default — usually M, the size most colors carry — instead
+  // of the first size the form happened to list.
+  const defaultSize = useMemo(() => {
+    if (variants.length === 0) return '';
+    const counts = new Map();
+    variants.forEach((v) => counts.set(v.size, (counts.get(v.size) || 0) + 1));
+    let best = variants[0].size;
+    let bestN = 0;
+    for (const [s, n] of counts) if (n > bestN) { best = s; bestN = n; }
+    return best;
+  }, [variants]);
+
   useEffect(() => {
     if (variants.length === 0) {
       setPickedColor('');
@@ -70,8 +86,8 @@ export default function ProductDetails() {
       return;
     }
     if (!variants.some((v) => v.color === pickedColor)) setPickedColor(variants[0].color);
-    if (!variants.some((v) => v.size === pickedSize)) setPickedSize(variants[0].size);
-  }, [variants, pickedColor, pickedSize]);
+    if (!variants.some((v) => v.size === pickedSize)) setPickedSize(defaultSize);
+  }, [variants, pickedColor, pickedSize, defaultSize]);
 
   const uniqueColors = useMemo(() => {
     const s = new Set();
@@ -97,6 +113,18 @@ export default function ProductDetails() {
     return variants.find((v) => v.color === pickedColor) || variants[0];
   }, [variants, pickedColor, pickedSize]);
 
+  // Carousel images: prefer the picked color's per-row imageUrls if any
+  // variants are defined and the picked color has its own photos,
+  // otherwise fall back to the product-level imageUrls. This is the
+  // "shopper sees the red shirt when they pick Red" behavior.
+  const pickedVariantImages = useMemo(() => {
+    if (variants.length === 0 || !pickedColor) return null;
+    const match = variants.find(
+      (v) => v.color === pickedColor && Array.isArray(v.imageUrls) && v.imageUrls.length > 0,
+    );
+    return match ? match.imageUrls : null;
+  }, [variants, pickedColor]);
+
   const hasVariants = variants.length > 0;
   const variantStock = selectedVariant ? selectedVariant.stock : null;
   const outOfStock = hasVariants
@@ -121,12 +149,28 @@ export default function ProductDetails() {
     if (p) setQty(1);
   }, [p?.id]);
 
+  // Image list for the carousel: per-color override when available,
+  // otherwise the product-level gallery. Memoised so the swipe state
+  // (`activeImage`) only resets when the array identity changes.
+  const images = useMemo(
+    () => pickedVariantImages || productImages(p),
+    [pickedVariantImages, p],
+  );
+
+  // Reset the active-image pointer when the gallery changes so the
+  // shopper doesn't see a stale "page 3 of 4" indicator after switching
+  // to a color with fewer photos.
+  useEffect(() => {
+    setActiveImage(0);
+    const el = carouselRef.current;
+    if (el) el.scrollLeft = 0;
+  }, [images]);
+
   if (error && !data) {
     return <RetryError message="Couldn't load this product." onRetry={refetch} />;
   }
   if (!p) return <div className="p-8 text-center text-on-surface-variant">Loading…</div>;
 
-  const images = productImages(p);
   const saved = wishlist.includes(p.id);
 
   async function add() {
@@ -272,40 +316,83 @@ export default function ProductDetails() {
         {hasVariants && (
           <div>
             <div className="flex items-center justify-between mb-2">
-              <div className="text-label-md text-on-surface-variant">Size</div>
-              {variantStock !== null && (
-                <div className={`text-label-md ${variantStock === 0 ? 'text-error' : 'text-on-surface-variant'}`}>
-                  {variantStock === 0
-                    ? 'Out of stock'
-                    : `Available: ${variantStock}`}
+              <div className="text-label-md text-on-surface-variant">
+                Size
+                {pickedColor && <span className="text-on-surface"> · {pickedColor}</span>}
+              </div>
+              {/* Stock hint for the picked (color, size). When the exact
+                  pair exists, the number is the variant's stock. When it
+                  doesn't, we show "— sold out" so the shopper isn't
+                  confused by an empty cell. */}
+              {selectedVariant && pickedColor && pickedSize && (
+                <div
+                  className={`text-label-md font-medium ${
+                    selectedVariant.color === pickedColor
+                    && selectedVariant.size === pickedSize
+                    && selectedVariant.stock > 0
+                      ? 'text-tertiary'
+                      : 'text-error'
+                  }`}
+                  aria-live="polite"
+                >
+                  {selectedVariant.color === pickedColor
+                  && selectedVariant.size === pickedSize
+                  && selectedVariant.stock > 0
+                    ? `${selectedVariant.stock} in stock`
+                    : 'Sold out'}
                 </div>
               )}
             </div>
             <div className="flex flex-wrap gap-2">
               {uniqueSizes.map((s) => {
-                // Per-size stock = sum across colors for this size, so the
-                // shopper sees a useful number even when the picked color
-                // doesn't have this size in stock.
-                const stockForSize = variants
-                  .filter((v) => v.size === s)
-                  .reduce((acc, v) => acc + (typeof v.stock === 'number' ? v.stock : 0), 0);
+                // Amazon-style: a size is shown as available to click
+                // even if the *current* color doesn't carry it (the
+                // shopper might switch colors), but the cell is struck
+                // when this specific (color, size) combo is out of stock
+                // or doesn't exist. We disable the click only when no
+                // color at all carries this size — clicking it would
+                // never lead to a buyable pick.
+                const exact = pickedColor
+                  ? variants.find((v) => v.color === pickedColor && v.size === s)
+                  : null;
+                const stockForThisColor = exact
+                  ? (typeof exact.stock === 'number' ? exact.stock : 0)
+                  : 0;
                 const isPicked = pickedSize === s;
-                const disabled = stockForSize === 0;
+                // Carry-any-color: is there at least one variant row
+                // (any color) with this size that has stock? If not,
+                // disable the button entirely.
+                const anyColorCarriesSize = variants.some(
+                  (v) => v.size === s && typeof v.stock === 'number' && v.stock > 0,
+                );
+                const disabled = !anyColorCarriesSize;
+                // Strike state: a cell that's still clickable (because
+                // another color carries it) but unavailable for the
+                // current pick. Visualised as line-through so the
+                // shopper knows to either pick a different color or a
+                // different size.
+                const isOosForPicked = !disabled && (stockForThisColor === 0);
                 return (
                   <button
                     key={s}
                     type="button"
                     onClick={() => setPickedSize(s)}
                     disabled={disabled}
+                    aria-pressed={isPicked}
+                    aria-disabled={isOosForPicked || undefined}
+                    title={isOosForPicked
+                      ? `${pickedColor} × ${s} — out of stock`
+                      : undefined}
                     className={`min-w-[3rem] h-10 px-3 rounded-full border text-sm font-medium transition ${
                       isPicked
                         ? 'border-primary bg-primary text-white'
                         : disabled
                           ? 'border-outline-variant/30 bg-surface-low text-on-surface-variant/40 line-through cursor-not-allowed'
-                          : 'border-outline-variant/40 bg-white text-on-surface'
+                          : isOosForPicked
+                            ? 'border-outline-variant/40 bg-white text-on-surface/50 line-through'
+                            : 'border-outline-variant/40 bg-white text-on-surface'
                     }`}
-                    aria-pressed={isPicked}
-                    aria-label={`Size ${s}${disabled ? ' (out of stock)' : ''}`}
+                    aria-label={`Size ${s}${disabled ? ' (out of stock in all colors)' : isOosForPicked ? ` (out of stock in ${pickedColor})` : ''}`}
                   >
                     {s}
                   </button>
@@ -314,9 +401,32 @@ export default function ProductDetails() {
             </div>
             {!exactMatch && (
               <div className="mt-2 text-label-md text-error">
-                This {pickedColor} × {pickedSize} combination isn't available — try another size or color.
+                {pickedColor} × {pickedSize} isn't stocked — try another size or color.
               </div>
             )}
+
+            {/* In-page Quick add. Amazon-style: an explicit one-tap
+                CTA above the description so the shopper doesn't have to
+                scroll past the spec tabs to commit. The same logic as
+                the sticky bottom buttons (disabled when the pick is
+                OOS or invalid). Renders only on variant products. */}
+            <button
+              type="button"
+              onClick={add}
+              disabled={busy || outOfStock || !exactMatch}
+              className="mt-4 w-full btn-primary py-3 disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {busy ? (
+                <Icon name="progress_activity" className="text-[18px] animate-spin" />
+              ) : (
+                <Icon name="shopping_bag" />
+              )}
+              {exactMatch
+                ? `Add ${pickedColor} × ${pickedSize} to cart · ${formatPrice(p.priceCents, currency)}`
+                : outOfStock
+                  ? 'Sold out'
+                  : 'Pick a color and size'}
+            </button>
           </div>
         )}
 
