@@ -22,9 +22,14 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
   const [added, setAdded] = useState(false);
   const outOfStock = product.stock === 0;
   const price = formatPrice(product.priceCents, currency);
-  const listPrice = product.compareAtPriceCents
+  const hasDeal = typeof product.compareAtPriceCents === 'number'
+    && product.compareAtPriceCents > product.priceCents;
+  const listPrice = hasDeal
     ? formatPrice(product.compareAtPriceCents, currency)
     : null;
+  const dealPercent = hasDeal
+    ? Math.round(((product.compareAtPriceCents - product.priceCents) / product.compareAtPriceCents) * 100)
+    : 0;
   // Real ratings live on the product when the catalog exposes them. Until
   // the backend ships a real rating pipeline, we render an honest
   // "No reviews yet" chip rather than fake stars derived from stock.
@@ -142,10 +147,17 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
         </div>
 
         <div className="mt-2">
-          <div className="flex items-baseline gap-2">
-            <span className="text-lg sm:text-xl font-bold text-on-surface">{price}</span>
-            {listPrice && product.compareAtPriceCents > product.priceCents && (
-              <span className="text-label-md text-on-surface-variant line-through">{listPrice}</span>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-lg sm:text-xl font-bold text-on-surface leading-none">{price}</span>
+            {hasDeal && (
+              <>
+                <span className="text-xs sm:text-sm text-on-surface-variant line-through leading-none">
+                  {listPrice}
+                </span>
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-tertiary-container/40 text-tertiary text-[10px] sm:text-xs font-bold leading-none">
+                  -{dealPercent}%
+                </span>
+              </>
             )}
           </div>
           <div className="mt-1 text-label-md text-tertiary flex items-center gap-1">

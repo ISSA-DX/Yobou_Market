@@ -6,6 +6,7 @@ import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImage } from '../../lib/productImage';
 import { formatPrice } from '../../lib/format';
+import { colorToHex } from '../../lib/colorSwatch';
 import { toast } from '../../lib/toast';
 
 const SHIPPING_CENTS = 499;
@@ -23,6 +24,17 @@ export default function Cart() {
   const items = Array.isArray(data?.items) ? data.items : [];
   const validItems = items.filter((i) => i?.product);
   const subtotal = validItems.reduce((s, i) => s + i.product.priceCents * i.quantity, 0);
+  // Deal savings — sum (compareAt - price) * qty across items where the
+  // product is on a real deal (compareAt > price). The line is hidden
+  // when no item is on a deal so the summary stays honest.
+  const dealSavings = validItems.reduce((s, i) => {
+    const cap = i.product.compareAtPriceCents;
+    const pp = i.product.priceCents;
+    if (typeof cap === 'number' && typeof pp === 'number' && cap > pp) {
+      return s + (cap - pp) * i.quantity;
+    }
+    return s;
+  }, 0);
   const itemCount = validItems.reduce((s, i) => s + i.quantity, 0);
 
   const shipping = subtotal >= FREE_SHIPPING_THRESHOLD_CENTS ? 0 : validItems.length > 0 ? SHIPPING_CENTS : 0;
@@ -167,6 +179,13 @@ export default function Cart() {
           <div className="card p-5 lg:sticky lg:top-4 space-y-3">
             <h2 className="text-headline-md font-bold hidden lg:block">Order Summary</h2>
             <SummaryRow label={`Subtotal (${itemCount} items)`} value={formatPrice(subtotal, currency)} />
+            {dealSavings > 0 && (
+              <SummaryRow
+                label="You save"
+                value={`-${formatPrice(dealSavings, currency)}`}
+                valueClass="text-tertiary font-semibold"
+              />
+            )}
             <SummaryRow
               label="Shipping"
               value={shipping === 0 ? 'FREE' : formatPrice(shipping, currency)}
@@ -197,8 +216,18 @@ export default function Cart() {
 
 function CartItem({ item, busy, currency, onQtyChange, onRemove }) {
   const p = item.product;
+  const v = item.variant; // { color, size, stock, ... } when a specific (color, size) was picked; null for non-variant products
+  const hasDeal = typeof p.compareAtPriceCents === 'number'
+    && p.compareAtPriceCents > p.priceCents;
   const [showQty, setShowQty] = useState(false);
   const lineTotal = p.priceCents * item.quantity;
+  // Per-variant cap for the qty stepper. For a variant product the
+  // cart row is pinned to a specific (color, size) so the cap is the
+  // variant's stock, not the product's sum. Falls back to p.stock for
+  // legacy non-variant products.
+  const stockCap = v
+    ? (typeof v.stock === 'number' ? v.stock : 0)
+    : (typeof p.stock === 'number' ? p.stock : 0);
 
   return (
     <div className="card p-3 sm:p-4 flex gap-3 sm:gap-4">
@@ -208,7 +237,7 @@ function CartItem({ item, busy, currency, onQtyChange, onRemove }) {
 
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-start justify-between gap-2">
-          <Link to={`/product/${p.id}`} className="block group">
+          <Link to={`/product/${p.id}`} className="block group min-w-0">
             <h3 className="font-semibold text-sm sm:text-base text-on-surface line-clamp-2 leading-snug group-hover:text-primary transition-colors">
               {p.name}
             </h3>
@@ -223,10 +252,31 @@ function CartItem({ item, busy, currency, onQtyChange, onRemove }) {
           </button>
         </div>
 
-        <div className="text-label-md text-on-surface-variant mt-0.5">{p.category}</div>
+        <div className="flex items-center gap-2 flex-wrap mt-0.5">
+          {p.category && (
+            <div className="text-label-md text-on-surface-variant">{p.category}</div>
+          )}
+          {v && (v.color || v.size) && (
+            <div className="text-label-md text-on-surface-variant flex items-center gap-1.5 min-w-0">
+              {p.category && <span aria-hidden="true">·</span>}
+              {v.color && (
+                <span className="inline-flex items-center gap-1">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full border border-outline-variant/40 shrink-0"
+                    style={{ background: colorToHex(v.color) }}
+                    aria-hidden="true"
+                  />
+                  <span>{v.color}</span>
+                </span>
+              )}
+              {v.color && v.size && <span aria-hidden="true">·</span>}
+              {v.size && <span>Size {v.size}</span>}
+            </div>
+          )}
+        </div>
 
-        <div className="mt-auto flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+        <div className="mt-auto flex items-end justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* Mobile +/- */}
             <div className="flex items-center bg-surface-low rounded-full px-1.5 py-1 sm:hidden">
               <button
@@ -239,7 +289,7 @@ function CartItem({ item, busy, currency, onQtyChange, onRemove }) {
               <span className="font-semibold text-sm w-8 text-center">{item.quantity}</span>
               <button
                 onClick={() => onQtyChange(item.quantity + 1)}
-                disabled={busy || item.quantity >= p.stock}
+                disabled={busy || item.quantity >= stockCap}
                 className="w-7 h-7 rounded-full bg-white shadow-sm flex items-center justify-center disabled:opacity-50"
               >
                 <Icon name="add" className="text-[16px]" />
@@ -257,7 +307,7 @@ function CartItem({ item, busy, currency, onQtyChange, onRemove }) {
               </button>
               {showQty && (
                 <div className="absolute z-20 mt-1 bg-white border border-outline-variant/30 rounded-md shadow-float w-24 max-h-48 overflow-y-auto">
-                  {[...Array(10)].map((_, i) => (
+                  {[...Array(Math.max(1, Math.min(10, stockCap)))].map((_, i) => (
                     <button
                       key={i + 1}
                       onClick={() => { onQtyChange(i + 1); setShowQty(false); }}
@@ -273,11 +323,22 @@ function CartItem({ item, busy, currency, onQtyChange, onRemove }) {
             {busy && <Icon name="progress_activity" className="text-[18px] animate-spin text-primary" />}
           </div>
 
-          <div className="text-right">
-            <div className="font-bold text-on-surface text-sm sm:text-base">{formatPrice(lineTotal, currency)}</div>
-            {item.quantity > 1 && (
-              <div className="text-label-md text-on-surface-variant">{formatPrice(p.priceCents, currency)} each</div>
-            )}
+          <div className="text-right ml-auto">
+            <div className="font-bold text-on-surface text-sm sm:text-base leading-none">
+              {formatPrice(lineTotal, currency)}
+            </div>
+            <div className="mt-1 flex items-baseline gap-1.5 justify-end flex-wrap-reverse">
+              {item.quantity > 1 && (
+                <span className="text-label-md text-on-surface-variant leading-none">
+                  {formatPrice(p.priceCents, currency)} each
+                </span>
+              )}
+              {hasDeal && (
+                <span className="text-label-md text-on-surface-variant line-through leading-none">
+                  {formatPrice(p.compareAtPriceCents, currency)}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
