@@ -288,15 +288,34 @@ const queryBool = z.preprocess((v) => {
   return v; // z.boolean() below will reject
 }, z.boolean());
 
+const SORT_VALUES = ['featured', 'price-asc', 'price-desc', 'name-asc', 'newest'];
+
+// Phase-0 storefront search + faceted filter query schema.
+// `vendor` accepts a vendor id (cuid). `minPrice`/`maxPrice` are cents.
+// `inStock` borrows the `queryBool` preprocessor so 'true'/'false'/'1'/'0'
+// all coerce consistently. `pageSize` caps at 60 to keep payloads bounded;
+// `limit` is a legacy alias kept for the unfiltered lists on the home page
+// (default 60) — the route handler picks the effective page size from
+// pageSize ?? limit ?? 60 in that priority order.
 const productListQuery = z.object({
-  category: z.string().min(1).max(80).optional(),
   q: z.string().min(1).max(200).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(100),
+  category: z.string().min(1).max(80).optional(),
+  vendor: z.string().min(1).max(80).optional(),
+  minPrice: z.coerce.number().int().min(0).max(100000000).optional(),
+  maxPrice: z.coerce.number().int().min(0).max(100000000).optional(),
+  inStock: queryBool.optional(),
+  sort: z.enum(SORT_VALUES).default('featured'),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(60).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
   showOnHome: queryBool.optional(),
   showOnDeals: queryBool.optional(),
   showOnFlashDeals: queryBool.optional(),
   showOnSearch: queryBool.optional(),
-});
+}).refine(
+  (d) => d.minPrice == null || d.maxPrice == null || d.minPrice <= d.maxPrice,
+  { message: 'minPrice must be <= maxPrice', path: ['minPrice'] }
+);
 
 module.exports = {
   registerCustomer,

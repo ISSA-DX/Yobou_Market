@@ -204,15 +204,36 @@ router.post('/upload', requireAuth, requireAdminOrApprovedVendor, upload.single(
   } catch (err) { next(err); }
 });
 
+// Map the `sort` query value to a Prisma orderBy spec. Single-key
+// orders for now — features sort uses createdAt desc (same as
+// newest) so the Phase-0 UX costs nothing; promoting featured to
+// an ML score is a future-session problem.
+function sortToOrderBy(sort) {
+  switch (sort) {
+    case 'price-asc':  return [{ priceCents: 'asc' }, { createdAt: 'desc' }];
+    case 'price-desc': return [{ priceCents: 'desc' }, { createdAt: 'desc' }];
+    case 'name-asc':   return [{ name: 'asc' }];
+    case 'newest':     return [{ createdAt: 'desc' }];
+    case 'featured':
+    default:           return [{ createdAt: 'desc' }];
+  }
+}
+
 // Public list — anyone (including guests) can browse products.
+// Phase-0 storefront: accepts the full productListQuery schema
+// (q / category / vendor / minPrice / maxPrice / inStock / sort /
+// page / pageSize) and returns { products, facets, pagination }.
+// Facets are computed *unfiltered* against status='LIVE' so the
+// shopper sees the full range of available categories/vendors even
+// when a category is currently selected — this is the Shopify +
+// Amazon pattern and prevents the empty-facet death-spiral where
+// picking a leaf filter removes all alternative chips.
 router.get('/', async (req, res, next) => {
   try {
-    // zod-parsed query so the placement filters (`?showOnHome=`,
-    // `?showOnDeals=`, etc.) have a single source of truth. Unset
-    // filters stay null and are skipped on the where clause.
     const parsed = productListQuery.parse(req.query);
     const where = { status: 'LIVE' };
     if (parsed.category) where.category = parsed.category;
+    if (parsed.vendor) where.vendorId = parsed.vendor;
     if (parsed.q) {
       const term = parsed.q;
       where.OR = [
@@ -221,24 +242,71 @@ router.get('/', async (req, res, next) => {
         { description: { contains: term } },
       ];
     }
-    // Each showOn* predicate is opt-in: only applied when the caller
-    // actually passed the filter. The shopper Home page never sets
-    // them (its rail filters happen client-side from one
-    // unfiltered fetch); the admin preview is the main consumer.
+    if (parsed.minPrice != null) where.priceCents = { ...(where.priceCents || {}), gte: parsed.minPrice };
+    if (parsed.maxPrice != null) where.priceCents = { ...(where.priceCents || {}), lte: parsed.maxPrice };
+    if (parsed.inStock === true) where.stock = { gt: 0 };
     if (parsed.showOnHome != null) where.showOnHome = parsed.showOnHome;
     if (parsed.showOnDeals != null) where.showOnDeals = parsed.showOnDeals;
     if (parsed.showOnFlashDeals != null) where.showOnFlashDeals = parsed.showOnFlashDeals;
     if (parsed.showOnSearch != null) where.showOnSearch = parsed.showOnSearch;
-    const products = await prisma.product.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: parsed.limit,
-      include: {
-        vendor: { select: { id: true, businessName: true } },
-        variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
+
+    // Resolved page size: explicit pageSize wins, legacy `limit`
+    // follows (kept for callers like Home.jsx that don't pass a
+    // pageSize), otherwise 24 (Shopify-style default).
+    const pageSize = parsed.pageSize ?? parsed.limit ?? 24;
+    const skip = (parsed.page - 1) * pageSize;
+    const orderBy = sortToOrderBy(parsed.sort);
+
+    // Six round-trips in parallel: filtered count + filtered page +
+    // four facet aggregations over the unfiltered live set. SQLite +
+    // Prisma's `groupBy` is fast enough on pilot-scale catalogs that
+    // we don't need a denormalized facet cache for Phase 0; when the
+    // catalog crosses ~10k products, swap this for a single raw
+    // `SELECT ... GROUP BY` batch.
+    const facetWhere = { status: 'LIVE' };
+    const [total, products, categoriesFacet, vendorsFacet, priceRange] = await Promise.all([
+      prisma.product.count({ where }),
+      prisma.product.findMany({
+        where, orderBy, skip, take: pageSize,
+        include: {
+          vendor: { select: { id: true, businessName: true } },
+          variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
+        },
+      }),
+      prisma.product.groupBy({ by: ['category'], where: facetWhere, _count: { _all: true } }),
+      prisma.product.groupBy({ by: ['vendorId'], where: { ...facetWhere, vendorId: { not: null } }, _count: { _all: true } }),
+      prisma.product.aggregate({ where: facetWhere, _min: { priceCents: true }, _max: { priceCents: true } }),
+    ]);
+
+    // Vendor name lookup: groupBy gives vendorId+count only; need one
+    // extra query for the names. Done as a second Promise.all slot
+    // so the rest of the response still ships together.
+    const vendorIds = vendorsFacet.map((v) => v.vendorId).filter(Boolean);
+    const vendorRows = vendorIds.length
+      ? await prisma.vendor.findMany({ where: { id: { in: vendorIds } }, select: { id: true, businessName: true } })
+      : [];
+    const vendorNameById = new Map(vendorRows.map((v) => [v.id, v.businessName]));
+
+    const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+    res.json({
+      products: products.map((p) => parseVariants(parseImageUrls(p))),
+      facets: {
+        categories: categoriesFacet
+          .map((c) => ({ name: c.category, count: c._count._all }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+        vendors: vendorsFacet
+          .map((v) => ({ id: v.vendorId, name: vendorNameById.get(v.vendorId) || '', count: v._count._all }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+        priceRange: { min: priceRange._min.priceCents, max: priceRange._max.priceCents },
+      },
+      pagination: {
+        page: parsed.page,
+        pageSize,
+        total,
+        totalPages,
+        hasMore: skip + products.length < total,
       },
     });
-    res.json({ products: products.map((p) => parseVariants(parseImageUrls(p))) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
     next(err);

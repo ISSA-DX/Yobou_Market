@@ -3,6 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
+const compression = require('compression');
+// Read the version directly from package.json so /api/health can't
+// drift from the truth after the next `npm version bump`.
+const { version: SERVER_VERSION } = require('../package.json');
 
 const authRoutes = require('./auth/routes');
 const productsRoutes = require('./routes/products');
@@ -24,8 +29,60 @@ const app = express();
 
 // Behind a reverse proxy (Render, Railway, Fly, nginx), trust X-Forwarded-*
 // so req.ip, rate limiters, and security middleware see the real client IP.
-// Required for Render — without this, every request looks like 127.0.0.1.
+// `trust proxy` also tells Express to honor X-Forwarded-Proto, which in
+// turn lets helmet's HSTS header only fire when the request is actually
+// HTTPS (preventing a stale HSTS cache on a dev http instance). Required
+// for Render — without this, every request looks like 127.0.0.1.
 app.set('trust proxy', 1);
+
+// helmet — sensible security headers on every response (nosniff,
+// X-Frame-Options: SAMEORIGIN, Referrer-Policy: no-referrer, HSTS, etc.).
+// CSP stays disabled here on purpose: the shopper/partner/pre-JS splash
+// uses inline <script> + inline <style>, and the apps link fonts from
+// fonts.googleapis.com. Tightening CSP needs nonces/allow-lists and is
+// out of scope for this pass — the rest of helmet's headers still harden
+// the API surface.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  // Cross-Origin-Resource-Policy defaults to `same-origin` which would
+  // block the shopper on https://issa-dx.github.io from decoding images
+  // served from the API host's /uploads/. Cross-origin is required so
+  // GH-Pages + any future white-label host can still load product media.
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  // COEP defaults to off; pin it explicitly so a future helmet upgrade
+  // can't quietly turn it on and break every cross-origin image.
+  crossOriginEmbedderPolicy: false,
+}));
+
+// compression — gzip JSON + static assets for ~70–80% bandwidth savings
+// on list endpoints. Critically, we MUST skip streamed responses:
+// compression buffers the response and breaks streaming, which would
+// kill the live-sync notifications (`/api/events` SSE).
+//
+// Two-layer guard because the right "Accept" header can't be guaranteed:
+//   - Layer 1: explicit path allow-list (`/api/events`). Cheap and the
+//     only SSE endpoint in the codebase today.
+//   - Layer 2: Accept header check. EventSource auto-sets
+//     `Accept: text/event-stream`; fetch + ReadableStream does not. Belt
+//     AND braces so either path-style safely skips compression.
+// Allow multiple SSE paths; the current codebase only streams at
+// `/api/events`, so the array has a single entry today. Adding a new
+// streaming endpoint is a one-line change. The `startsWith(sp + '/')`
+// branch covers future sub-paths (e.g. `/api/events/admin`).
+const SSE_PATHS = ['/api/events'];
+const isSsePath = (p) => SSE_PATHS.some((sp) => p === sp || p.startsWith(sp + '/'));
+const shouldCompress = (req, res) => {
+  if (isSsePath(req.path)) return false;
+  const accept = (req.headers['accept'] || '').split(',').map((a) => a.trim());
+  if (accept.includes('text/event-stream')) return false;
+  return compression.filter(req, res);
+};
+// Threshold 256 bytes (below Express default 1kb) so the curated
+// 28-category list, notification toggles, and other "small but
+// compressible" JSON payloads actually benefit from gzip on mobile
+// networks — which is the Yobou target audience. 1kb skips compression
+// on the very responses that matter most for first-paint perf.
+app.use(compression({ filter: shouldCompress, threshold: 256 }));
 
 const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || './uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -134,6 +191,17 @@ app.use((req, res, next) => {
 
   next();
 });
+// IMPORTANT: Stripe webhook MUST be mounted BEFORE express.json()
+// so the raw request body survives for Stripe's signature
+// verification. The /api/payments router below applies requireAuth
+// to the auth-gated routes (PaymentMethod CRUD, /intent); the
+// webhook handler itself does its own checks via the Stripe SDK.
+app.post(
+  '/api/payments/webhook',
+  express.raw({ type: 'application/json' }),
+  require('./routes/payments').webhookHandler
+);
+
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 
@@ -146,8 +214,17 @@ if (fs.existsSync(publicDir)) {
   app.use(express.static(publicDir));
 }
 
-// Health
-app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+// Health — extended to include version (sourced from package.json) +
+// uptime so uptime monitors can scrape a single endpoint and so the
+// frontend can show a heartbeat that doesn't lie after a version bump.
+app.get('/api/health', (_req, res) =>
+  res.json({
+    ok: true,
+    version: SERVER_VERSION,
+    uptime: Math.round(process.uptime()),
+    time: new Date().toISOString(),
+  })
+);
 
 // Routes
 app.use('/api/auth', authRoutes);
