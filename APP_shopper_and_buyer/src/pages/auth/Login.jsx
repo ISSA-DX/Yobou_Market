@@ -132,9 +132,30 @@ export default function Login() {
           </Link>
         </div>
 
-        <div className="mt-6 text-center text-sm text-on-surface-variant">
-          New to Yobou?{' '}
-          <Link to="/register" className="text-primary font-semibold">Sign up</Link>
+        {/* Promoted from a tiny inline text-link to a framed card
+            so a new visitor can't miss it. The Onboarding splash
+            also routes here — making the alternative clear on this
+            screen matters because the splash's "Create account"
+            button won't be discovered if a returning-typed visitor
+            hits Splash → Next × 2 → "Sign in" and never sees the
+            secondary CTA. Solid bg-primary-container (not /40
+            translucent) + a thicker outline border keeps it clearly
+            separated from the .card p-6 wrapper above this div,
+            which itself uses a low-opacity surface tint — a
+            translucent card inside a translucent card would wash
+            out and the new-user path would still look like
+            ambient text. The label is an <h2> for screen-reader
+            semantics (the parent already has an h1) so the
+            alternative-path heading is discoverable to a11y tooling. */}
+        <div className="mt-6 p-4 rounded-xl bg-primary-container border-2 border-primary/50">
+          <h2 className="text-sm text-on-surface text-center font-semibold uppercase tracking-wide">New to Yobou?</h2>
+          <Link
+            to="/register"
+            className="mt-3 inline-flex w-full btn-secondary py-3 justify-center font-semibold"
+          >
+            Create account
+            <Icon name="arrow_forward" className="text-[18px]" />
+          </Link>
         </div>
 
         {/* Escape hatch for the anonymous-browse path that Phase 1 made

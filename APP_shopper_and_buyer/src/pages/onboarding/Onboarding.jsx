@@ -62,7 +62,14 @@ export default function Onboarding() {
     <div className={`min-h-screen bg-gradient-to-br ${slide.bg} text-white flex flex-col`}>
       <div className="flex items-center justify-between p-4">
         <div className="w-9 h-9 rounded-md bg-white/20 backdrop-blur flex items-center justify-center font-black">Y</div>
-        <button onClick={() => navigate('/login', { replace: true })} className="text-sm font-semibold">Sign in</button>
+        {/* Top-right pill originally read "Sign in" — renamed to
+            "Skip" because once the marketing carousel finishes, the
+            final slide presents BOTH "Sign in" AND "Create account"
+            as filled CTAs at the bottom; duplicating "Sign in" up
+            here read like two different actions. "Skip" matches the
+            actual behaviour (skip the remaining slides) and removes
+            the label dup on slide 3. */}
+        <button onClick={() => navigate('/login', { replace: true })} className="text-sm font-semibold">Skip intro</button>
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
@@ -92,9 +99,34 @@ export default function Onboarding() {
             />
           ))}
         </div>
-        <button onClick={next} className="w-full bg-white text-primary font-bold py-3 rounded-full hover:bg-white/90 transition">
-          {i === SLIDES.length - 1 ? 'Get started' : 'Next'}
-        </button>
+        {i === SLIDES.length - 1 ? (
+          <>
+            {/* Final slide: separate the two paths visually so a
+                new visitor doesn't end up on the sign-in screen and
+                have to hunt for a "Sign up" link buried inside
+                Login.jsx. The white pill = primary path (returning
+                users have credentials to enter); the outlined pill
+                = clearly labelled "Create account". Both use
+                replace:true so the back button doesn't bounce the
+                user back into the splash carousel. */}
+            <button
+              onClick={() => navigate('/login', { replace: true })}
+              className="w-full bg-white text-primary font-bold py-3 rounded-full hover:bg-white/90 transition"
+            >
+              Sign in
+            </button>
+            <button
+              onClick={() => navigate('/register', { replace: true })}
+              className="mt-3 w-full bg-white/10 backdrop-blur border border-white/50 text-white font-bold py-3 rounded-full hover:bg-white/20 transition"
+            >
+              Create account
+            </button>
+          </>
+        ) : (
+          <button onClick={next} className="w-full bg-white text-primary font-bold py-3 rounded-full hover:bg-white/90 transition">
+            Next
+          </button>
+        )}
       </div>
     </div>
   );
