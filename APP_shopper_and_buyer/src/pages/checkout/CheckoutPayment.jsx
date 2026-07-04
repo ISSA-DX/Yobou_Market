@@ -18,11 +18,20 @@ export default function CheckoutPayment() {
   const [method, setMethod] = useState('CARD');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // Fetch /api/cart on mount. api.js handles the 401 → refresh round-
+  // trip on its own (server/src/auth/routes.js now sets the refresh
+  // cookie SameSite=None; Secure in production so the cross-site
+  // round-trip survives the Capacitor WebView). Deliberately NOT
+  // gating on `hasUser`: a parallel skip-gate races boot()'s refresh
+  // promise and can clobber a returning customer's refresh cookie.
   const { data, error, loading, refetch } = useApi('/api/cart');
 
   // Cold-pasted /checkout/payment URLs must work for guests arising
-  // straight from a deep link or share — without this the /api/cart
-  // call below would 401 and render the RetryError card.
+  // straight from a deep link or share — without this guard the user
+  // would land on Payment without an addressId in sessionStorage and
+  // get bounced back to Shipping at submit-time. Booting a guest
+  // session here is idempotent (no-op when zustand already has a
+  // user) and runs AFTER mount so it never races boot()'s refresh.
   useEffect(() => {
     let cancelled = false;
     (async () => {

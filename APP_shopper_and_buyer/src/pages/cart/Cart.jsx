@@ -14,28 +14,22 @@ const FREE_SHIPPING_THRESHOLD_CENTS = 5000;
 
 export default function Cart() {
   const navigate = useNavigate();
-  const ensureGuestSession = useStore((s) => s.ensureGuestSession);
   const refreshCart = useStore((s) => s.refreshCartCount);
   const currency = useStore((s) => s.user?.currency || 'USD');
   const [busyId, setBusyId] = useState(null);
   const [selectionBusy, setSelectionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
+  // Fetch /api/cart on mount. `api.js` handles the transparent access-
+  // token refresh round-trip on 401 — when the production Capacitor
+  // WebView's refresh cookie survives the cross-site round-trip (the
+  // sameSite=None; Secure policy set by server/src/auth/routes.js),
+  // boot() restores a signed-in user without this page doing anything
+  // extra. PDP Add-to-Cart page guarantees a guest user is minted
+  // before any auth-gated GET, so the cold-launch shopper flow doesn't
+  // 401 here either. Deliberately NOT gating on `hasUser` — a parallel
+  // ensureGuestSession useEffect races the boot() refresh token call
+  // and can clobber the refresh cookie for a returning customer.
   const { data, error, loading, refetch } = useApi('/api/cart');
-
-  // Bootstrap a guest session on mount so a user landing directly on
-  // /cart (URL paste, deep link, share) gets a working server-side
-  // user without first having to click Add-to-Cart somewhere. The
-  // /api/cart call below would otherwise return 401 and the page
-  // would render the RetryError card, leaving the guest stuck.
-  // ensureGuestSession is idempotent — if zustand already has a user
-  // (real or guest) it's a no-op. After it succeeds we refetch so
-  // the fresh identity's empty cart renders.
-  useEffect(() => {
-    (async () => {
-      const ensured = await ensureGuestSession();
-      if (ensured) await refetch();
-    })();
-    /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []); // mount-only
 
   // Compute membership split from the server response. We keep three
   // buckets so the UX can render different visuals:

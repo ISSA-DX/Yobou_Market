@@ -68,11 +68,32 @@ async function transferGuestCart(guestId, newId) {
 }
 
 function setRefreshCookie(res, token) {
-  const crossOrigin = !!process.env.CORS_ORIGIN;
+  // Cross-site cookie policy. When the refresh cookie is issued, every
+  // subsequent XHR/fetch from a real client has to carry it back so
+  // /api/auth/refresh can mint a new access token before page-level
+  // requests 401. On the Android Capacitor WebView the document origin
+  // is `https://localhost/` while the API host is
+  // `https://yobou-server.onrender.com/` — a CROSS-SITE request from the
+  // browser's perspective. With `SameSite=Lax` the browser silently
+  // strips the refresh cookie on programmatic fetch() calls (Lax only
+  // permits top-level navigation GETs), so the refresh round-trip
+  // always returns `BAD_REFRESH` and the user is kicked back to the
+  // login screen mid-session. The Yobou fix: in production (or when an
+  // explicit CORS_ORIGIN is set) emit `SameSite=None; Secure` which is
+  // universally accepted for cross-site XHR/fetch. The HTTP-only +
+  // /api/auth path-scoped + 7-day TTL keeps the cookie's blast radius
+  // identical to the original `Lax` cookie — only the cross-site
+  // delivery rule changes.
+  const isProduction = process.env.NODE_ENV === 'production';
+  const crossOrigin = isProduction || !!process.env.CORS_ORIGIN;
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     sameSite: crossOrigin ? 'none' : 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    // `secure: true` is mandatory when `SameSite=None`. Production is
+    // HTTPS so this is satisfied automatically. In dev (HTTP localhost)
+    // we explicitly set secure: false so the cookie survives an http://
+    // origin during local testing.
+    secure: isProduction,
     maxAge: REFRESH_TTL_MS,
     path: '/api/auth',
   });
