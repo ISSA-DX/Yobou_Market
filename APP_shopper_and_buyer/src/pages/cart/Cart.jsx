@@ -185,14 +185,14 @@ export default function Cart() {
         toast.success(
           `All ${validItems.length} ${validItems.length === 1 ? 'item' : 'items'} selected for checkout.`,
         );
-    } catch {
-      // Don't block navigation. /checkout/shipping will surface
-      // its own error state if any subsequent call needs a real
-      // identity. The bare `void 0` body is the canonical strict-
-      // ESLint-friendly empty catch (matches the pattern in
-      // Login.jsx's ensureGuestSession).
-      void 0;
-    } finally {
+      } catch {
+        // Don't block navigation. /checkout/shipping will surface
+        // its own error state if any subsequent call needs a real
+        // identity. The bare `void 0` body is the canonical strict-
+        // ESLint-friendly empty catch (matches the pattern in
+        // Login.jsx's ensureGuestSession).
+        void 0;
+      } finally {
         setSelectionBusy(false);
       }
     }

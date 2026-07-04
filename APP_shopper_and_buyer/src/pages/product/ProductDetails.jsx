@@ -64,20 +64,27 @@ export default function ProductDetails() {
   const [pickedColor, setPickedColor] = useState('');
   const [pickedSize, setPickedSize] = useState('');
 
-  // Amazon-style "quick-pick" default size: pick the size that's most
-  // commonly available across colors (the one with the most variant
-  // rows). Ties break in iteration order. This gives the shopper a
-  // sensible default — usually M, the size most colors carry — instead
-  // of the first size the form happened to list.
-  const defaultSize = useMemo(() => {
-    if (variants.length === 0) return '';
-    const counts = new Map();
-    variants.forEach((v) => counts.set(v.size, (counts.get(v.size) || 0) + 1));
-    let best = variants[0].size;
-    let bestN = 0;
-    for (const [s, n] of counts) if (n > bestN) { best = s; bestN = n; }
+  // Amazon-style "quick-pick" default: pick the variant row (color ×
+  // size) that has the highest stock. Picking a SINGLE ROW rather than
+  // independently picking the top color AND the top size guarantees
+  // the auto-picked pair actually exists in the variant matrix — the
+  // old "most-common color × most-common size" algo could collapse to
+  // an OOS combo (e.g. Black has no M), which left the Add-to-Cart
+  // button silently disabled on PDP load. This single-row pick is the
+  // fix: it's a real variant, it has inventory, and exactMatch is true
+  // before the shopper touches anything.
+  const defaultVariant = useMemo(() => {
+    if (variants.length === 0) return null;
+    let best = variants[0];
+    for (const v of variants) {
+      const vStock = typeof v.stock === 'number' ? v.stock : 0;
+      const bestStock = typeof best.stock === 'number' ? best.stock : 0;
+      if (vStock > bestStock) best = v;
+    }
     return best;
   }, [variants]);
+  const defaultSize = defaultVariant ? defaultVariant.size : '';
+  const defaultColor = defaultVariant ? defaultVariant.color : '';
 
   useEffect(() => {
     if (variants.length === 0) {
@@ -85,9 +92,15 @@ export default function ProductDetails() {
       setPickedSize('');
       return;
     }
-    if (!variants.some((v) => v.color === pickedColor)) setPickedColor(variants[0].color);
-    if (!variants.some((v) => v.size === pickedSize)) setPickedSize(defaultSize);
-  }, [variants, pickedColor, pickedSize, defaultSize]);
+    // Snap to the highest-stock variant when the current (color, size)
+    // pair doesn't correspond to any variant row — covers both first
+    // visit (gives the shopper a sensible default) and live-sync
+    // deletion (a vendor just removed the variant the user was on).
+    if (!variants.some((v) => v.color === pickedColor && v.size === pickedSize)) {
+      setPickedColor(defaultColor);
+      setPickedSize(defaultSize);
+    }
+  }, [variants, pickedColor, pickedSize, defaultColor, defaultSize]);
 
   const uniqueColors = useMemo(() => {
     const s = new Set();
@@ -187,6 +200,23 @@ export default function ProductDetails() {
 
   const saved = wishlist.includes(p.id);
 
+  // Send the chosen variant if the (color, size) pair matches an
+  // actual variant row. Otherwise send the highest-stock variant as a
+  // safety fallback so the shopper is NEVER stuck on a dead Add — the
+  // button stays clickable, the server validates stock, and the user
+  // lands on /cart with a meaningful row. Without this fallback the
+  // PDP was effectively unusable on variant products whose first row's
+  // color happens to lack the most-common size.
+  function pickVariantToSend() {
+    if (!hasVariants) return null;
+    if (exactMatch && selectedVariant) return selectedVariant;
+    // hasVariants guarantees variants.length > 0, so defaultVariant is
+    // never null here. We fall back to the highest-stock row so the
+    // shopper is NEVER stuck on a dead Add — even a misbehaving variant
+    // matrix (e.g. color×size gaps) ends on a buyable, in-stock SKU.
+    return defaultVariant;
+  }
+
   async function add() {
     setErr(''); setBusy(true);
     try {
@@ -197,11 +227,12 @@ export default function ProductDetails() {
       // case where the access token expired mid-session (refresh
       // cookie blown away). The orphan User row from the old guest
       // identity gets cleaned up by the 30-day purge cron.
+      const sendVariant = pickVariantToSend();
       await withGuestRetry(() => api('/api/cart', {
         method: 'POST',
         body: {
           productId: p.id,
-          variantId: hasVariants && selectedVariant ? selectedVariant.id : null,
+          variantId: sendVariant ? sendVariant.id : null,
           quantity: qty,
         },
       }));
@@ -230,11 +261,12 @@ export default function ProductDetails() {
   async function buy() {
     setErr(''); setBusy(true);
     try {
+      const sendVariant = pickVariantToSend();
       await withGuestRetry(() => api('/api/cart', {
         method: 'POST',
         body: {
           productId: p.id,
-          variantId: hasVariants && selectedVariant ? selectedVariant.id : null,
+          variantId: sendVariant ? sendVariant.id : null,
           quantity: qty,
         },
       }));

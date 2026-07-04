@@ -192,7 +192,9 @@ export default function CheckoutPayment() {
           className="btn-primary w-full py-3 max-w-screen-md mx-auto disabled:opacity-60"
         >
           {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
-          {method === 'CARD' ? 'Enter card details' : `Place order · ${formatPrice(total, currency)}`}
+          {method === 'CARD'
+            ? `Enter card details · ${formatPrice(total, currency)}`
+            : `Place order · ${formatPrice(total, currency)}`}
         </button>
       </div>
     </div>
