@@ -60,14 +60,17 @@ export async function refreshAccessToken() {
     .then(async (r) => {
       if (!r.ok) throw new Error('NO_REFRESH');
       const data = await r.json();
-      accessToken = data.accessToken;
-      writePersistedToken(data.accessToken);
+      // Centralize the in-memory + localStorage write through
+      // setAccessToken so the v0.3.10 localStorage invariant has
+      // exactly one mutation site. notifyAuthChange stays here
+      // because the refresh round-trip is the one place that
+      // actually knows the user identity.
+      setAccessToken(data.accessToken);
       notifyAuthChange({ user: data.user });
       return data.accessToken;
     })
     .catch((err) => {
-      accessToken = null;
-      writePersistedToken(null);
+      setAccessToken(null);
       notifyAuthChange({ user: null });
       throw err;
     })
