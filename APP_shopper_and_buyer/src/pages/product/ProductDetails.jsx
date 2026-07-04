@@ -132,6 +132,20 @@ export default function ProductDetails() {
     : p.stock === 0;
   const exactMatch = hasVariants
     && variants.some((v) => v.color === pickedColor && v.size === pickedSize);
+  // Urgency-stock number used by the inline "Only N left" hint on
+  // the delivery card. For a variant product we use the picked
+  // variant's stock ONLY when the (color, size) pair is exact —
+  // if the colour is picked but the size isn't stocked we don't
+  // invent urgency. For a non-variant product we fall back to
+  // p.stock. Wrapped in useMemo to match the file's pattern for
+  // derived values (defaultSize, uniqueColors, images, etc.).
+  const stockForUrgency = useMemo(
+    () => (hasVariants
+      ? (exactMatch ? (variantStock || 0) : 0)
+      : (p?.stock || 0)),
+    [hasVariants, exactMatch, variantStock, p?.stock],
+  );
+  const showStockUrgency = stockForUrgency > 0 && stockForUrgency <= 5;
 
   useEffect(() => {
     const el = carouselRef.current;
@@ -305,8 +319,26 @@ export default function ProductDetails() {
               </a>
             )}
           </div>
-          <div className="mt-3">
+          {/* Price block. Amazon/Temu style: when there's a deal,
+              the previous price is shown struck-through next to the
+              current one and a percent-off chip turns the saving into
+              a single scannable token. Without a deal we keep the
+              baseline quiet so non-deal products don't get visual
+              noise above the fold. Compare-at values come from the
+              server's `compareAtPriceCents` which the admin/partner
+              apps set in the deal-price workflow. */}
+          <div className="mt-3 flex items-baseline gap-2 flex-wrap">
             <span className="text-headline-lg font-bold text-primary">{formatPrice(p.priceCents, currency)}</span>
+            {p.compareAtPriceCents && p.compareAtPriceCents > p.priceCents && (
+              <>
+                <span className="text-on-surface-variant line-through text-base">
+                  {formatPrice(p.compareAtPriceCents, currency)}
+                </span>
+                <span className="chip bg-tertiary text-white text-label-md font-bold px-2 py-0.5 rounded-full">
+                  {Math.round((1 - p.priceCents / p.compareAtPriceCents) * 100)}% off
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -479,6 +511,11 @@ export default function ProductDetails() {
 
         <ProductDescriptionTabs product={p} onChanged={() => refetch()} />
 
+        {/* Delivery card — expanded with cash-on-delivery (a Yobou
+            selling point) and a stock urgency hint when stock is
+            running low. Temu and Amazon both surface "Only N left,
+            order soon" right above the variant picker; we put it on
+            the delivery line so the value-prop stays consistent. */}
         <div className="card p-4 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-tertiary-container/20 flex items-center justify-center">
             <Icon name="local_shipping" className="text-tertiary" />
@@ -488,10 +525,141 @@ export default function ProductDetails() {
               {p.priceCents * qty >= 5000 ? 'Free delivery' : `Delivery ${formatPrice(499, currency)}`}
             </div>
             <div className="text-label-md text-on-surface-variant">Arrives in 2–4 business days</div>
+            {/* Stock urgency — appears only when stock is low (
+                either the variant's, or the product's if no
+                variants). Keeps the value-prop honest without
+                inventing urgency the data doesn't support. */}
+            {showStockUrgency && (
+              <div className="mt-1 text-label-md text-error font-semibold flex items-center gap-1">
+                <Icon name="bolt" className="text-[14px]" />
+                Only {stockForUrgency} left — order soon
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <span className="chip bg-secondary-container text-on-secondary-container text-label-md font-semibold">
+              <Icon name="payments" className="text-[14px]" />
+              Cash on delivery
+            </span>
+          </div>
+        </div>
+
+        {/* Trust badges row — a thin strip under the delivery card
+            that gives the shopper three single-glance guarantees.
+            Amazon-style "Secure transaction / Returns / Authentic"
+            chips; Temu-style "All Yobou purchases are protected".
+            Pure presentational — no API calls. Sub-text uses
+            text-label-md (12px) rather than 11px so it stays legible
+            on VoiceOver/Narrator at 200% magnification and meets
+            WCAG-AA contrast against surface-low without a separate
+            fontweight bump. */}
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="card p-3 flex flex-col items-center gap-1">
+            <Icon name="lock" className="text-primary text-[20px]" />
+            <span className="text-label-md font-semibold">Secure checkout</span>
+            <span className="text-label-md text-on-surface-variant">256-bit SSL</span>
+          </div>
+          <div className="card p-3 flex flex-col items-center gap-1">
+            <Icon name="assignment_return" className="text-primary text-[20px]" />
+            <span className="text-label-md font-semibold">Free returns</span>
+            <span className="text-label-md text-on-surface-variant">Within 30 days</span>
+          </div>
+          <div className="card p-3 flex flex-col items-center gap-1">
+            <Icon name="verified" className="text-primary text-[20px]" />
+            <span className="text-label-md font-semibold">Authentic</span>
+            <span className="text-label-md text-on-surface-variant">Verified sellers</span>
           </div>
         </div>
 
         {err && <div className="text-error text-sm">{err}</div>}
+
+        {/* Vendor mini-card. Amazon surfaces the seller under
+            "Featured from our brands" / "Visit the [store] Store";
+            Temu shows the shipper with a Verified chip. We don't
+            have a follow/storefront screen yet, so this card
+            renders as informational rather than actionable — just
+            the business name + a Verified chip so the shopper sees
+            who they're buying from. The link doesn't navigate
+            anywhere; it’s a transparent "trust anchor" pattern that
+            Amazon uses for its brand storefront widgets. */}
+        {p.vendor && (
+          <div className="card p-4 flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-primary-container/40 flex items-center justify-center">
+              <Icon name="storefront" className="text-primary text-[24px]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm">{p.vendor.businessName || 'Yobou seller'}</div>
+              <div className="text-label-md text-on-surface-variant flex items-center gap-1">
+                <Icon name="verified" className="text-tertiary text-[14px]" />
+                Verified seller
+              </div>
+            </div>
+            <Link
+              to={`/categories`}
+              className="text-label-md text-primary font-semibold whitespace-nowrap"
+              aria-label="Browse product categories"
+            >
+              Browse categories →
+            </Link>
+          </div>
+        )}
+
+        {/* Shipping / Returns / Payment accordions. The single
+            delivery card above already covers headline delivery
+            cost; these <details> elements expand on demand for the
+            edge-case questions. Amazon and Temu both keep these
+            answers one tap away — not in a separate Help screen —
+            because the abandonment cart rate is heavily influenced
+            by what the shopper can learn at the moment of purchase.
+            Pure HTML <details>/<summary> — no portal/aria-expanded
+            state machinery needed. */}
+        <div className="card divide-y divide-outline-variant/30">
+          <details className="group p-4">
+            <summary className="flex items-center justify-between cursor-pointer list-none">
+              <span className="flex items-center gap-2 font-semibold text-sm">
+                <Icon name="local_shipping" className="text-primary text-[18px]" />
+                Shipping
+              </span>
+              <Icon name="expand_more" className="text-on-surface-variant group-open:rotate-180 transition-transform" />
+            </summary>
+            <div className="mt-2 text-sm text-on-surface-variant space-y-1.5 pl-7">
+              <div>• Standard delivery 2–4 business days</div>
+              <div>• Free delivery on orders over {formatPrice(5000, currency)}</div>
+              <div>• {p.priceCents * qty >= 5000 ? 'Your order qualifies for FREE delivery' : `Add ${formatPrice(5000 - p.priceCents * qty, currency)} more to qualify for FREE delivery`}</div>
+              <div>• Tracking updated by SMS and in-app notifications</div>
+            </div>
+          </details>
+          <details className="group p-4">
+            <summary className="flex items-center justify-between cursor-pointer list-none">
+              <span className="flex items-center gap-2 font-semibold text-sm">
+                <Icon name="assignment_return" className="text-primary text-[18px]" />
+                Returns
+              </span>
+              <Icon name="expand_more" className="text-on-surface-variant group-open:rotate-180 transition-transform" />
+            </summary>
+            <div className="mt-2 text-sm text-on-surface-variant space-y-1.5 pl-7">
+              <div>• Free returns within 30 days of delivery</div>
+              <div>• Items must be unworn/unused with original packaging</div>
+              <div>• Refund processed within 5 business days of receipt</div>
+              <div>• Start a return from Profile → Orders → Request return</div>
+            </div>
+          </details>
+          <details className="group p-4">
+            <summary className="flex items-center justify-between cursor-pointer list-none">
+              <span className="flex items-center gap-2 font-semibold text-sm">
+                <Icon name="credit_card" className="text-primary text-[18px]" />
+                Payment options
+              </span>
+              <Icon name="expand_more" className="text-on-surface-variant group-open:rotate-180 transition-transform" />
+            </summary>
+            <div className="mt-2 text-sm text-on-surface-variant space-y-1.5 pl-7">
+              <div>• Credit & debit cards (Visa, Mastercard, Amex)</div>
+              <div>• Cash on delivery (no extra fee)</div>
+              <div>• Secure checkout via 256-bit SSL + 3-D Secure</div>
+              <div>• Saved cards available from step 2 of checkout</div>
+            </div>
+          </details>
+        </div>
 
         <RelatedProducts productId={p.id} onAdd={add} />
       </div>

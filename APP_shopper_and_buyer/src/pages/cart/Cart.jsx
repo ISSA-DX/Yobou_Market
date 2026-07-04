@@ -162,6 +162,43 @@ export default function Cart() {
     }
   }
 
+  // Proceed-to-Checkout. If the user is moving forward with zero
+  // items manually selected but the cart has rows, auto-select-all
+  // right before navigation. This replaces the prior version which
+  // gated the button on `selectedItems.length === 0`, silently
+  // disabling it whenever a row's checkbox was off — from the user
+  // POV that read as "the button doesn't function", which was the
+  // exact complaint this fix addresses. Errors are absorbed because
+  // /checkout/shipping renders its own failure state and we'd rather
+  // bounce the shopper to the form than trap them on a stale cart
+  // layout. Extracted from the <button onClick=...> so the JSX stays
+  // scannable and matches the named-handler pattern used by
+  // setQty / remove / toggleItem / setSelectionAll.
+  async function proceedToCheckout() {
+    if (validItems.length === 0) return;
+    if (selectedItems.length === 0) {
+      setSelectionBusy(true);
+      setActionError('');
+      try {
+        await api('/api/cart/selection', { method: 'PATCH', body: { selected: true } });
+        await refetch();
+        toast.success(
+          `All ${validItems.length} ${validItems.length === 1 ? 'item' : 'items'} selected for checkout.`,
+        );
+    } catch {
+      // Don't block navigation. /checkout/shipping will surface
+      // its own error state if any subsequent call needs a real
+      // identity. The bare `void 0` body is the canonical strict-
+      // ESLint-friendly empty catch (matches the pattern in
+      // Login.jsx's ensureGuestSession).
+      void 0;
+    } finally {
+        setSelectionBusy(false);
+      }
+    }
+    navigate('/checkout/shipping');
+  }
+
   if (loading && !data) {
     return (
       <div className="p-8 text-center text-on-surface-variant">
@@ -379,20 +416,34 @@ export default function Cart() {
               </div>
             )}
 
+            {/* Proceed-to-Checkout. The Amazon/Temu behaviour most
+                shoppers expect: clicking the button ALWAYS navigates
+                to checkout, even if the user didn't manually tick
+                any items. See proceedToCheckout() above for the
+                auto-select-all story. The label flips between two
+                honest states so the user can predict the action:
+                  - "Proceed to Checkout (N)" when items are pre-picked.
+                  - "Proceed with all N items →" when none are picked.
+                The disabled clause only gates on selectionBusy now;
+                validItems.length > 0 is always true at this point
+                because the empty-cart branch returns early above. */}
             <button
-              onClick={() => navigate('/checkout/shipping')}
-              disabled={selectedItems.length === 0}
-              className="btn-primary w-full py-3 mt-2 disabled:opacity-60"
+              onClick={proceedToCheckout}
+              disabled={selectionBusy}
+              className="btn-primary w-full py-3 mt-2 disabled:opacity-60 flex items-center justify-center gap-2"
             >
+              {selectionBusy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
               {selectedItems.length > 0 ? (
                 <>
                   Proceed to Checkout ({itemCount})
                   <Icon name="arrow_forward" />
                 </>
+              ) : selectionBusy ? (
+                <>Selecting items…</>
               ) : (
                 <>
-                  Select items to checkout
-                  <Icon name="shopping_bag" />
+                  Proceed with all {validItems.length} {validItems.length === 1 ? 'item' : 'items'}
+                  <Icon name="arrow_forward" />
                 </>
               )}
             </button>
