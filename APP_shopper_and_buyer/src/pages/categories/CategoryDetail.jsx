@@ -1,10 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../../api';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import ProductCard, { ProductCardSkeleton } from '../../components/ProductCard';
 import { useCatalogStream } from '../../lib/useSse';
+import { toast } from '../../lib/toast';
 
 const CATEGORY_META = {
   electronics: { icon: 'devices', gradient: 'from-blue-500 to-indigo-600' },
@@ -58,6 +59,7 @@ export default function CategoryDetail() {
   const [sort, setSort] = useState('featured');
   const [showSort, setShowSort] = useState(false);
   const refreshCart = useStore((s) => s.refreshCartCount);
+  const navigate = useNavigate();
 
   const title = useMemo(
     () => slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
@@ -93,8 +95,15 @@ export default function CategoryDetail() {
   });
 
   async function quickAdd(p) {
-    await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
-    await refreshCart();
+    try {
+      await useStore.getState().ensureGuestSession();
+      await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
+      await refreshCart();
+      toast.success(`Added ${p.name} to cart`);
+      navigate('/cart');
+    } catch (e) {
+      toast.error(e?.data?.error || 'Could not add to cart');
+    }
   }
 
   const filtered = useMemo(() => {

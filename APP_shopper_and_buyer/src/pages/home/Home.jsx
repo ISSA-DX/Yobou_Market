@@ -104,12 +104,13 @@ export default function Home() {
 
   async function quickAdd(p) {
     try {
+      await useStore.getState().ensureGuestSession();
       await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
       await useStore.getState().refreshCartCount();
       toast.success(`Added ${p.name} to cart`);
+      navigate('/cart');
     } catch (e) {
-      // Not logged in — bounce to login, then come back here
-      navigate('/login', { state: { from: location } });
+      toast.error(e?.data?.error || 'Could not add to cart');
     }
   }
 

@@ -12,15 +12,17 @@
 // are surfaced as a separate "Unavailable" section so the user can prune
 // them from their list.
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../api';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import ProductCard, { ProductCardSkeleton } from '../../components/ProductCard';
+import { toast } from '../../lib/toast';
 
 export default function Wishlist() {
   const wishlist = useStore((s) => s.wishlist);
   const toggleWishlist = useStore((s) => s.toggleWishlist);
+  const navigate = useNavigate();
   const [allProducts, setAllProducts] = useState(null);
   const [error, setError] = useState('');
 
@@ -63,11 +65,13 @@ export default function Wishlist() {
 
   async function quickAdd(p) {
     try {
+      await useStore.getState().ensureGuestSession();
       await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
       await useStore.getState().refreshCartCount();
-    } catch {
-      // Auth errors are surfaced by the consumer; we keep this as a
-      // best-effort helper that mirrors ProductCard's quickAdd contract.
+      toast.success(`Added ${p.name} to cart`);
+      navigate('/cart');
+    } catch (e) {
+      toast.error(e?.data?.error || 'Could not add to cart');
     }
   }
 

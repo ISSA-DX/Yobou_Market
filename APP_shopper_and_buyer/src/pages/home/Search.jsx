@@ -1,10 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { api } from '../../api';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import ProductCard, { ProductCardSkeleton } from '../../components/ProductCard';
 import { useCatalogStream } from '../../lib/useSse';
+import { toast } from '../../lib/toast';
 
 // URL ↔ UI naming for the sort dropdown. `featured` is the server alias
 // for createdAt desc; we label it "Newest" because that's honest about
@@ -92,6 +93,7 @@ export default function Search() {
   // grid from re-fetching on every keystroke.
   const [draft, setDraft] = useState(state);
   const refreshCart = useStore((s) => s.refreshCartCount);
+  const navigate = useNavigate();
 
   // Sync URL → draft + input whenever deep-link / share / back-button
   // lands on a fresh URL. The next user-tap on Apply/Clear All will
@@ -195,8 +197,15 @@ export default function Search() {
   }
 
   async function quickAdd(p) {
-    await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
-    await refreshCart();
+    try {
+      await useStore.getState().ensureGuestSession();
+      await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
+      await refreshCart();
+      toast.success(`Added ${p.name} to cart`);
+      navigate('/cart');
+    } catch (e) {
+      toast.error(e?.data?.error || 'Could not add to cart');
+    }
   }
 
   const activeSortLabel = SORTS.find((s) => s.key === state.sort)?.label || 'Sort';
