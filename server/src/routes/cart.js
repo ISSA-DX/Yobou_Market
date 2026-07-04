@@ -96,6 +96,12 @@ router.post('/', async (req, res, next) => {
           productId: data.productId,
           variantId: data.variantId || null,
           quantity: data.quantity,
+          // Brand-new cart rows default to "selected for checkout". Amazon
+          // behavior: tapping Add-to-Cart lands the item in the order,
+          // not in a saved-for-later pile. Existing rows (existing truthy)
+          // keep their selection — bumping the quantity should never
+          // silently flip a saved-for-later row back into checkout.
+          selectedForCheckout: true,
         },
         include: {
           product: { include: { vendor: { select: { id: true, businessName: true } } } },
@@ -104,6 +110,77 @@ router.post('/', async (req, res, next) => {
       });
     }
     res.status(201).json({ item: parseCartItem(item) });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Selection for checkout — per-row and bulk.
+//
+// IMPORTANT ordering note: these two routes (and the helper schemata)
+// MUST be declared BEFORE the parameterized PATCH/DELETE /:productId
+// below. Express matches in declaration order; if a literal-segment
+// route sits after `/:productId`, the parameter route greedily binds
+// the literal ("selection" or "items" would parse as a productId and
+// fail Number(req.body.quantity) validation with a 400 INVALID_QUANTITY).
+// ---------------------------------------------------------------------------
+
+// PATCH /api/cart/items/:cartItemId { selected: boolean }
+// Toggle the selectedForCheckout flag for a single row. cartItem.id is
+// the canonical stable handle — same product+color pinned to multiple
+// sizes is multiple CartItems, and only the id uniquely identifies a
+// row. The `where: { id, userId }` ownership check defends against
+// user-A poking user-B's row.
+const itemSelection = z.object({ selected: z.boolean() });
+router.patch('/items/:cartItemId', async (req, res, next) => {
+  try {
+    const { selected } = itemSelection.parse(req.body);
+    const item = await prisma.cartItem.findFirst({
+      where: { id: req.params.cartItemId, userId: req.user.id },
+    });
+    if (!item) return res.status(404).json({ error: 'CART_ITEM_NOT_FOUND' });
+    const updated = await prisma.cartItem.update({
+      where: { id: item.id },
+      data: { selectedForCheckout: selected },
+      include: {
+        product: { include: { vendor: { select: { id: true, businessName: true } } } },
+        variant: true,
+      },
+    });
+    res.json({ item: parseCartItem(updated) });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
+});
+
+// PATCH /api/cart/selection { selected: boolean }
+// Bulk sync every cart row in the current user's cart to the same
+// selectedForCheckout value. Drives the Cart page's master
+// "Select all" / "Deselect all" checkbox. Single round-trip so the
+// UI stays snappy even with 20+ items.
+const allSelection = z.object({ selected: z.boolean() });
+router.patch('/selection', async (req, res, next) => {
+  try {
+    const { selected } = allSelection.parse(req.body);
+    await prisma.cartItem.updateMany({
+      where: { userId: req.user.id },
+      data: { selectedForCheckout: selected },
+    });
+    // Return the freshly-sync'd cart so the caller can re-render
+    // without an extra GET.
+    const items = await prisma.cartItem.findMany({
+      where: { userId: req.user.id },
+      include: {
+        product: { include: { vendor: { select: { id: true, businessName: true } } } },
+        variant: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+    const subtotal = items.reduce((s, i) => s + i.product.priceCents * i.quantity, 0);
+    res.json({ items: items.map(parseCartItem), subtotalCents: subtotal });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
     next(err);

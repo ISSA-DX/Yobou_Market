@@ -189,6 +189,20 @@ model CartItem {
   // cart's stock check is accurate.
   variantId String?
   quantity  Int     @default(1)
+  // "Ready for checkout" toggle. The Cart page shows a per-row checkbox
+  // so the shopper can deselect items they're saving for later; only
+  // rows where this is true flow into POST /api/orders. Customers
+  // rarely need this behavior, but on big multi-item carts (think:
+  // holiday shopping with 12 items) it's how Amazon's classic
+  // "save-for-later" pattern works. The column is intentionally single-
+  // bit per row rather than a separate saved-for-later table — the
+  // product remains in the cart while unselected, so we never need to
+  // re-insert on reselect. POST /api/cart sets it to true on brand-new
+  // rows (Amazon-style just-added = checked). PATCH /api/cart/:id
+  // toggles individual rows. PATCH /api/cart/selection bulk-syncs.
+  // POST /api/orders reads only selectedForCheckout=true rows and
+  // deletes only those rows on success.
+  selectedForCheckout Boolean @default(false)
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)

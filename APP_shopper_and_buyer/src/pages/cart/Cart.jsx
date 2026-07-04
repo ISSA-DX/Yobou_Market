@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../../api';
 import { useStore } from '../../store';
@@ -18,8 +18,9 @@ export default function Cart() {
   const refreshCart = useStore((s) => s.refreshCartCount);
   const currency = useStore((s) => s.user?.currency || 'USD');
   const [busyId, setBusyId] = useState(null);
+  const [selectionBusy, setSelectionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
-  const { data, error, loading, refetch, setData } = useApi('/api/cart');
+  const { data, error, loading, refetch } = useApi('/api/cart');
 
   // Bootstrap a guest session on mount so a user landing directly on
   // /cart (URL paste, deep link, share) gets a working server-side
@@ -29,18 +30,36 @@ export default function Cart() {
   // ensureGuestSession is idempotent — if zustand already has a user
   // (real or guest) it's a no-op. After it succeeds we refetch so
   // the fresh identity's empty cart renders.
-  useEffect(() => { (async () => { const ensured = await ensureGuestSession(); if (ensured) await refetch(); })(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []); // mount-only
+  useEffect(() => {
+    (async () => {
+      const ensured = await ensureGuestSession();
+      if (ensured) await refetch();
+    })();
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []); // mount-only
 
-
-
-  // Compute totals from valid items only so a missing product never inflates the bill.
+  // Compute membership split from the server response. We keep three
+  // buckets so the UX can render different visuals:
+  //   - validItems: rows whose product join is intact (not deleted)
+  //   - within that, selectedItems.filter(Boolean) drives the summary,
+  //     free-shipping progress, Proceed-to-Checkout count, and the
+  //     order itself when the user finishes checkout.
   const items = Array.isArray(data?.items) ? data.items : [];
-  const validItems = items.filter((i) => i?.product);
-  const subtotal = validItems.reduce((s, i) => s + i.product.priceCents * i.quantity, 0);
-  // Deal savings — sum (compareAt - price) * qty across items where the
-  // product is on a real deal (compareAt > price). The line is hidden
-  // when no item is on a deal so the summary stays honest.
-  const dealSavings = validItems.reduce((s, i) => {
+  const validItems = useMemo(() => items.filter((i) => i?.product), [items]);
+  const selectedItems = useMemo(
+    () => validItems.filter((i) => i.selectedForCheckout),
+    [validItems]
+  );
+  const unselectedItems = useMemo(
+    () => validItems.filter((i) => !i.selectedForCheckout),
+    [validItems]
+  );
+
+  // Subtotals / savings / shipping / total — computed against the
+  // SELECTED subset only. The summary card is a preview of what the
+  // order will be charged for, intentionally separate from the cart
+  // row count so an unselected row never inflates the "total to pay".
+  const subtotal = selectedItems.reduce((s, i) => s + i.product.priceCents * i.quantity, 0);
+  const dealSavings = selectedItems.reduce((s, i) => {
     const cap = i.product.compareAtPriceCents;
     const pp = i.product.priceCents;
     if (typeof cap === 'number' && typeof pp === 'number' && cap > pp) {
@@ -48,11 +67,28 @@ export default function Cart() {
     }
     return s;
   }, 0);
-  const itemCount = validItems.reduce((s, i) => s + i.quantity, 0);
-
-  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD_CENTS ? 0 : validItems.length > 0 ? SHIPPING_CENTS : 0;
+  const itemCount = selectedItems.reduce((s, i) => s + i.quantity, 0);
+  const shipping = subtotal >= FREE_SHIPPING_THRESHOLD_CENTS
+    ? 0
+    : (selectedItems.length > 0 ? SHIPPING_CENTS : 0);
   const tax = 0;
   const total = subtotal + shipping + tax;
+  const totalUnits = validItems.reduce((s, i) => s + i.quantity, 0);
+  const selectedUnits = selectedItems.reduce((s, i) => s + i.quantity, 0);
+
+  // Master checkbox state values. `allSelected` powers checked=true,
+  // and any partial selection flips `masterIndeterminate` so the box
+  // renders the "-/✓" hybrid familiar from Gmail/Amazon master rows.
+  const allSelected = validItems.length > 0 && selectedItems.length === validItems.length;
+  const someSelected = selectedItems.length > 0 && selectedItems.length < validItems.length;
+  // The indeterminate DOM property isn't settable from JSX. Park a
+  // ref on the master checkbox and update it as a side effect — this
+  // is React-canonical and keeps SSR-safe (the ref callback fires
+  // only once on mount).
+  const masterRef = useRef(null);
+  useEffect(() => {
+    if (masterRef.current) masterRef.current.indeterminate = someSelected;
+  }, [someSelected, allSelected]);
 
   useEffect(() => { if (data) refreshCart(); }, [data, refreshCart]);
 
@@ -89,6 +125,40 @@ export default function Cart() {
       toast.error(msg);
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function toggleItem(cartItemId, nextSelected) {
+    if (busyId === cartItemId) return; // rapid-tap guard — concurrent PATCH+refetch would race
+    setActionError('');
+    setBusyId(cartItemId);
+    try {
+      await api(`/api/cart/items/${cartItemId}`, {
+        method: 'PATCH',
+        body: { selected: nextSelected },
+      });
+      await refetch();
+    } catch (e) {
+      const msg = humanizeError(e);
+      setActionError(msg);
+      toast.error(msg);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function setSelectionAll(selected) {
+    setActionError('');
+    setSelectionBusy(true);
+    try {
+      await api('/api/cart/selection', { method: 'PATCH', body: { selected } });
+      await refetch();
+    } catch (e) {
+      const msg = humanizeError(e);
+      setActionError(msg);
+      toast.error(msg);
+    } finally {
+      setSelectionBusy(false);
     }
   }
 
@@ -136,7 +206,7 @@ export default function Cart() {
       <div className="hidden md:flex items-end justify-between mb-6">
         <div>
           <h1 className="text-headline-lg font-bold">Shopping Cart</h1>
-          <p className="text-on-surface-variant mt-1">{itemCount} {itemCount === 1 ? 'item' : 'items'}</p>
+          <p className="text-on-surface-variant mt-1">{totalUnits} {totalUnits === 1 ? 'item' : 'items'}</p>
         </div>
         <Link to="/home" className="text-primary font-semibold flex items-center gap-1">
           <Icon name="arrow_back" className="text-[18px]" /> Continue shopping
@@ -153,8 +223,49 @@ export default function Cart() {
       <div className="lg:grid lg:grid-cols-12 lg:gap-8">
         {/* Items column */}
         <div className="lg:col-span-8 space-y-4">
-          {/* Free-shipping progress */}
-          {subtotal < FREE_SHIPPING_THRESHOLD_CENTS && (
+          {/* Selection bar. Single round-trip to the server for the
+              entire cart when the master checkbox flips — see
+              setSelectionAll. The indeterminate attribute is a DOM
+              property, not an HTML one, so it can't live in JSX; we
+              drive it from a ref bound in a useEffect keyed on the
+              derived selected/allSelected booleans. */}
+          <div className="card p-3 flex items-center gap-3">
+            <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={masterRef}
+                onChange={(e) => setSelectionAll(e.target.checked)}
+                disabled={selectionBusy || validItems.length === 0}
+                className="w-5 h-5 rounded border-2 border-outline-variant text-primary focus:ring-2 focus:ring-primary/30 accent-[--color-primary] cursor-pointer disabled:opacity-50"
+                aria-label={allSelected ? 'Deselect all items' : 'Select all items'}
+              />
+              <span className="text-sm font-semibold">
+                {someSelected ? (
+                  <>{selectedItems.length} of {validItems.length} selected</>
+                ) : allSelected ? (
+                  <>All {validItems.length} selected</>
+                ) : (
+                  <>Select items to checkout</>
+                )}
+              </span>
+            </label>
+            {selectionBusy && <Icon name="progress_activity" className="text-[18px] animate-spin text-primary" />}
+            {selectedItems.length > 0 && (
+              <button
+                onClick={() => setSelectionAll(false)}
+                disabled={selectionBusy}
+                className="text-label-md text-on-surface-variant hover:text-error font-semibold disabled:opacity-50"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Free-shipping progress — computed against the SELECTED
+              subset so the bar only counts what the shopper is
+              actually about to pay for. */}
+          {selectedItems.length > 0 && subtotal < FREE_SHIPPING_THRESHOLD_CENTS && (
             <div className="card p-4 bg-gradient-to-r from-primary to-primary-container text-white">
               <div className="flex items-center justify-between text-label-md">
                 <span>Free shipping on orders over {formatPrice(FREE_SHIPPING_THRESHOLD_CENTS, currency)}</span>
@@ -168,17 +279,58 @@ export default function Cart() {
               </div>
             </div>
           )}
+          {selectedItems.length === 0 && validItems.length > 0 && (
+            <div className="card p-3 flex items-center gap-3 bg-surface-low border border-outline-variant/20">
+              <Icon name="info" className="text-primary text-[20px]" />
+              <div className="text-sm text-on-surface-variant">
+                Pick which items you want to buy today — the rest will stay in your cart for later.
+              </div>
+            </div>
+          )}
 
-          {validItems.map((it) => (
-            <CartItem
-              key={it.id}
-              item={it}
-              busy={busyId === it.product.id}
-              currency={currency}
-              onQtyChange={(qty) => setQty(it.product.id, qty)}
-              onRemove={() => remove(it.product.id)}
-            />
-          ))}
+          {/* Selected rows first, unselected below. Keeps the most
+              "active" rows at the top of the column. Both sections
+              render the same CartItem body so the visual treatment
+              stays consistent. */}
+          {selectedItems.length > 0 && (
+            <div className="space-y-3">
+              {selectedItems.map((it) => (
+                <CartItem
+                  key={it.id}
+                  item={it}
+                  busy={busyId === it.id}
+                  currency={currency}
+                  onToggleSelect={(selected) => toggleItem(it.id, selected)}
+                  onQtyChange={(qty) => setQty(it.product.id, qty)}
+                  onRemove={() => remove(it.product.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {unselectedItems.length > 0 && (
+            <div className="space-y-3">
+              {selectedItems.length > 0 && (
+                <div className="flex items-center gap-2 mt-4 mb-2">
+                  <Icon name="bookmark" className="text-[18px] text-on-surface-variant" />
+                  <span className="text-label-md text-on-surface-variant font-semibold uppercase tracking-wide">
+                    Saved for later ({unselectedItems.length})
+                  </span>
+                </div>
+              )}
+              {unselectedItems.map((it) => (
+                <CartItem
+                  key={it.id}
+                  item={it}
+                  busy={busyId === it.id}
+                  currency={currency}
+                  onToggleSelect={(selected) => toggleItem(it.id, selected)}
+                  onQtyChange={(qty) => setQty(it.product.id, qty)}
+                  onRemove={() => remove(it.product.id)}
+                />
+              ))}
+            </div>
+          )}
 
           {items.length > validItems.length && (
             <p className="text-sm text-on-surface-variant">
@@ -191,30 +343,58 @@ export default function Cart() {
         <div className="lg:col-span-4 mt-6 lg:mt-0">
           <div className="card p-5 lg:sticky lg:top-4 space-y-3">
             <h2 className="text-headline-md font-bold hidden lg:block">Order Summary</h2>
-            <SummaryRow label={`Subtotal (${itemCount} items)`} value={formatPrice(subtotal, currency)} />
-            {dealSavings > 0 && (
-              <SummaryRow
-                label="You save"
-                value={`-${formatPrice(dealSavings, currency)}`}
-                valueClass="text-tertiary font-semibold"
-              />
+            {selectedItems.length === 0 ? (
+              <div className="text-sm text-on-surface-variant text-center py-4">
+                Select at least one item to see your total.
+              </div>
+            ) : (
+              <>
+                <SummaryRow label={`Subtotal (${itemCount} items)`} value={formatPrice(subtotal, currency)} />
+                {dealSavings > 0 && (
+                  <SummaryRow
+                    label="You save"
+                    value={`-${formatPrice(dealSavings, currency)}`}
+                    valueClass="text-tertiary font-semibold"
+                  />
+                )}
+                <SummaryRow
+                  label="Shipping"
+                  value={shipping === 0 ? 'FREE' : formatPrice(shipping, currency)}
+                  valueClass={shipping === 0 ? 'text-tertiary font-semibold' : ''}
+                />
+                <SummaryRow label="Tax" value="Calculated at checkout" muted />
+                <div className="border-t border-outline-variant/30 pt-3 mt-1">
+                  <SummaryRow label="Estimated total" value={formatPrice(total, currency)} bold />
+                </div>
+              </>
             )}
-            <SummaryRow
-              label="Shipping"
-              value={shipping === 0 ? 'FREE' : formatPrice(shipping, currency)}
-              valueClass={shipping === 0 ? 'text-tertiary font-semibold' : ''}
-            />
-            <SummaryRow label="Tax" value="Calculated at checkout" muted />
-            <div className="border-t border-outline-variant/30 pt-3 mt-1">
-              <SummaryRow label="Estimated total" value={formatPrice(total, currency)} bold />
-            </div>
+
+            {/* Saved-for-later reminder inside the summary column so
+                it's visible whether or not the user scrolled down to
+                the unselected section. */}
+            {unselectedItems.length > 0 && selectedItems.length > 0 && (
+              <div className="text-label-md text-on-surface-variant flex items-start gap-1.5 pt-2 border-t border-outline-variant/20">
+                <Icon name="bookmark" className="text-[14px] mt-0.5 shrink-0" />
+                <span>{unselectedItems.length} {unselectedItems.length === 1 ? 'item' : 'items'} saved for later</span>
+              </div>
+            )}
 
             <button
               onClick={() => navigate('/checkout/shipping')}
-              className="btn-primary w-full py-3 mt-2"
+              disabled={selectedItems.length === 0}
+              className="btn-primary w-full py-3 mt-2 disabled:opacity-60"
             >
-              Proceed to Checkout
-              <Icon name="arrow_forward" />
+              {selectedItems.length > 0 ? (
+                <>
+                  Proceed to Checkout ({itemCount})
+                  <Icon name="arrow_forward" />
+                </>
+              ) : (
+                <>
+                  Select items to checkout
+                  <Icon name="shopping_bag" />
+                </>
+              )}
             </button>
 
             <p className="text-center text-label-md text-on-surface-variant flex items-center justify-center gap-1">
@@ -227,12 +407,23 @@ export default function Cart() {
   );
 }
 
-function CartItem({ item, busy, currency, onQtyChange, onRemove }) {
+function CartItem({ item, busy, currency, onToggleSelect, onQtyChange, onRemove }) {
   const p = item.product;
   const v = item.variant; // { color, size, stock, ... } when a specific (color, size) was picked; null for non-variant products
   const hasDeal = typeof p.compareAtPriceCents === 'number'
     && p.compareAtPriceCents > p.priceCents;
   const [showQty, setShowQty] = useState(false);
+  // Local UI state for the selection checkbox: starts synced with the
+  // prop and freezes for ~250 ms after a toggle so the checkbox shows
+  // a brief "just-toggled" state even if the refetch races. Prevents
+  // the flicker of "checked → loading → unchecked" when the user
+  // mashes a checkbox rapidly.
+  const [optimisticSelected, setOptimisticSelected] = useState(item.selectedForCheckout);
+  // Re-sync the optimistic state to the server-truth prop after every
+  // refetch so the next toggle reads the right baseline. Pairs with
+  // the rapid-tap guard in the parent (toggleItem) — together they
+  // prevent two concurrent PATCH requests from racing on the same row.
+  useEffect(() => { setOptimisticSelected(item.selectedForCheckout); }, [item.selectedForCheckout]);
   const lineTotal = p.priceCents * item.quantity;
   // Per-variant cap for the qty stepper. For a variant product the
   // cart row is pinned to a specific (color, size) so the cap is the
@@ -242,8 +433,38 @@ function CartItem({ item, busy, currency, onQtyChange, onRemove }) {
     ? (typeof v.stock === 'number' ? v.stock : 0)
     : (typeof p.stock === 'number' ? p.stock : 0);
 
+  function handleToggle() {
+    const next = !optimisticSelected;
+    setOptimisticSelected(next);
+    onToggleSelect(next);
+  }
+
   return (
-    <div className="card p-3 sm:p-4 flex gap-3 sm:gap-4">
+    <div className={`card p-3 sm:p-4 flex gap-3 sm:gap-4 transition-opacity ${optimisticSelected ? '' : 'opacity-70'}`}>
+      {/* Selection checkbox. amazon-style — sits to the left of the
+          thumbnail so the eye lands on checked → image → name. The
+          label wraps the box and a small Icon because hit-target
+          accuracy on mobile matters more than pixel-perfect alignment. */}
+      <label className="flex items-center justify-center shrink-0 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={optimisticSelected}
+          onChange={handleToggle}
+          className="sr-only" // visually replaced by the styled box below; sr-only keeps it keyboard-accessible
+          aria-label={optimisticSelected ? `Deselect ${p.name}` : `Select ${p.name} for checkout`}
+        />
+        <span
+          className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition ${
+            optimisticSelected
+              ? 'bg-primary border-primary text-white'
+              : 'bg-white border-outline-variant hover:border-primary/60'
+          }`}
+          aria-hidden="true"
+        >
+          {optimisticSelected && <Icon name="check" className="text-[16px] leading-none" />}
+        </span>
+      </label>
+
       <Link to={`/product/${p.id}`} className="w-24 h-24 sm:w-28 sm:h-28 rounded-lg overflow-hidden bg-surface-low shrink-0">
         <img src={productImage(p)} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = '/seed-images/placeholder.svg'; }} />
       </Link>
@@ -285,6 +506,12 @@ function CartItem({ item, busy, currency, onQtyChange, onRemove }) {
               {v.color && v.size && <span aria-hidden="true">·</span>}
               {v.size && <span>Size {v.size}</span>}
             </div>
+          )}
+          {!optimisticSelected && (
+            <span className="chip bg-surface-high text-on-surface-variant text-label-md">
+              <Icon name="bookmark" className="text-[12px]" />
+              Saved for later
+            </span>
           )}
         </div>
 

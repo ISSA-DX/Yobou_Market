@@ -33,7 +33,20 @@ async function transferGuestCart(guestId, newId) {
     if (existing) {
       await prisma.cartItem.update({
         where: { id: existing.id },
-        data: { quantity: mergedQty },
+        data: {
+          quantity: mergedQty,
+          // The destination user's existing selection intent ALWAYS wins.
+          // If they had this row unchecked (saved-for-later), it stays
+          // unchecked even when the guest's copy was selected — we never
+          // silently flip a customer's saved-for-later decision because
+          // a guest with a different mind touched the same SKU. An
+          // earlier version used `existing.selectedForCheckout ||
+          // item.selectedForCheckout`, which had the opposite effect:
+          // any checked guest copy would force-check the destination's
+          // saved-for-later row. The merge-existing test in
+          // cart-selection.test.js guards against the regression.
+          selectedForCheckout: existing.selectedForCheckout,
+        },
       });
     } else {
       await prisma.cartItem.create({
@@ -42,6 +55,10 @@ async function transferGuestCart(guestId, newId) {
           productId: item.productId,
           variantId: item.variantId || null,
           quantity: Math.min(99, item.quantity),
+          // Carry over the guest's selection intent — if they
+          // deliberately unchecked the row before logging in, the
+          // destination cart row stays unchecked.
+          selectedForCheckout: item.selectedForCheckout,
         },
       });
     }

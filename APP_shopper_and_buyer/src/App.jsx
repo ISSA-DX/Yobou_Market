@@ -125,8 +125,15 @@ export default function App() {
             <Route path="/notifications" element={<ErrorBoundary><Notifications /></ErrorBoundary>} />
           </Route>
 
-          {/* Checkout — sticky CTA, no bottom nav */}
-          <Route element={<RequireAuth><TransactionLayout /></RequireAuth>}>
+          {/* Checkout — sticky CTA, no bottom nav. Public so a guest
+              can deep-link straight here; each page bootstraps its own
+              guest session via ensureGuestSession() on mount so the
+              server-side user exists before the first auth-gated call.
+              This mirrors Amazon's "checkout without an account" model
+              and is required for the new "select / save-for-later"
+              cart UX where guests routinely arrive at checkout with a
+              mix of selected + unselected rows. */}
+          <Route element={<TransactionLayout />}>
             <Route path="/checkout/shipping" element={<ErrorBoundary><CheckoutShipping /></ErrorBoundary>} />
             <Route path="/checkout/payment" element={<ErrorBoundary><CheckoutPayment /></ErrorBoundary>} />
             <Route path="/checkout/card/new" element={<ErrorBoundary><CheckoutCardNew /></ErrorBoundary>} />
