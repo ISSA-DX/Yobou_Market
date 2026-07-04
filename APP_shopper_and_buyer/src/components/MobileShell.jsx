@@ -23,10 +23,14 @@ export default function MobileShell() {
   }, [user, refreshCart]);
 
   return (
-    <div className="min-h-screen bg-surface pb-20">
-      {/* Top bar */}
+    <div className="min-h-screen bg-surface" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}>
+      {/* Top bar — adds iOS/notch top safe-area padding so the bar sits
+          below the device notch and never gets clipped by the status bar. */}
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-outline-variant/30">
-        <div className="max-w-screen-md mx-auto flex items-center justify-between px-4 h-12">
+        <div
+          className="max-w-screen-md mx-auto flex items-center justify-between px-4"
+          style={{ height: 'calc(3rem + env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' }}
+        >
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-md bg-primary text-white flex items-center justify-center font-black text-sm">Y</div>
             <span className="font-bold text-sm">Yobou</span>
@@ -37,7 +41,10 @@ export default function MobileShell() {
       <div className="max-w-screen-md mx-auto">
         <Outlet />
       </div>
-      <nav className="fixed bottom-0 inset-x-0 bg-white/90 backdrop-blur border-t border-outline-variant/30 shadow-float z-30">
+      <nav
+        className="fixed bottom-0 inset-x-0 bg-white/90 backdrop-blur border-t border-outline-variant/30 shadow-float z-30"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
         <div className="max-w-screen-md mx-auto grid grid-cols-5">
           {NAV.map((item) => (
             <NavLink

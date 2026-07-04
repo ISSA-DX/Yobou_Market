@@ -105,6 +105,67 @@
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
 /*
+  Skeleton shimmer — premium subtle gradient used by loading states.
+  Background-size 200% lets the gradient slide horizontally across the
+  element; the keyframe `shimmer` animates background-position. The
+  dark-mode override flips the gradient to a light-tinted one that reads
+  against our dark navy surfaces without washing out into a bright slab.
+*/
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(11, 28, 48, 0.08) 0%,
+    rgba(11, 28, 48, 0.16) 50%,
+    rgba(11, 28, 48, 0.08) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 0.5rem;
+}
+.dark .skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(234, 241, 255, 0.06) 0%,
+    rgba(234, 241, 255, 0.12) 50%,
+    rgba(234, 241, 255, 0.06) 100%
+  );
+  background-size: 200% 100%;
+}
+
+/*
+  Honor the user's reduced-motion preference. Premium-feel apps should
+  never subject users to vestibular triggers when the user opts out
+  (vestibular disorders, motion sickness, low-end devices, taste).
+
+  Three targeted freezes, no blanket `animation-duration` override:
+    - Transitions globally (`*`) — they often translate / scale.
+    - `.skeleton` shimmer — sweeping 200% gradient (the strongest trigger).
+    - `.animate-pulse` (Tailwind built-in) — 2s fade loop used in
+      OrderTimeline progress dots and ReviewsSection loading cards.
+  Deliberately LEFT ALONE:
+    - `.animate-spin` Material `progress_activity` loaders everywhere.
+      Tiny circular rotation, no scale / translate / parallax, not a
+      vestibular trigger; freezing leaves users staring at a static
+      glyph with no feedback, which reads as broken.
+  If you add a new component-level animation that's vestibular-flavored,
+  add a targeted entry here instead of widening the wildcard.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton { animation: none; }
+  .animate-pulse { animation: none; opacity: 0.6; }
+}
+
+/*
   Contrast bumps in dark mode. The default `text-error` is the light-mode
   red (#ba1a1a); against the dark navy surface that red is hard to read.
   We swap to the lighter `error-container` token (#ffb4ab) which the
