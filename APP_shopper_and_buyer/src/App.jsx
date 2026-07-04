@@ -107,7 +107,16 @@ export default function App() {
             <Route path="/home" element={<Home />} />
             <Route path="/categories" element={<Categories />} />
             <Route path="/categories/:slug" element={<CategoryDetail />} />
-            <Route path="/product/:id" element={<ProductDetails />} />
+            {/* ErrorBoundary on PDP prevents a child-render crash (e.g.
+                a malformed live-sync event or a related-product card
+                missing a field) from blanking the whole page. Without
+                this, a single unguarded `.stock` access can take the
+                sticky "Add to cart" button down with it and the
+                shopper sees a silent dead-Page — misinterpreted as
+                "add to cart doesn't work". With the boundary the
+                failure is contained, the shopper sees a retry CTA,
+                and the rest of the UI keeps rendering. */}
+            <Route path="/product/:id" element={<ErrorBoundary><ProductDetails /></ErrorBoundary>} />
             <Route path="/cart" element={<ErrorBoundary><Cart /></ErrorBoundary>} />
           </Route>
 

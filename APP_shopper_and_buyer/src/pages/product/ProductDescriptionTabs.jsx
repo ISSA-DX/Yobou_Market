@@ -148,18 +148,31 @@ function AboutTab({ description }) {
 }
 
 function SpecsTab({ product, currency }) {
+  // Defensive: any of these fields can be missing on a partially
+  // loaded product (e.g. product just deleted, or a swap to a DRAFT
+  // status sneaks past the public route filter). Without the guard
+  // an undefined .stock throws a TypeError and the React error
+  // boundary above PDPRoutes tears down the whole page, including
+  // the sticky "Add to cart" button — making it look like
+  // add-to-cart "doesn't work" to the shopper. The new
+  // <ErrorBoundary> on the route already catches the crash, but
+  // every defensive guard here keeps the row rendering instead
+  // of rendering "undefined in stock".
+  const safeStock = typeof product?.stock === 'number' ? product.stock : 0;
   const rows = [
-    { label: 'Category', value: product.category || '—' },
-    { label: 'Brand', value: product.vendor?.businessName || '—' },
-    { label: 'SKU', value: product.id },
-    { label: 'Price', value: formatPrice(product.priceCents, currency) },
+    { label: 'Category', value: product?.category || '—' },
+    { label: 'Brand', value: product?.vendor?.businessName || '—' },
+    { label: 'SKU', value: product?.id || '—' },
+    { label: 'Price', value: typeof product?.priceCents === 'number'
+      ? formatPrice(product.priceCents, currency)
+      : '—' },
     {
       label: 'Availability',
-      value: product.stock > 0
-        ? `In stock (${product.stock} available)`
+      value: safeStock > 0
+        ? `In stock (${safeStock} available)`
         : 'Out of stock',
     },
-    { label: 'Listing status', value: product.status || '—' },
+    { label: 'Listing status', value: product?.status || '—' },
   ];
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">

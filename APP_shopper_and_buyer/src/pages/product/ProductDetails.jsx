@@ -140,9 +140,21 @@ export default function ProductDetails() {
 
   const hasVariants = variants.length > 0;
   const variantStock = selectedVariant ? selectedVariant.stock : null;
+  // CRITICAL defensive: this line fires during the FIRST render,
+  // before useApi's data resolves. At that point `p === undefined`
+  // (because `data?.product` short-circuits). The `if (!p) return
+  // Loading…` early-exit only runs LATER (after the hooks), which
+  // means every derived constant above the early-exit MUST tolerate
+  // `p === undefined`. The unguarded `p.stock === 0` was throwing a
+  // TypeError that, captured by the route's ErrorBoundary, blanked
+  // the PDP and made the sticky "Add to cart" button unreachable —
+  // and the shopper interpreted it as "add to cart doesn't work".
+  // The optional-chained `p?.stock === 0` returns `false` for
+  // undefined products, which trivially keeps the button enabled
+  // during the loading flash (the early-exit shows Loading… anyway).
   const outOfStock = hasVariants
     ? (variantStock === null || variantStock === 0)
-    : p.stock === 0;
+    : p?.stock === 0;
   const exactMatch = hasVariants
     && variants.some((v) => v.color === pickedColor && v.size === pickedSize);
   // Urgency-stock number used by the inline "Only N left" hint on

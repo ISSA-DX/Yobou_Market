@@ -20,7 +20,11 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
   const cover = productImage(product);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
-  const outOfStock = product.stock === 0;
+  // Defensive: a missing .stock throws a TypeError on the related-
+  // products rail that crashes the parent PDP render. Coerce to 0
+  // so the "Out of stock" overlay still appears correctly.
+  const productStock = typeof product?.stock === 'number' ? product.stock : 0;
+  const outOfStock = productStock === 0;
   const price = formatPrice(product.priceCents, currency);
   const hasDeal = typeof product.compareAtPriceCents === 'number'
     && product.compareAtPriceCents > product.priceCents;

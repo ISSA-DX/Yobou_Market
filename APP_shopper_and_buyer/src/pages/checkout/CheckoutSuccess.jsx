@@ -103,7 +103,15 @@ function RecommendedCard({ product, currency, refreshCart }) {
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
-  const outOfStock = product.stock === 0;
+  // Defensive: a recommended product from /api/products can lack
+  // .stock on the wire (legacy seed data, mid-migration catalog).
+  // Without the guard this throws a TypeError that, before the
+  // route-level ErrorBoundary was added, blanked the entire
+  // /checkout/success/:orderId page right after the shopper
+  // completed payment. Treat missing stock as 0 = out-of-stock so
+  // the "Add to Cart" CTA correctly disables.
+  const cardStock = typeof product?.stock === 'number' ? product.stock : 0;
+  const outOfStock = cardStock === 0;
   const rating = 4.0;
 
   async function addToCart(e) {
