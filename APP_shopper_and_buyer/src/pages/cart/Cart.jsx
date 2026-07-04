@@ -15,21 +15,36 @@ const FREE_SHIPPING_THRESHOLD_CENTS = 5000;
 export default function Cart() {
   const navigate = useNavigate();
   const refreshCart = useStore((s) => s.refreshCartCount);
+  const ensureGuestSession = useStore((s) => s.ensureGuestSession);
+  const user = useStore((s) => s.user);
+  const bootDone = useStore((s) => s.bootDone);
   const currency = useStore((s) => s.user?.currency || 'USD');
   const [busyId, setBusyId] = useState(null);
   const [selectionBusy, setSelectionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
-  // Fetch /api/cart on mount. `api.js` handles the transparent access-
-  // token refresh round-trip on 401 — when the production Capacitor
-  // WebView's refresh cookie survives the cross-site round-trip (the
-  // sameSite=None; Secure policy set by server/src/auth/routes.js),
-  // boot() restores a signed-in user without this page doing anything
-  // extra. PDP Add-to-Cart page guarantees a guest user is minted
-  // before any auth-gated GET, so the cold-launch shopper flow doesn't
-  // 401 here either. Deliberately NOT gating on `hasUser` — a parallel
-  // ensureGuestSession useEffect races the boot() refresh token call
-  // and can clobber the refresh cookie for a returning customer.
-  const { data, error, loading, refetch } = useApi('/api/cart');
+  // Identity gate: don't fire /api/cart until boot() has had a chance
+  // to restore a real user from the refresh cookie. If boot() leaves
+  // us with no user, mint a guest session first. This prevents the
+  // 401 / RetryError flash on cold start, reload, or deep-link to /cart,
+  // and avoids overwriting a returning customer's access token with a
+  // fresh guest token before boot() completes.
+  const [cartReady, setCartReady] = useState(false);
+  const { data, error, loading, refetch } = useApi('/api/cart', { skip: !cartReady });
+
+  useEffect(() => {
+    if (!bootDone) return;
+    if (user) {
+      setCartReady(true);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const ensured = await ensureGuestSession();
+      if (!cancelled) setCartReady(true);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootDone]);
 
   // Compute membership split from the server response. We keep three
   // buckets so the UX can render different visuals:
@@ -86,16 +101,22 @@ export default function Cart() {
 
   useEffect(() => { if (data) refreshCart(); }, [data, refreshCart]);
 
-  async function setQty(productId, qty) {
+  async function setQty(item, qty) {
     if (qty < 0) return;
     setActionError('');
     if (qty === 0) {
-      await remove(productId);
+      await remove(item);
       return;
     }
-    setBusyId(productId);
+    setBusyId(item.id);
     try {
-      await api(`/api/cart/${productId}`, { method: 'PATCH', body: { quantity: qty } });
+      await api(`/api/cart/${item.product.id}`, {
+        method: 'PATCH',
+        body: {
+          quantity: qty,
+          variantId: item.variantId || null,
+        },
+      });
       await refetch();
     } catch (e) {
       const msg = humanizeError(e);
@@ -106,11 +127,14 @@ export default function Cart() {
     }
   }
 
-  async function remove(productId) {
-    setBusyId(productId);
+  async function remove(item) {
+    setBusyId(item.id);
     setActionError('');
     try {
-      await api(`/api/cart/${productId}`, { method: 'DELETE' });
+      await api(`/api/cart/${item.product.id}`, {
+        method: 'DELETE',
+        body: { variantId: item.variantId || null },
+      });
       await refetch();
       toast.success('Removed from cart');
     } catch (e) {
@@ -193,7 +217,7 @@ export default function Cart() {
     navigate('/checkout/shipping');
   }
 
-  if (loading && !data) {
+  if (!cartReady || (loading && !data)) {
     return (
       <div className="p-8 text-center text-on-surface-variant">
         <Icon name="progress_activity" className="text-[32px] animate-spin" />
@@ -332,8 +356,8 @@ export default function Cart() {
                   busy={busyId === it.id}
                   currency={currency}
                   onToggleSelect={(selected) => toggleItem(it.id, selected)}
-                  onQtyChange={(qty) => setQty(it.product.id, qty)}
-                  onRemove={() => remove(it.product.id)}
+                  onQtyChange={(qty) => setQty(it, qty)}
+                  onRemove={() => remove(it)}
                 />
               ))}
             </div>
@@ -356,8 +380,8 @@ export default function Cart() {
                   busy={busyId === it.id}
                   currency={currency}
                   onToggleSelect={(selected) => toggleItem(it.id, selected)}
-                  onQtyChange={(qty) => setQty(it.product.id, qty)}
-                  onRemove={() => remove(it.product.id)}
+                  onQtyChange={(qty) => setQty(it, qty)}
+                  onRemove={() => remove(it)}
                 />
               ))}
             </div>
@@ -453,7 +477,15 @@ export default function Cart() {
 }
 
 function CartItem({ item, busy, currency, onToggleSelect, onQtyChange, onRemove }) {
-  const p = item.product;
+  const p = item?.product;
+  // Defensive: a malformed row (e.g. server returned a deleted product
+  // reference or a corrupted join) should never crash the whole cart.
+  // The parent already filters validItems, but this guard protects against
+  // future API shape drift and keeps the ErrorBoundary from surfacing.
+  if (!p || typeof p.id !== 'string' || typeof p.priceCents !== 'number') {
+    console.warn('CartItem received malformed row:', item);
+    return null;
+  }
   const v = item.variant; // { color, size, stock, ... } when a specific (color, size) was picked; null for non-variant products
   const hasDeal = typeof p.compareAtPriceCents === 'number'
     && p.compareAtPriceCents > p.priceCents;
