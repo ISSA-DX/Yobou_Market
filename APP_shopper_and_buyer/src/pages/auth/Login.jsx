@@ -1,17 +1,36 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useStore } from '../../store';
+import { toast } from '../../lib/toast';
 import Icon from '../../components/Icon';
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const login = useStore((s) => s.login);
+  const ensureGuestSession = useStore((s) => s.ensureGuestSession);
+  // Renamed from `user` -> `authedUser` so it doesn't shadow the
+  // `user` returned by `await login(...)` inside handleSubmit. Both
+  // names mean "User row from the API" but in different scopes; the
+  // old layout was confusing for readers.
+  const authedUser = useStore((s) => s.user);
+
+  // Already-signed-in users land on /login only via deep link, stale
+  // back-button, or a share-link. Bounce them straight to /home so
+  // they don't see a confusing login form when they're already
+  // authenticated.
+  useEffect(() => {
+    if (authedUser) navigate('/home', { replace: true });
+  }, [authedUser, navigate]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  // Tracks the in-flight POST /api/auth/guest from the "Continue
+  // without an account" button so a rapid tapper can't fire parallel
+  // mints. `busy` is the login-form spinner, intentionally separate.
+  const [guestBusy, setGuestBusy] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -116,6 +135,51 @@ export default function Login() {
         <div className="mt-6 text-center text-sm text-on-surface-variant">
           New to Yobou?{' '}
           <Link to="/register" className="text-primary font-semibold">Sign up</Link>
+        </div>
+
+        {/* Escape hatch for the anonymous-browse path that Phase 1 made
+            possible. Tapping "Continue without an account" transparently
+            mints a silent guest-user via /api/auth/guest, so a feature-
+            browser who doesn't want to register can still add to cart,
+            select items, and start checkout. Keeps the new mandatory
+            gate UX honest: sign-in appears, but is not a hard wall.
+            Guards: guestBusy prevents the rapid-tap / parallel-mint
+            path, and a null/failure return from ensureGuestSession
+            surfaces a friendly error rather than silently doing
+            nothing (the early version was a tap-and-stare trap). */}
+        <div className="mt-3">
+          <button
+            type="button"
+            disabled={busy || guestBusy}
+            onClick={async () => {
+              setErr('');
+              setGuestBusy(true);
+              // ensureGuestSession's contract is "returns null on
+              // failure". The try/catch is defense-in-depth — a real
+              // network / OOM throw bubbles up here and lands in the
+              // same failure path. `void 0` instead of a comment-only
+              // empty catch keeps strict-ESLint configs quiet. The
+              // single `setGuestBusy(false)` below the try hoists
+              // the re-enable ABOVE the terminal actions so it
+              // always runs first — a cleaner mirror of `finally`
+              // semantics and avoids React 18's "setState on
+              // unmounted" warning on the fast-success branch
+              // (where Login unmounts the moment `/home` mounts).
+              let ensured = null;
+              try {
+                ensured = await ensureGuestSession();
+              } catch { void 0; }
+              setGuestBusy(false);
+              if (ensured) navigate('/home', { replace: true });
+              else {
+                setErr('Cannot start a guest session. Check your connection and try again.');
+                toast.error('Guest session failed.');
+              }
+            }}
+            className="w-full text-sm text-on-surface-variant hover:text-primary py-2 disabled:opacity-50"
+          >
+            {guestBusy ? '…' : 'Continue without an account →'}
+          </button>
         </div>
       </div>
     </div>

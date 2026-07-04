@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 
 const SLIDES = [
@@ -26,10 +27,34 @@ const SLIDES = [
 export default function Onboarding() {
   const [i, setI] = useState(0);
   const navigate = useNavigate();
+  const user = useStore((s) => s.user);
+  const bootDone = useStore((s) => s.bootDone);
+
+  // Cold-start returning users skip the splash carousel entirely.
+  // boot() (in store.js) restores user from the refresh cookie via
+  // /api/auth/refresh on first App mount; once bootDone flips true we
+  // know the auth-restoration has had its chance and can short-circuit.
+  // Without this, a signed-in customer re-installing or re-launching
+  // sees the three marketing slides on every cold start and is forced
+  // back to /login despite holding a valid session.
+  useEffect(() => {
+    if (!bootDone) return;
+    if (user) navigate('/home', { replace: true });
+  }, [user, bootDone, navigate]);
+
   const slide = SLIDES[i];
 
   function next() {
-    if (i === SLIDES.length - 1) navigate('/home');
+    // Last slide's CTA must ALWAYS land on the sign-in screen. The
+    // product expectation in 2026 is that a Yobou account is required
+    // to browse (so orders, addresses, and cart selection persist to
+    // a real identity, not just an anonymous query string). Previous
+    // versions routed straight to /home and dipped the user into a
+    // guest session — that path was a regression on day one of the
+    // Phase-2 APK pilot ("The signing page should enabled").
+    // `replace: true` so the back button doesn't bounce the user out
+    // of the sign-in screen back into the splash carousel.
+    if (i === SLIDES.length - 1) navigate('/login', { replace: true });
     else setI(i + 1);
   }
 
@@ -37,7 +62,7 @@ export default function Onboarding() {
     <div className={`min-h-screen bg-gradient-to-br ${slide.bg} text-white flex flex-col`}>
       <div className="flex items-center justify-between p-4">
         <div className="w-9 h-9 rounded-md bg-white/20 backdrop-blur flex items-center justify-center font-black">Y</div>
-        <button onClick={() => navigate('/home')} className="text-sm font-semibold">Skip</button>
+        <button onClick={() => navigate('/login', { replace: true })} className="text-sm font-semibold">Sign in</button>
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
