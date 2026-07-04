@@ -212,9 +212,20 @@ export const useStore = create((set, get) => ({
   // Called once on boot to restore the session from the refresh cookie.
   async boot() {
     try {
+      // cache: 'no-store' + Date.now() suffix defends against the
+      // Capacitor WebView serving a stale cached 401 from a prior
+      // session that was already in the disk cache. Without this,
+      // a shopper reopening the app after a server restart would
+      // see "Couldn't load your cart" forever — the refresh would
+      // never actually reach the server.
       const r = await fetch(
-        (import.meta.env.VITE_API_BASE || '') + '/api/auth/refresh',
-        { method: 'POST', credentials: 'include' }
+        (import.meta.env.VITE_API_BASE || '') + '/api/auth/refresh?_t=' + Date.now(),
+        {
+          method: 'POST',
+          credentials: 'include',
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+        }
       );
       if (r.ok) {
         const data = await r.json();
