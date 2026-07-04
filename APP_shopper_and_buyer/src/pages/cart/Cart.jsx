@@ -14,11 +14,24 @@ const FREE_SHIPPING_THRESHOLD_CENTS = 5000;
 
 export default function Cart() {
   const navigate = useNavigate();
+  const ensureGuestSession = useStore((s) => s.ensureGuestSession);
   const refreshCart = useStore((s) => s.refreshCartCount);
   const currency = useStore((s) => s.user?.currency || 'USD');
   const [busyId, setBusyId] = useState(null);
   const [actionError, setActionError] = useState('');
   const { data, error, loading, refetch, setData } = useApi('/api/cart');
+
+  // Bootstrap a guest session on mount so a user landing directly on
+  // /cart (URL paste, deep link, share) gets a working server-side
+  // user without first having to click Add-to-Cart somewhere. The
+  // /api/cart call below would otherwise return 401 and the page
+  // would render the RetryError card, leaving the guest stuck.
+  // ensureGuestSession is idempotent — if zustand already has a user
+  // (real or guest) it's a no-op. After it succeeds we refetch so
+  // the fresh identity's empty cart renders.
+  useEffect(() => { (async () => { const ensured = await ensureGuestSession(); if (ensured) await refetch(); })(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []); // mount-only
+
+
 
   // Compute totals from valid items only so a missing product never inflates the bill.
   const items = Array.isArray(data?.items) ? data.items : [];

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import ProductCard from '../../components/ProductCard';
+import AutoCarousel from '../../components/AutoCarousel';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useNotifications } from '../../lib/useNotifications';
 import { useProductLiveSync } from '../../lib/useProductLiveSync';
@@ -54,6 +55,20 @@ export default function Home() {
   const { ids: recentIds, clear: clearRecent } = useRecentlyViewed();
 
   const all = data?.products || [];
+  // Featured — top 12 newest in-stock products for the auto-rotating
+  // carousel. Excludes out-of-stock so the carousel never leads with
+  // a card the shopper can't actually buy. Recency first because the
+  // server's default sort is createdAt desc.
+  const featuredProducts = useMemo(() => {
+    return all
+      .filter((p) => p.stock > 0 && p.status === 'LIVE')
+      .sort((a, b) => {
+        const ta = new Date(a.createdAt || 0).getTime();
+        const tb = new Date(b.createdAt || 0).getTime();
+        return tb - ta;
+      })
+      .slice(0, 12);
+  }, [all]);
   // "Deals" — products with a real compare-at price set higher than the
   // current price. We sort by discount % so the biggest savings lead the
   // section. The hero banner below uses the top deal to render a real
@@ -198,6 +213,27 @@ export default function Home() {
             </Link>
           </div>
         </div>
+      )}
+
+      {/* Featured — auto-rotating carousel (Amazon deal-of-the-day pattern).
+          Renders nothing if the catalog has fewer than 2 in-stock items
+          so a one-product pilot doesn't show a stranded carousel chrome. */}
+      {featuredProducts.length >= 2 && (
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-headline-md font-bold flex items-center gap-2">
+              <Icon name="auto_awesome" className="text-secondary" /> Featured for you
+            </h2>
+            <span className="text-label-md text-on-surface-variant flex items-center gap-1">
+              <Icon name="autorenew" className="text-[14px]" /> Slides every few seconds
+            </span>
+          </div>
+          <AutoCarousel interval={4000} ariaLabel="Featured products — auto-rotating carousel">
+            {featuredProducts.map((p) => (
+              <ProductCard key={p.id} product={p} onAdd={quickAdd} />
+            ))}
+          </AutoCarousel>
+        </section>
       )}
 
       {/* Categories */}

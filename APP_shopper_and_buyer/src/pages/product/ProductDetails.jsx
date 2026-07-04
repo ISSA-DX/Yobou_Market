@@ -176,14 +176,21 @@ export default function ProductDetails() {
   async function add() {
     setErr(''); setBusy(true);
     try {
-      await api('/api/cart', {
+      // Guests get a silent server-side user on first cart-add so the
+      // existing /api/cart endpoint handles both logged-in customers
+      // and guests without client-side branching. On 401 we re-mint
+      // once via ensureGuestSession and retry — this covers the rare
+      // case where the access token expired mid-session (refresh
+      // cookie blown away). The orphan User row from the old guest
+      // identity gets cleaned up by the 30-day purge cron.
+      await withGuestRetry(() => api('/api/cart', {
         method: 'POST',
         body: {
           productId: p.id,
           variantId: hasVariants && selectedVariant ? selectedVariant.id : null,
           quantity: qty,
         },
-      });
+      }));
       await refreshCart();
       navigate('/cart');
     } catch (e) {
@@ -193,17 +200,30 @@ export default function ProductDetails() {
     }
   }
 
+  // Run `fn` once. If it returns a 401, run ensureGuestSession (which
+  // re-mints a server-side user if zustand is empty, or is a no-op if
+  // a user exists) and retry once. Anything non-401 surfaces as-is.
+  async function withGuestRetry(fn) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e?.status !== 401) throw e;
+      await useStore.getState().ensureGuestSession();
+      return await fn();
+    }
+  }
+
   async function buy() {
     setErr(''); setBusy(true);
     try {
-      await api('/api/cart', {
+      await withGuestRetry(() => api('/api/cart', {
         method: 'POST',
         body: {
           productId: p.id,
           variantId: hasVariants && selectedVariant ? selectedVariant.id : null,
           quantity: qty,
         },
-      });
+      }));
       await refreshCart();
       navigate('/checkout/shipping');
     } catch (e) {
@@ -214,10 +234,11 @@ export default function ProductDetails() {
   }
 
   function handleError(e) {
-    if (e.status === 401 || e.data?.error === 'UNAUTHENTICATED') {
-      navigate('/login', { state: { from: location } });
-      return;
-    }
+    // The previous behavior of redirecting to /login on 401 is removed
+    // \u2014 guests can add to cart and start checkout without an account.
+    // ensureGuestSession runs *before* the cart write, so by the time we
+    // get a 401 it's a real out-of-the-ordinary failure. Surface the
+    // humanized message so the shopper knows what to do next.
     setErr(humanizeCartError(e.data?.error));
   }
 
@@ -505,7 +526,7 @@ export default function ProductDetails() {
 
 function humanizeCartError(code) {
   switch (code) {
-    case 'UNAUTHENTICATED': return 'Please sign in first.';
+    case 'UNAUTHENTICATED': return 'Couldn\u2019t start a guest session \u2014 please try again in a moment.';
     case 'INSUFFICIENT_STOCK': return 'Not enough stock for the requested quantity.';
     case 'PRODUCT_NOT_AVAILABLE': return 'This product is no longer available.';
     case 'INVALID_VARIANT': return 'That color/size combination is no longer available.';

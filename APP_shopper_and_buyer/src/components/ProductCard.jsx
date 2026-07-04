@@ -51,14 +51,20 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
     }
     setAdding(true);
     try {
+      // Make sure we have an authenticated session — guests get a
+      // server-side user created on first add so the rest of the
+      // cart flow doesn't need to branch on auth state. The previous
+      // behavior of redirecting to /login on 401 is intentionally
+      // removed: the user's spec is "guest can add to cart and buy
+      // now without an account".
+      await useStore.getState().ensureGuestSession();
       await onAdd(product);
       setAdded(true);
       setTimeout(() => setAdded(false), 3e3);
     } catch (e) {
-      if (e.status === 401 || e.data?.error === 'UNAUTHENTICATED') {
-        navigate('/login', { state: { from: location } });
-      }
       // Non-auth errors are surfaced by the consumer (toast/error state).
+      // There is no longer a 401 → /login branch: ensureGuestSession
+      // either succeeded (cart write proceeds) or failed (toast).
     } finally {
       setAdding(false);
     }

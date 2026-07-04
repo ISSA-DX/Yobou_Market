@@ -174,12 +174,38 @@ export const useStore = create((set, get) => ({
 
   async refreshCartCount() {
     const user = get().user;
-    if (!user) { set({ cartCount: 0 }); return; }
+    // Guests have a server-side User row (created via /api/auth/guest)
+    // and a valid access token, so /api/cart works for them too. The
+    // ensureGuestSession helper handles the silent-signin if no user
+    // is in zustand yet (e.g. boot just finished with no refresh cookie).
+    if (!user) {
+      const ensured = await get().ensureGuestSession();
+      if (!ensured) { set({ cartCount: 0 }); return; }
+    }
     try {
       const { items } = await api('/api/cart');
       set({ cartCount: items.reduce((s, i) => s + i.quantity, 0) });
     } catch {
       set({ cartCount: 0 });
+    }
+  },
+
+  // Mint a silent guest user on the server so anonymous shoppers can
+  // hit any auth-gated route (/api/cart, /api/orders, /api/checkout)
+  // without an account. The server stores the resulting refresh token
+  // in a cookie so subsequent page loads stay signed in as the same
+  // guest. Idempotent — calling this when a real user is already
+  // signed in is a no-op.
+  async ensureGuestSession() {
+    if (get().user) return get().user;
+    try {
+      const data = await api('/api/auth/guest', { method: 'POST', auth: false });
+      if (!data?.accessToken || !data?.user) return null;
+      setAccessToken(data.accessToken);
+      set({ user: data.user });
+      return data.user;
+    } catch {
+      return null;
     }
   },
 

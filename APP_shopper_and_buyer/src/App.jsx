@@ -99,13 +99,22 @@ export default function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/help" element={<Help />} />
 
-          {/* Customer (mobile shell) */}
-          <Route element={<RequireAuth><MobileShell /></RequireAuth>}>
+          {/* Browsing + cart — PUBLIC. Guests (anonymous shoppers) hit
+              /api/auth/guest on first cart-add so they get a server-side
+              user behind the scenes and the existing /api/cart + /api/orders
+              endpoints work without any client-side branching. */}
+          <Route element={<MobileShell />}>
             <Route path="/home" element={<Home />} />
             <Route path="/categories" element={<Categories />} />
             <Route path="/categories/:slug" element={<CategoryDetail />} />
             <Route path="/product/:id" element={<ProductDetails />} />
             <Route path="/cart" element={<ErrorBoundary><Cart /></ErrorBoundary>} />
+          </Route>
+
+          {/* Account-only (orders, profile, wishlist, notifications).
+              Guests still see these in the bottom nav but tapping them
+              routes through RequireAuth which redirects to /login. */}
+          <Route element={<RequireAuth><MobileShell /></RequireAuth>}>
             <Route path="/orders" element={<ErrorBoundary><Orders /></ErrorBoundary>} />
             <Route path="/orders/:id/track" element={<ErrorBoundary><TrackOrder /></ErrorBoundary>} />
             <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
