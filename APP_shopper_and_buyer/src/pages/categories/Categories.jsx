@@ -82,7 +82,7 @@ export default function Categories() {
         {error && (
           <div className="card p-4 bg-error/10 text-error text-sm flex items-center justify-between mb-3">
             <span>Could not load categories.</span>
-            <button onClick={refetch} className="text-primary font-semibold">Retry</button>
+            <button type="button" onClick={refetch} className="text-primary font-semibold">Retry</button>
           </div>
         )}
 

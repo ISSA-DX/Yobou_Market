@@ -229,7 +229,13 @@ export default function ProductDetails() {
     return defaultVariant;
   }
 
-  async function add() {
+  async function add(e) {
+    // Defensive: in Capacitor/Android WebViews a <button> without an
+    // explicit type can trigger a form submission or a native reload
+    // on tap. Preventing default here guarantees the click is handled
+    // purely by React.
+    e?.preventDefault?.();
+    if (busy) return;
     setErr(''); setBusy(true);
     try {
       // Guests get a silent server-side user on first cart-add so the
@@ -250,8 +256,8 @@ export default function ProductDetails() {
       }));
       await refreshCart();
       navigate('/cart');
-    } catch (e) {
-      handleError(e);
+    } catch (ex) {
+      handleError(ex);
     } finally {
       setBusy(false);
     }
@@ -263,14 +269,16 @@ export default function ProductDetails() {
   async function withGuestRetry(fn) {
     try {
       return await fn();
-    } catch (e) {
-      if (e?.status !== 401) throw e;
+    } catch (ex) {
+      if (ex?.status !== 401) throw ex;
       await useStore.getState().ensureGuestSession();
       return await fn();
     }
   }
 
-  async function buy() {
+  async function buy(e) {
+    e?.preventDefault?.();
+    if (busy) return;
     setErr(''); setBusy(true);
     try {
       const sendVariant = pickVariantToSend();
@@ -284,8 +292,8 @@ export default function ProductDetails() {
       }));
       await refreshCart();
       navigate('/checkout/shipping');
-    } catch (e) {
-      handleError(e);
+    } catch (ex) {
+      handleError(ex);
     } finally {
       setBusy(false);
     }
@@ -318,14 +326,19 @@ export default function ProductDetails() {
           ))}
         </div>
         <div className="absolute top-3 inset-x-3 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center">
+          {/* Defensive type="button" on every PDP button. Sticky
+              CTA was already fixed in the v0.3.9 patch; these close
+              the same `type="submit"` WebView quirk for the rest of
+              the page so no PDP button can reload the WebView. */}
+          <button type="button" onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center">
             <Icon name="arrow_back" />
           </button>
           <div className="flex gap-2">
-            <button className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center" aria-label="Share">
+            <button type="button" className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center" aria-label="Share">
               <Icon name="share" />
             </button>
             <button
+              type="button"
               onClick={() => toggleWishlist(p.id)}
               className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center"
               aria-label={saved ? 'Remove from saved' : 'Save'}
@@ -531,6 +544,7 @@ export default function ProductDetails() {
           <div className="text-label-md text-on-surface-variant">Quantity</div>
           <div className="flex items-center gap-3 bg-surface-low rounded-full px-3 py-1.5">
             <button
+              type="button"
               onClick={() => setQty((q) => Math.max(1, q - 1))}
               disabled={qty <= 1}
               className="w-7 h-7 rounded-full bg-white shadow-card flex items-center justify-center disabled:opacity-50"
@@ -539,6 +553,7 @@ export default function ProductDetails() {
             </button>
             <span className="font-semibold w-6 text-center">{qty}</span>
             <button
+              type="button"
               onClick={() => setQty((q) => {
                 const cap = hasVariants
                   ? (exactMatch && variantStock !== null ? variantStock : 0)
@@ -708,10 +723,28 @@ export default function ProductDetails() {
         <RelatedProducts productId={p.id} onAdd={add} />
       </div>
 
-      {/* Sticky CTA */}
-      <div className="fixed bottom-0 inset-x-0 p-4 bg-white border-t border-outline-variant/30 shadow-float">
+      {/* Sticky CTA. Layered with `z-40` so it sits ABOVE the bottom
+          nav (which is `z-30` in MobileShell) — without this, the nav
+          covers the CTA's hit area even though both are fixed to
+          `bottom-0`, and the shopper's tap on Add-to-Cart lands on
+          the Home/Categories tab underneath, feeling like the page
+          "refreshes". Safe-area bottom padding is added inline so the
+          CTA clears the iOS/Android gesture pill and the bottom nav
+          never overlaps the buttons either. type="button" is set
+          explicitly on both buttons because the HTML default of
+          `type="submit"` will, in some Android WebView builds, submit
+          the page even without an enclosing <form> — the symptom is
+          identical from the user's POV ("nothing happened, page
+          refreshed"). Forcing the type locks the click into our React
+          handler which then calls add() / buy() and navigates to
+          /cart or /checkout/shipping as expected. */}
+      <div
+        className="fixed bottom-0 inset-x-0 p-4 bg-white border-t border-outline-variant/30 shadow-float z-40"
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+      >
         <div className="max-w-screen-md mx-auto grid grid-cols-2 gap-3">
           <button
+            type="button"
             onClick={add}
             disabled={busy || outOfStock || (hasVariants && !exactMatch)}
             className="btn-secondary py-3 disabled:opacity-60"
@@ -724,6 +757,7 @@ export default function ProductDetails() {
                 : 'Add to Cart'}
           </button>
           <button
+            type="button"
             onClick={buy}
             disabled={busy || outOfStock || (hasVariants && !exactMatch)}
             className="btn-primary py-3 disabled:opacity-60"

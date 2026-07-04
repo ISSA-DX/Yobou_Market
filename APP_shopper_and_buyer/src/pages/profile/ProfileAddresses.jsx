@@ -60,7 +60,7 @@ export default function ProfileAddresses() {
   return (
     <div className="px-4 pt-4 pb-6 max-w-screen-md mx-auto">
       <header className="flex items-center justify-between mb-5">
-        <button onClick={() => navigate('/profile')} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
+        <button type="button" onClick={() => navigate('/profile')} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
         <h1 className="font-bold text-lg">Addresses</h1>
         <span className="w-10" />
       </header>

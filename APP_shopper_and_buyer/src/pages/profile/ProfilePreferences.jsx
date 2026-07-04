@@ -112,7 +112,7 @@ export default function ProfilePreferences() {
     <div className="min-h-screen bg-surface">
       <header className="sticky top-0 z-10 bg-surface/95 backdrop-blur border-b border-outline-variant/30">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
-          <button onClick={() => navigate('/profile')} className="p-2 -ml-2 rounded-full hover:bg-surface-low">
+          <button type="button" onClick={() => navigate('/profile')} className="p-2 -ml-2 rounded-full hover:bg-surface-low">
             <Icon name="arrow_back" className="text-[22px]" />
           </button>
           <h1 className="text-lg font-bold text-on-surface">Preferences</h1>

@@ -69,7 +69,7 @@ export default function Onboarding() {
             here read like two different actions. "Skip" matches the
             actual behaviour (skip the remaining slides) and removes
             the label dup on slide 3. */}
-        <button onClick={() => navigate('/login', { replace: true })} className="text-sm font-semibold">Skip intro</button>
+        <button type="button" onClick={() => navigate('/login', { replace: true })} className="text-sm font-semibold">Skip intro</button>
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
@@ -123,7 +123,7 @@ export default function Onboarding() {
             </button>
           </>
         ) : (
-          <button onClick={next} className="w-full bg-white text-primary font-bold py-3 rounded-full hover:bg-white/90 transition">
+          <button type="button" onClick={next} className="w-full bg-white text-primary font-bold py-3 rounded-full hover:bg-white/90 transition">
             Next
           </button>
         )}

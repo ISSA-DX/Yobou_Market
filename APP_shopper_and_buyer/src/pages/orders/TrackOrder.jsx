@@ -334,7 +334,7 @@ function RefundSection({ order, eligibility, onRefunded }) {
           </div>
         </div>
         {!open && (
-          <button onClick={() => setOpen(true)} className="btn-secondary py-2 px-3">Request refund</button>
+          <button type="button" onClick={() => setOpen(true)} className="btn-secondary py-2 px-3">Request refund</button>
         )}
       </div>
 
@@ -353,8 +353,8 @@ function RefundSection({ order, eligibility, onRefunded }) {
             </div>
           )}
           <div className="flex gap-2">
-            <button onClick={() => { setOpen(false); setErr(''); }} className="btn-ghost py-2 px-3">Cancel</button>
-            <button onClick={submit} disabled={busy} className="btn-primary flex-1">
+            <button type="button" onClick={() => { setOpen(false); setErr(''); }} className="btn-ghost py-2 px-3">Cancel</button>
+            <button type="button" onClick={submit} disabled={busy} className="btn-primary flex-1">
               {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
               Submit request
             </button>

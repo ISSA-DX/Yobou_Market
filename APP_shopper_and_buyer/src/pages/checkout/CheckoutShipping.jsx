@@ -89,7 +89,7 @@ export default function CheckoutShipping() {
   return (
     <div className="pt-4 space-y-5">
       <header className="flex items-center justify-between">
-        <button onClick={() => navigate('/cart')} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
+        <button type="button" onClick={() => navigate('/cart')} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
         <h1 className="font-bold text-lg">Checkout</h1>
         <span className="w-10" />
       </header>

@@ -308,6 +308,7 @@ export default function Cart() {
             {selectionBusy && <Icon name="progress_activity" className="text-[18px] animate-spin text-primary" />}
             {selectedItems.length > 0 && (
               <button
+                type="button"
                 onClick={() => setSelectionAll(false)}
                 disabled={selectionBusy}
                 className="text-label-md text-on-surface-variant hover:text-error font-semibold disabled:opacity-50"
@@ -445,7 +446,13 @@ export default function Cart() {
                 The disabled clause only gates on selectionBusy now;
                 validItems.length > 0 is always true at this point
                 because the empty-cart branch returns early above. */}
+            {/* Defensive type="button" so an Android WebView's
+                default `submit` behavior can never reload /cart when
+                the shopper taps Proceed. See the parallel fix on
+                ProductDetails.jsx for the full context — Cart and
+                PDP were the two surfaces with this failure mode. */}
             <button
+              type="button"
               onClick={proceedToCheckout}
               disabled={selectionBusy}
               className="btn-primary w-full py-3 mt-2 disabled:opacity-60 flex items-center justify-center gap-2"
@@ -554,6 +561,7 @@ function CartItem({ item, busy, currency, onToggleSelect, onQtyChange, onRemove 
             </h3>
           </Link>
           <button
+            type="button"
             onClick={onRemove}
             disabled={busy}
             className="text-on-surface-variant hover:text-error p-1 disabled:opacity-50 shrink-0"
@@ -597,6 +605,7 @@ function CartItem({ item, busy, currency, onToggleSelect, onQtyChange, onRemove 
             {/* Mobile +/- */}
             <div className="flex items-center bg-surface-low rounded-full px-1.5 py-1 sm:hidden">
               <button
+                type="button"
                 onClick={() => onQtyChange(item.quantity - 1)}
                 disabled={busy}
                 className="w-7 h-7 rounded-full bg-white shadow-sm flex items-center justify-center disabled:opacity-50"
@@ -605,6 +614,7 @@ function CartItem({ item, busy, currency, onToggleSelect, onQtyChange, onRemove 
               </button>
               <span className="font-semibold text-sm w-8 text-center">{item.quantity}</span>
               <button
+                type="button"
                 onClick={() => onQtyChange(item.quantity + 1)}
                 disabled={busy || item.quantity >= stockCap}
                 className="w-7 h-7 rounded-full bg-white shadow-sm flex items-center justify-center disabled:opacity-50"
@@ -616,6 +626,7 @@ function CartItem({ item, busy, currency, onToggleSelect, onQtyChange, onRemove 
             {/* Desktop dropdown */}
             <div className="hidden sm:block relative">
               <button
+                type="button"
                 onClick={() => setShowQty((v) => !v)}
                 className="flex items-center gap-2 bg-surface-low hover:bg-surface-high border border-outline-variant/30 rounded-md px-3 py-1.5 text-sm font-medium transition"
               >
@@ -626,6 +637,7 @@ function CartItem({ item, busy, currency, onToggleSelect, onQtyChange, onRemove 
                 <div className="absolute z-20 mt-1 bg-white border border-outline-variant/30 rounded-md shadow-float w-24 max-h-48 overflow-y-auto">
                   {[...Array(Math.max(1, Math.min(10, stockCap)))].map((_, i) => (
                     <button
+                      type="button"
                       key={i + 1}
                       onClick={() => { onQtyChange(i + 1); setShowQty(false); }}
                       className={`w-full text-left px-3 py-2 text-sm hover:bg-surface-low ${item.quantity === i + 1 ? 'bg-surface-low font-semibold' : ''}`}

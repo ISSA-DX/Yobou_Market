@@ -16,7 +16,7 @@ export default function Notifications() {
       <div className="flex items-center justify-between">
         <h1 className="text-headline-lg font-bold">Notifications</h1>
         {unreadCount > 0 && (
-          <button onClick={markAllRead} className="text-primary font-semibold text-sm">
+          <button type="button" onClick={markAllRead} className="text-primary font-semibold text-sm">
             Mark all read
           </button>
         )}

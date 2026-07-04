@@ -51,7 +51,7 @@ export default function AppleConfirm() {
       </div>
 
       <div className="mt-8 space-y-3">
-        <button onClick={confirm} className="btn-primary w-full py-3 bg-black hover:bg-gray-900">Continue with Apple</button>
+        <button type="button" onClick={confirm} className="btn-primary w-full py-3 bg-black hover:bg-gray-900">Continue with Apple</button>
         <Link to="/login" className="btn-secondary w-full py-3">Cancel</Link>
       </div>
     </div>

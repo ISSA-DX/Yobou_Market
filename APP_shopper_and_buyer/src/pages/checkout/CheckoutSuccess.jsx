@@ -27,7 +27,7 @@ export default function CheckoutSuccess() {
   return (
     <div className="pt-6 text-center">
       <header className="flex items-center justify-between mb-8">
-        <button onClick={() => navigate('/home')} className="p-2 -ml-2"><Icon name="close" className="text-[24px]" /></button>
+        <button type="button" onClick={() => navigate('/home')} className="p-2 -ml-2"><Icon name="close" className="text-[24px]" /></button>
         <div className="w-9 h-9 rounded-md bg-primary text-white flex items-center justify-center font-black">Y</div>
         <span className="w-10" />
       </header>

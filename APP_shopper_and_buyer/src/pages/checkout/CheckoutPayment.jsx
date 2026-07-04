@@ -87,7 +87,7 @@ export default function CheckoutPayment() {
   return (
     <div className="pt-4 space-y-5">
       <header className="flex items-center justify-between">
-        <button onClick={() => navigate('/checkout/shipping')} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
+        <button type="button" onClick={() => navigate('/checkout/shipping')} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
         <h1 className="font-bold text-lg">Checkout</h1>
         <span className="w-10" />
       </header>
@@ -161,7 +161,7 @@ export default function CheckoutPayment() {
       {/* Express wallets */}
       <div className="space-y-2">
         <div className="text-label-md text-on-surface-variant">Express wallets</div>
-        <button onClick={() => setMethod('PAYPAL')} className="w-full card p-3 flex items-center gap-3 hover:border-primary/40">
+        <button type="button" onClick={() => setMethod('PAYPAL')} className="w-full card p-3 flex items-center gap-3 hover:border-primary/40">
           <div className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center font-black">P</div>
           <span className="font-semibold flex-1 text-left">PayPal</span>
           {method === 'PAYPAL' && <Icon name="check_circle" className="text-tertiary" />}

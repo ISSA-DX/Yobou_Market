@@ -202,7 +202,7 @@ export default function CategoryDetail() {
         {error && (
           <div className="card p-4 bg-error/10 text-error text-sm flex items-center justify-between">
             <span>{error}</span>
-            <button onClick={load} className="text-primary font-semibold">Retry</button>
+            <button type="button" onClick={load} className="text-primary font-semibold">Retry</button>
           </div>
         )}
 

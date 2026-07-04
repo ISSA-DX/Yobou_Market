@@ -86,7 +86,7 @@ export default function Profile() {
   return (
     <div className="pb-24 max-w-screen-md mx-auto">
       <header className="flex items-center justify-between px-4 h-14">
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
+        <button type="button" onClick={() => navigate(-1)} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
         <h1 className="font-bold">Profile</h1>
         <span className="w-10" />
       </header>
@@ -115,7 +115,7 @@ export default function Profile() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-title-lg font-semibold">Personal info</h3>
             {!editing && (
-              <button onClick={() => setEditing(true)} className="text-primary text-sm font-semibold flex items-center gap-1">
+              <button type="button" onClick={() => setEditing(true)} className="text-primary text-sm font-semibold flex items-center gap-1">
                 <Icon name="edit" className="text-[16px]" /> Edit
               </button>
             )}
@@ -221,13 +221,13 @@ export default function Profile() {
         ))}
 
         {/* Theme toggle */}
-        <button onClick={toggleDark} className="w-full card p-4 flex items-center gap-3 hover:bg-surface-low transition">
+        <button type="button" onClick={toggleDark} className="w-full card p-4 flex items-center gap-3 hover:bg-surface-low transition">
           <Icon name={dark ? 'light_mode' : 'dark_mode'} />
           <span className="flex-1 text-left font-medium">Theme: {dark ? 'Dark' : 'Light'}</span>
           <Icon name="chevron_right" className="text-on-surface-variant" />
         </button>
 
-        <button onClick={handleLogout} className="w-full text-error font-semibold py-3 rounded-md hover:bg-error/10 transition">
+        <button type="button" onClick={handleLogout} className="w-full text-error font-semibold py-3 rounded-md hover:bg-error/10 transition">
           Log out
         </button>
 

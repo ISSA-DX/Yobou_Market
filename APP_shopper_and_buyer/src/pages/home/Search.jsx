@@ -342,7 +342,7 @@ export default function Search() {
       {error && (
         <div className="card p-4 bg-error/10 text-error text-sm flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => fetchProducts(state)} className="text-primary font-semibold">Retry</button>
+          <button type="button" onClick={() => fetchProducts(state)} className="text-primary font-semibold">Retry</button>
         </div>
       )}
 
@@ -457,11 +457,11 @@ function FilterSheet({ facets, draft, setDraft, onApply, onClear, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-surface">
       <header className="flex items-center justify-between px-4 h-14 border-b border-outline-variant/30 flex-none">
-        <button onClick={onClose} className="p-2 -ml-2" aria-label="Close filters">
+        <button type="button" onClick={onClose} className="p-2 -ml-2" aria-label="Close filters">
           <Icon name="close" className="text-[24px]" />
         </button>
         <span className="font-bold">Filters</span>
-        <button onClick={onClear} className="text-sm text-primary font-semibold px-2">Clear</button>
+        <button type="button" onClick={onClear} className="text-sm text-primary font-semibold px-2">Clear</button>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
