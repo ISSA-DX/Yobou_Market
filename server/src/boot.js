@@ -61,41 +61,20 @@ console.log(`[boot] DATA_DIR = ${DATA_DIR}`);
 console.log(`[boot] UPLOAD_DIR = ${UPLOAD_DIR}`);
 console.log(`[boot] DATABASE_URL = ${process.env.DATABASE_URL}`);
 
-try {
-  // v0.3.14: regenerate the Prisma client before syncing schema.
-  // Without this, the client in node_modules/.prisma/client can drift
-  // from the actual database schema after a deploy that adds or
-  // modifies models (e.g. the CartItem.variant relation added when
-  // ProductVariant shipped). The runtime then throws
-  // "Unknown arg `variant` in include" on every cart query, which the
-  // production error handler maps to a generic 500 INTERNAL. The
-  // previous boot sequence ran `prisma db push --skip-generate` which
-  // kept the database schema in sync but NEVER regenerated the client
-  // — so the deployed server was running with a client that didn't
-  // know about the variant relation. Regenerating on every boot is
-  // the simplest, most robust fix: it doesn't depend on the render.yaml
-  // build command or a separate `prisma generate` step in the deploy
-  // pipeline, and it auto-heals on the next restart even if a future
-  // schema change ships without an explicit generate.
-  console.log('[boot] Regenerating Prisma client...');
-  execSync('npx prisma generate', {
-    stdio: 'inherit',
-    env: process.env,
-  });
-} catch (err) {
-  console.error('[boot] prisma generate failed:', err.message);
-  process.exit(1);
-}
-
+// v0.3.14 → v0.3.15: REMOVED the explicit `npx prisma generate` step
+// here. The render.yaml build command already runs `npx prisma generate`
+// at build time, so re-running it at boot was redundant and was OOM-
+// crashing Render's 512MB free tier (the deploy was returning
+// `update_failed` because the start command was being killed). The
+// build's client is the one we want at runtime; the boot-time step
+// added boot latency (5-15s) and a memory spike for zero benefit.
 try {
   // MIGRATIONS_ENABLED=1 → use `prisma migrate deploy` (production-safe,
   // requires server/prisma/migrations/ to exist and be in sync with the
-  // schema). Off → fall back to `prisma db push` (dev convenience).
-  // --skip-generate is passed to BOTH because we just ran an explicit
-  // `prisma generate` above — running it again is harmless but
-  // wasteful (adds 5-15s of boot time on every restart). See
-  // server/prisma/migrations/20260630_add_product_variants/ for the
-  // first migration that introduces the ProductVariant table.
+  // schema). Off → fall back to `prisma db push` (dev convenience —
+  // syncs the DB directly from schema.prisma, no migration files
+  // needed). --skip-generate is passed to both because the build
+  // command already ran `prisma generate`.
   if (process.env.MIGRATIONS_ENABLED === '1') {
     console.log('[boot] Running prisma migrate deploy (MIGRATIONS_ENABLED=1)...');
     execSync('npx prisma migrate deploy --skip-generate', {
