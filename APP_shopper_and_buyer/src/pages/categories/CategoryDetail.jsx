@@ -150,7 +150,14 @@ export default function CategoryDetail() {
               <Icon name={meta.icon} className="text-[36px]" />
             </div>
             <div>
-              <h1 className="text-headline-lg font-bold">{title}</h1>
+              {/* Text-white explicit override — this h1 sits on a
+                  per-category gradient (from-blue-500 to-indigo-600,
+                  from-pink-500 to-rose-500, etc.). The v0.3.20 global
+                  h1 { color: #0034b9 } rule would otherwise paint the
+                  category title in brand blue over its colored gradient
+                  background — unreadable. Stamp text-white so the
+                  category name stays legible across all 28 categories. */}
+              <h1 className="text-headline-lg font-bold text-white">{title}</h1>
               <p className="text-label-md text-on-surface-variant">
                 {loading ? 'Loading…' : `${products.length} item${products.length === 1 ? '' : 's'}`}
               </p>

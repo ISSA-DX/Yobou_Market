@@ -182,7 +182,11 @@ export default function Home() {
             <div className="chip bg-white/15 text-white border-0 mb-3">
               <Icon name="bolt" className="text-[14px]" /> Today's deal
             </div>
-            <h2 className="text-headline-lg font-bold leading-tight line-clamp-2">
+            {/* text-white explicit override — the h2 sits on a
+                from-primary blue gradient; without explicit text-white
+                the v0.3.20 global h2 { color: #0034b9 } rule would
+                render the headline blue-on-blue (invisible). */}
+            <h2 className="text-headline-lg font-bold leading-tight line-clamp-2 text-white">
               {Math.round(((topDeal.compareAtPriceCents - topDeal.priceCents) / topDeal.compareAtPriceCents) * 100)}% off · {topDeal.name}
             </h2>
             <div className="mt-2 flex items-baseline gap-2">
@@ -209,7 +213,12 @@ export default function Home() {
       ) : (
         <div className="card p-5 bg-gradient-to-br from-primary to-primary-container text-white relative overflow-hidden">
           <div className="relative z-10 max-w-[70%]">
-            <h2 className="text-headline-lg font-bold leading-tight">Welcome to Yobou</h2>
+            {/* Same explicit text-white override as the deal card —
+                on blue gradient, the bare h2 brand-blue rule would
+                otherwise paint "Welcome to Yobou" in brand blue on
+                brand blue. Stamping text-white keeps the headline
+                legible in both light and dark mode. */}
+            <h2 className="text-headline-lg font-bold leading-tight text-white">Welcome to Yobou</h2>
             <p className="mt-2 text-label-md opacity-90">
               Shop from {all.length} product{all.length === 1 ? '' : 's'} across {CATS.length} categories.
             </p>

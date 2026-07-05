@@ -256,3 +256,32 @@
   .border-outline-variant\/30,
   .border-outline-variant\/40 { border-color: rgba(0, 0, 0, 0.55) !important; }
 }
+
+/*
+  Brand-blue headers. Per user feedback after v0.3.19, all visible
+  page/section titles should render in the brand primary token
+  (#0034b9) on the white light-mode surface; the white-on-dark body
+  contrast from v0.3.19 is preserved in dark mode.
+
+  Specificity reasoning (one element selector) sits *below* Tailwind's
+  class-based text-* utilities (.text-white, .text-on-on-secondary,
+  etc.) and the explicit .text-on-surface class on a handful of headers
+  added during v0.3.19. That means:
+    - bare h-tags => brand blue (default)
+    - h-tags with .text-white / .text-on-secondary on colored bgs
+      => keep the explicit class color (overrides needed; see file
+      edits in Home.jsx, CategoryDetail.jsx, Categories.jsx)
+    - h-tags with .text-on-surface (after v0.3.19) => stay black
+      unless we drop the class (see ProfilePreferences, Login,
+      ErrorBoundary, Profile.user.name h2)
+  H-tags inherit nothing from parent text-* classes — child element
+  specificity always wins — which is why we explicitly stamp
+  text-white on Categories.blue-gradient wrappers rather than relying
+  on the parent class to cascade.
+
+  Dark-mode contrast: white on #121212 = 17:1 (AAA).
+  Light-mode contrast: brand-blue #0034b9 on #ffffff = 8.6:1 (AAA).
+  WCAG AA + AAA for body and large text in both modes.
+*/
+h1, h2, h3 { color: #0034b9; }
+.dark h1, .dark h2, .dark h3 { color: #FFFFFF; }

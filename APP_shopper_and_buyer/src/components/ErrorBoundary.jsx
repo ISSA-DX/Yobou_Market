@@ -29,7 +29,10 @@ export default class ErrorBoundary extends Component {
               <Icon name="error" className="text-[28px] text-error" />
             </div>
             <div>
-              <h1 className="font-bold text-lg text-on-surface">Something went wrong</h1>
+              {/* text-on-surface dropped — v0.3.20 h1 default = brand blue
+                  so the error hero header picks up the brand primary
+                  tint used across all other page titles. */}
+              <h1 className="font-bold text-lg">Something went wrong</h1>
               <p className="mt-2 text-sm text-on-surface-variant">
                 We hit a snag loading this screen. Tap retry to give it another go, or head back home.
               </p>

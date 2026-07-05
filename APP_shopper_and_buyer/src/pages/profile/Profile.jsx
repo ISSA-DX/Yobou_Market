@@ -106,7 +106,11 @@ export default function Profile() {
               <Icon name={editing ? 'close' : 'edit'} className="text-[16px]" />
             </button>
           </div>
-          <h2 className="mt-3 text-headline-md font-bold text-on-surface">{user?.name}</h2>
+          {/* Drop text-on-surface — v0.3.20 makes h2 brand-blue by
+              default, so the user's own name in the profile hero now
+              matches the rest of the page/section header treatment
+              instead of inheriting v0.3.19's pure-black on-surface. */}
+          <h2 className="mt-3 text-headline-md font-bold">{user?.name}</h2>
           <div className="text-label-md text-on-surface-variant">{user?.email}</div>
         </div>
 

@@ -151,7 +151,10 @@ export default function Login() {
             semantics (the parent already has an h1) so the
             alternative-path heading is discoverable to a11y tooling. */}
         <div className="mt-6 p-4 rounded-xl bg-primary-container border-2 border-primary/50">
-          <h2 className="text-sm text-on-surface text-center font-semibold uppercase tracking-wide">New to Yobou?</h2>
+          {/* text-on-surface dropped — v0.3.20 h2 default = brand blue
+              so the 'New to Yobou?' framed-card section header picks
+              up the brand primary tint the rest of the page uses. */}
+          <h2 className="text-sm text-center font-semibold uppercase tracking-wide">New to Yobou?</h2>
           <Link
             to="/register"
             className="mt-3 inline-flex w-full btn-primary py-3 justify-center font-semibold"
