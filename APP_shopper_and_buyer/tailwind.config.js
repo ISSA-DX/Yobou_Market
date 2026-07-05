@@ -34,12 +34,19 @@ export default {
         success: '#10b981',
         error: '#ba1a1a',
         'error-container': '#ffdad6',
-        // Dark
-        'dark-bg': '#0b1c30',
-        'dark-surface': '#15243f',
-        'dark-surface-high': '#1f3052',
-        'dark-on': '#eaf1ff',
-        'dark-on-variant': '#a3b1c9',
+        // Dark — Midnight Ocean palette (v0.3.21).
+        // The actual dark-mode surfaces are defined in styles/index.css
+        // because the codebase uses plain `.dark <selector>` overrides
+        // rather than Tailwind `dark:` variants. Tokens here are kept
+        // current for any future `bg-dark-*` utility usage.
+        'dark-bg': '#0a1024',
+        'dark-surface': '#142454',
+        'dark-surface-high': '#1c2f5e',
+        'dark-surface-highest': '#243d7a',
+        'dark-on': '#f4f7ff',
+        'dark-on-variant': '#b4c0d8',
+        'dark-on-tertiary': '#8b95b3',
+        'inverse-primary': '#7c9eff',
       },
       fontFamily: {
         sans: ['"Be Vietnam Pro"', 'system-ui', 'sans-serif'],
