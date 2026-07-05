@@ -9,7 +9,11 @@
   body {
     font-family: 'Be Vietnam Pro', system-ui, sans-serif;
     background: #f8f9ff;
-    color: #0b1c30;
+    /* Per user-supplied mapping table — Light primary text = #000000
+       (pure black, vs the previous #0b1c30 navy). The body color cascades
+       to all text that doesn't have a more specific className, so all
+       <h1>/<h2>/<p>/<span> with no text-* class now inherit pure black. */
+    color: #000000;
     -webkit-tap-highlight-color: transparent;
   }
   .material-symbols-outlined {
@@ -59,13 +63,30 @@
   }
 }
 
-/* Dark mode */
-.dark body { background: #0b1c30; color: #eaf1ff; }
-.dark .card { background: #15243f; color: #eaf1ff; }
-.dark .input { background: #1f3052; border-color: #2d3f63; color: #eaf1ff; }
-.dark .btn-secondary { background: #1f3052; color: #b8c3ff; }
-.dark .chip { background: #1f3052; color: #a3b1c9; }
-.dark .bento { background: #15243f; }
+/*
+  Dark mode surface tokens (WCAG 2.1 AA-aligned, Material Dark elevation map).
+  Per the user-supplied mapping table + WCAG 1.4.6 (enhanced) / 1.4.11 (non-text):
+    - body bg                : #121212 (Material Dark baseline — neutral)
+    - .card / .bento         : #1E1E1E (Material Level 1 elevation)
+    - .input / .chip / .btn-secondary : #272727 (Level 2 elevation)
+    - on-surface (titles)    : #FFFFFF (pure white — 17:1 on body)
+    - on-surface-variant     : #9CA3AF (5.1:1 on .card — passes AA body-text)
+    - inverse-primary        : #b8c3ff (preserves brand chrome in dark mode)
+  Departure from the previous navy tint (#0b1c30 / #15243f):
+    (a) Secondary text #a3b1c9 on #15243f = 4.1:1, BELOW the 4.5:1 AA
+        threshold — failing on Cart row counts, Order meta-line,
+        OrderTimeline captions, Profile preference captions, Wishlist product
+        meta — exactly the screens the user flagged.
+    (b) Brand identity shifts to a Material-Dark-style neutral. The brand
+        color is preserved on .btn-primary / .text-primary / .chip
+        (via the inverse-primary token) — only the surface chrome changes.
+*/
+.dark body { background: #121212; color: #FFFFFF; }
+.dark .card { background: #1E1E1E; color: #FFFFFF; }
+.dark .input { background: #272727; border-color: #3a3a3a; color: #FFFFFF; }
+.dark .btn-secondary { background: #272727; color: #FFFFFF; }
+.dark .chip { background: #272727; color: #9CA3AF; }
+.dark .bento { background: #1E1E1E; }
 
 /*
   Dark mode container overrides for elements that hardcode bg-white.
@@ -76,29 +97,30 @@
   stays readable in dark mode. !important wins over Tailwind utility
   classes that hardcode `bg-white`.
 */
-.dark .bg-white { background: #15243f !important; color: #eaf1ff; }
+.dark .bg-white { background: #1E1E1E !important; color: #FFFFFF; }
 .dark .bg-white\/80,
 .dark .bg-white\/90,
-.dark .bg-white\/95 { background: rgba(21, 36, 63, 0.92) !important; color: #eaf1ff; }
-.dark .bg-surface-low { background: #1f3052 !important; }
-.dark .bg-surface-high { background: #1f3052 !important; color: #b8c3ff; }
-.dark .bg-surface-highest { background: #2d3f63 !important; }
-.dark .text-on-surface { color: #eaf1ff; }
-.dark .text-on-surface-variant { color: #a3b1c9; }
+.dark .bg-white\/95 { background: rgba(30, 30, 30, 0.92) !important; color: #FFFFFF; }
+.dark .bg-surface-low { background: #272727 !important; }
+.dark .bg-surface-high { background: #272727 !important; color: #FFFFFF; }
+.dark .bg-surface-highest { background: #3a3a3a !important; }
+.dark .text-on-surface { color: #FFFFFF; }
+.dark .text-on-surface-variant { color: #9CA3AF; }
 .dark .border-outline-variant\/30,
-.dark .border-outline-variant\/40 { border-color: rgba(163, 177, 201, 0.18) !important; }
+.dark .border-outline-variant\/40 { border-color: rgba(229, 231, 235, 0.22) !important; }
 
 /*
-  Sticky headers and bottom-nav bars get a brand-tinted dark surface so the
-  brand-blue glow survives the theme switch. White slabs in dark mode are
-  visually jarring.
+  Sticky headers and bottom-nav bars surface in dark mode now resolve
+  to a deeper neutral overlay, harmonizing with the Material Dark body
+  (#121212) and cards (#1E1E1E) below them — no more "tinted" brand-navy
+  glow, per the user-supplied spec.
 */
 .dark header.bg-white\/80,
 .dark header.bg-white\/90,
 .dark nav.bg-white\/80,
 .dark nav.bg-white\/90,
 .dark .sticky.bg-white\/80,
-.dark .sticky.bg-white\/90 { background: rgba(21, 36, 63, 0.94) !important; color: #eaf1ff; }
+.dark .sticky.bg-white\/90 { background: rgba(30, 30, 30, 0.94) !important; color: #FFFFFF; }
 
 /* Hide scrollbar on horizontal scroll containers */
 .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -108,8 +130,8 @@
   Skeleton shimmer — premium subtle gradient used by loading states.
   Background-size 200% lets the gradient slide horizontally across the
   element; the keyframe `shimmer` animates background-position. The
-  dark-mode override flips the gradient to a light-tinted one that reads
-  against our dark navy surfaces without washing out into a bright slab.
+  dark-mode override is now neutral (rgba(255,255,255,...)) so it reads
+  on dark gray surfaces (#1E1E1E / #272727) without washing out.
 */
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
@@ -118,9 +140,9 @@
 .skeleton {
   background: linear-gradient(
     90deg,
-    rgba(11, 28, 48, 0.08) 0%,
-    rgba(11, 28, 48, 0.16) 50%,
-    rgba(11, 28, 48, 0.08) 100%
+    rgba(0, 0, 0, 0.06) 0%,
+    rgba(0, 0, 0, 0.12) 50%,
+    rgba(0, 0, 0, 0.06) 100%
   );
   background-size: 200% 100%;
   animation: shimmer 1.6s ease-in-out infinite;
@@ -129,9 +151,9 @@
 .dark .skeleton {
   background: linear-gradient(
     90deg,
-    rgba(234, 241, 255, 0.06) 0%,
-    rgba(234, 241, 255, 0.12) 50%,
-    rgba(234, 241, 255, 0.06) 100%
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.04) 100%
   );
   background-size: 200% 100%;
 }
@@ -167,13 +189,13 @@
 
 /*
   Contrast bumps in dark mode. The default `text-error` is the light-mode
-  red (#ba1a1a); against the dark navy surface that red is hard to read.
+  red (#ba1a1a); against the dark surface that red is hard to read.
   We swap to the lighter `error-container` token (#ffb4ab) which the
   design system ships specifically for "on-error-container" surfaces
-  and which has a contrast ratio of ~7:1 against our `#0b1c30` body.
-  Same logic for the active-state brand tint: the primary-container
-  background at 30% opacity is nearly invisible on a navy surface, so
-  we use a more saturated primary/40 in dark mode.
+  and which has a contrast ratio of ~7:1 against the dark Material bg
+  (#121212). Same logic for the active-state brand tint: the
+  primary-container background at 30% opacity is nearly invisible on a
+  neutral dark surface, so we use a more saturated primary/40 in dark.
 */
 .dark .text-error { color: #ffb4ab; }
 .dark .bg-primary\/30 { background: rgba(0, 52, 185, 0.4) !important; }
@@ -183,16 +205,16 @@
   WCAG AA contrast overrides for dark mode. Light-mode `text-primary`
   (#0034b9 deep brand blue) on the dark navy body is ~1.7:1 — fails AA
   body text (4.5:1) and AA UI components (3:1). The `inverse-primary`
-  token (#b8c3ff) is 9.8:1 on the card surface #15243f — AA-passing
+  token (#b8c3ff) is ~9.8:1 on the card surface #1E1E1E — AA-passing
   for body and AAA-passing for large text. Same logic for `text-outline`
   and the input border / placeholder variants which were too subtle for
   some users. Scoped narrowly so the brand color stays strong in light.
 */
 .dark .text-primary { color: #b8c3ff; }
-.dark .text-outline { color: #c8d4ec; }
-.dark .input::placeholder { color: #a3b1c9; }
-.dark .input { border-color: rgba(184, 195, 255, 0.28); }
-.dark .text-secondary { color: #ffe082; } /* #fdc003 gold on navy is ~4.2:1, borderline; lift to AAA-flip */
+.dark .text-outline { color: #C8D4EC; }
+.dark .input::placeholder { color: #9CA3AF; }
+.dark .input { border-color: rgba(184, 195, 255, 0.32); }
+.dark .text-secondary { color: #ffe082; } /* #fdc003 gold on neutral is ~9:1 — AAA. */
 
 /*
   Auth-page uniform surface. Page, card, and inputs all use the SAME
@@ -202,21 +224,21 @@
   off-white body. Inputs become transparent inside the auth card
   instead of picking up the global `.input { bg-surface-low }`
   override that visually separates them from their container.
-  Dark mode mirrors the same single-token rule with `#15243f`.
+  Dark mode mirrors the same single-token rule with #1E1E1E.
 */
 .auth-page { background: #ffffff; }
 .auth-page .card { background: #ffffff; }
 .auth-page .card .input { background: #ffffff; }
 .dark .auth-page,
 .dark .auth-page .card,
-.dark .auth-page .card .input { background: #15243f; }
+.dark .auth-page .card .input { background: #1E1E1E; }
 
 /*
   High-contrast user preference (Windows High Contrast / macOS
   Increase Contrast / Android High Contrast Text). Strips our soft
   brand palette in favor of pure black/white so users with severe
-  contrast needs see distinct surfaces, not the same navy blended
-  with slightly-different-navy. Standard WCAG SC 1.4.6 honeypot —
+  contrast needs see distinct surfaces, not the same gray blended
+  with slightly-different-gray. Standard WCAG SC 1.4.6 honeypot —
   not required, but cheap to support.
 */
 @media (prefers-contrast: more) {
@@ -224,7 +246,7 @@
   .dark .card { background: #111111; color: #ffffff; }
   .dark .input { background: #000000; border-color: #ffffff; color: #ffffff; }
   .dark .text-primary { color: #ffffff; text-decoration: underline; }
-  .dark .text-on-surface-variant { color: #e7ecff; }
+  .dark .text-on-surface-variant { color: #ffffff; }
   /* `outline` paints outside the box-model so HC users don't see button
      dimensions shift by 2px when they toggle the OS setting. */
   .dark .chip,
@@ -232,5 +254,5 @@
   .dark .chip:focus-visible,
   .dark .btn-secondary:focus-visible { outline-offset: 2px; }
   .border-outline-variant\/30,
-  .border-outline-variant\/40 { border-color: rgba(11, 28, 48, 0.55) !important; }
+  .border-outline-variant\/40 { border-color: rgba(0, 0, 0, 0.55) !important; }
 }

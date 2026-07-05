@@ -15,8 +15,8 @@ export default {
         'surface-container': '#e5eeff',
         'surface-high': '#dce9ff',
         'surface-highest': '#d3e4fe',
-        'on-surface': '#0b1c30',
-        'on-surface-variant': '#434656',
+        'on-surface': '#000000',
+        'on-surface-variant': '#6B7280',
         outline: '#747688',
         'outline-variant': '#c4c5d9',
         // Brand

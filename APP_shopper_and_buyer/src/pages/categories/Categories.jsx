@@ -102,7 +102,7 @@ export default function Categories() {
               >
                 <div className={`p-4 ${c.textColor}`}>
                   <div className="font-bold">{c.name}</div>
-                  <div className="text-label-md opacity-70">
+                  <div className="text-label-md text-on-surface-variant">
                     {groups.find((g) => g.name === c.name)?.count || 0} items
                   </div>
                 </div>

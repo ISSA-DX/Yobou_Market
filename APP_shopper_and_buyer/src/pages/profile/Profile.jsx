@@ -106,7 +106,7 @@ export default function Profile() {
               <Icon name={editing ? 'close' : 'edit'} className="text-[16px]" />
             </button>
           </div>
-          <h2 className="mt-3 text-headline-md font-bold">{user?.name}</h2>
+          <h2 className="mt-3 text-headline-md font-bold text-on-surface">{user?.name}</h2>
           <div className="text-label-md text-on-surface-variant">{user?.email}</div>
         </div>
 

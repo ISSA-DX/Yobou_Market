@@ -142,7 +142,7 @@ export default function CategoryDetail() {
             >
               <Icon name="arrow_back" className="text-[24px]" />
             </Link>
-            <span className="text-label-md opacity-90">Categories</span>
+            <span className="text-label-md text-on-surface-variant">Categories</span>
           </header>
 
           <div className="flex items-center gap-4">
@@ -151,7 +151,7 @@ export default function CategoryDetail() {
             </div>
             <div>
               <h1 className="text-headline-lg font-bold">{title}</h1>
-              <p className="text-label-md opacity-90">
+              <p className="text-label-md text-on-surface-variant">
                 {loading ? 'Loading…' : `${products.length} item${products.length === 1 ? '' : 's'}`}
               </p>
             </div>
