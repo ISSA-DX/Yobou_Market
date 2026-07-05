@@ -312,18 +312,28 @@
   .dark .btn-secondary { background: #000000; color: #ffffff; outline: 1px solid #ffffff; }
   .dark .chip:focus-visible,
   .dark .btn-secondary:focus-visible { outline-offset: 2px; }
+  /* HC escape hatch — flip h-tags to white for users on extreme
+     contrast settings, so the v0.3.22 stealth-black default
+     (.dark h1/2/3 { color: #000000 }) does not render page titles
+     invisible on a pure-black body. */
+  .dark h1, .dark h2, .dark h3 { color: #ffffff; }
   .border-outline-variant\/30,
   .border-outline-variant\/40 { border-color: rgba(0, 0, 0, 0.55) !important; }
 }
 
 /*
-  Brand-blue headers (v0.3.20, unchanged). All visible page/section
-  titles render in the brand primary token (#0034b9) on the white
-  light-mode surface, and stay white on dark canvas for max
-  contrast (15.4:1). Specificity (one element selector) sits below
-  Tailwind class selectors (.text-white, .text-on-secondary, etc.)
-  so explicit overrides on colored-bg gradients win — see Home.jsx,
-  CategoryDetail.jsx, Categories.jsx for the overrides.
+  Page/section headers (v0.3.22, user request). Light mode: brand
+  primary #0034b9 on the white surface (8.6:1 AAA). Dark mode:
+  pure #000000 — a deliberate stealth / inverted aesthetic, per
+  user feedback. Contrast on the navy canvas (#0a1024) drops to
+  ~1.1:1 by design; the header text reads at the card edge rather
+  than foreground, while body / data text stays #f4f7ff (14.4:1
+  AAA) so actual content remains legible. Users who need extreme
+  contrast can flip the prefers-contrast: more toggle, which
+  overrides h-tags back to #ffffff. Tailwind class overrides
+  (.text-white / .text-on-secondary) still win on the colored
+  gradient hero cards — see Home.jsx, Categories.jsx,
+  CategoryDetail.jsx.
 */
 h1, h2, h3 { color: #0034b9; }
-.dark h1, .dark h2, .dark h3 { color: #FFFFFF; }
+.dark h1, .dark h2, .dark h3 { color: #000000; }
