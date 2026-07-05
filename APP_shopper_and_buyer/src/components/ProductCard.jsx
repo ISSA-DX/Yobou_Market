@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Icon from './Icon';
 import { useStore } from '../store';
 import { productImage } from '../lib/productImage';
@@ -11,8 +11,6 @@ import { formatPrice } from '../lib/format';
  * - Clicking the image/title navigates to product details.
  */
 export default function ProductCard({ product, onAdd, layout = 'grid' }) {
-  const navigate = useNavigate();
-  const location = useLocation();
   const wishlist = useStore((s) => s.wishlist);
   const toggleWishlist = useStore((s) => s.toggleWishlist);
   const currency = useStore((s) => s.user?.currency || 'USD');
@@ -44,10 +42,13 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
   async function handleAdd(e) {
     e.preventDefault();
     if (outOfStock || adding) return;
-    if (added) {
-      navigate('/cart');
-      return;
-    }
+    // v0.3.16: no longer redirect to /cart on the second click. The
+    // "Added" state below is a visual confirmation only — the user
+    // navigates to the cart explicitly via the cart icon in the
+    // bottom nav. This is the Temu/Amazon pattern: keep the shopper
+    // on the browsing surface so they can continue shopping
+    // uninterrupted.
+    if (added) return;
     if (!onAdd) {
       // eslint-disable-next-line no-console
       console.warn('ProductCard rendered without onAdd; add-to-cart is disabled.');
@@ -200,8 +201,8 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
               </span>
             ) : added ? (
               <span className="inline-flex items-center gap-1.5">
-                <Icon name="shopping_cart" className="text-[18px]" />
-                Go to Cart
+                <Icon name="check" className="text-[18px]" />
+                Added
               </span>
             ) : outOfStock ? (
               <span className="inline-flex items-center gap-1.5">

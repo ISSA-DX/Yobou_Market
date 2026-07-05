@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../api';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
@@ -93,7 +93,6 @@ export default function Search() {
   // grid from re-fetching on every keystroke.
   const [draft, setDraft] = useState(state);
   const refreshCart = useStore((s) => s.refreshCartCount);
-  const navigate = useNavigate();
 
   // Sync URL → draft + input whenever deep-link / share / back-button
   // lands on a fresh URL. The next user-tap on Apply/Clear All will
@@ -201,8 +200,11 @@ export default function Search() {
       await useStore.getState().ensureGuestSession();
       await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
       await refreshCart();
+      // v0.3.16: no longer navigate to /cart. The cart badge in
+      // MobileShell updates via refreshCartCount() above, the toast
+      // confirms the add, and the ProductCard flips to "Added" for
+      // 3s. The user stays on Search so they can keep browsing.
       toast.success(`Added ${p.name} to cart`);
-      navigate('/cart');
     } catch (e) {
       toast.error(e?.data?.error || 'Could not add to cart');
     }

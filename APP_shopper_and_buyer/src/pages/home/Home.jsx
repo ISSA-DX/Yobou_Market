@@ -107,8 +107,12 @@ export default function Home() {
       await useStore.getState().ensureGuestSession();
       await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
       await useStore.getState().refreshCartCount();
+      // v0.3.16: no longer navigate to /cart. The cart-badge in
+      // MobileShell updates via refreshCartCount() above, the toast
+      // confirms the add, and the ProductCard flips to "Added" for
+      // 3s. The user stays on Home so they can keep browsing. Cart
+      // navigation is reserved for an explicit tap on the cart icon.
       toast.success(`Added ${p.name} to cart`);
-      navigate('/cart');
     } catch (e) {
       toast.error(e?.data?.error || 'Could not add to cart');
     }

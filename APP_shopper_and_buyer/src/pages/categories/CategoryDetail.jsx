@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { api } from '../../api';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
@@ -59,7 +59,6 @@ export default function CategoryDetail() {
   const [sort, setSort] = useState('featured');
   const [showSort, setShowSort] = useState(false);
   const refreshCart = useStore((s) => s.refreshCartCount);
-  const navigate = useNavigate();
 
   const title = useMemo(
     () => slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
@@ -99,8 +98,12 @@ export default function CategoryDetail() {
       await useStore.getState().ensureGuestSession();
       await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
       await refreshCart();
+      // v0.3.16: no longer navigate to /cart. The cart badge in
+      // MobileShell updates via refreshCartCount() above, the toast
+      // confirms the add, and the ProductCard flips to "Added" for
+      // 3s. The user stays on the category page so they can keep
+      // browsing.
       toast.success(`Added ${p.name} to cart`);
-      navigate('/cart');
     } catch (e) {
       toast.error(e?.data?.error || 'Could not add to cart');
     }

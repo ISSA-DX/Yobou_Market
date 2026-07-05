@@ -255,7 +255,14 @@ export default function ProductDetails() {
         },
       }));
       await refreshCart();
-      navigate('/cart');
+      // v0.3.16: no longer navigate to /cart. The cart badge in
+      // MobileShell updates via refreshCartCount() above, the sticky
+      // CTA flips to a "Added" state for 3s, and the in-page Quick
+      // add button mirrors the same confirmation. The user stays on
+      // the PDP so they can keep shopping (or tap the cart icon in
+      // the bottom nav to checkout). The "Buy Now" button below
+      // (handled by `buy()`) still navigates to /checkout/shipping
+      // because that flow is an explicit intent to purchase.
     } catch (ex) {
       handleError(ex);
     } finally {

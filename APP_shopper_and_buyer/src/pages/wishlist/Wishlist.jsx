@@ -12,7 +12,7 @@
 // are surfaced as a separate "Unavailable" section so the user can prune
 // them from their list.
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
@@ -22,7 +22,6 @@ import { toast } from '../../lib/toast';
 export default function Wishlist() {
   const wishlist = useStore((s) => s.wishlist);
   const toggleWishlist = useStore((s) => s.toggleWishlist);
-  const navigate = useNavigate();
   const [allProducts, setAllProducts] = useState(null);
   const [error, setError] = useState('');
 
@@ -68,8 +67,12 @@ export default function Wishlist() {
       await useStore.getState().ensureGuestSession();
       await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
       await useStore.getState().refreshCartCount();
+      // v0.3.16: no longer navigate to /cart. The cart badge in
+      // MobileShell updates via refreshCartCount() above, the toast
+      // confirms the add, and the ProductCard flips to "Added" for
+      // 3s. The user stays on the wishlist so they can keep
+      // reviewing their saved items.
       toast.success(`Added ${p.name} to cart`);
-      navigate('/cart');
     } catch (e) {
       toast.error(e?.data?.error || 'Could not add to cart');
     }
