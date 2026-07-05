@@ -62,14 +62,43 @@ console.log(`[boot] UPLOAD_DIR = ${UPLOAD_DIR}`);
 console.log(`[boot] DATABASE_URL = ${process.env.DATABASE_URL}`);
 
 try {
+  // v0.3.14: regenerate the Prisma client before syncing schema.
+  // Without this, the client in node_modules/.prisma/client can drift
+  // from the actual database schema after a deploy that adds or
+  // modifies models (e.g. the CartItem.variant relation added when
+  // ProductVariant shipped). The runtime then throws
+  // "Unknown arg `variant` in include" on every cart query, which the
+  // production error handler maps to a generic 500 INTERNAL. The
+  // previous boot sequence ran `prisma db push --skip-generate` which
+  // kept the database schema in sync but NEVER regenerated the client
+  // — so the deployed server was running with a client that didn't
+  // know about the variant relation. Regenerating on every boot is
+  // the simplest, most robust fix: it doesn't depend on the render.yaml
+  // build command or a separate `prisma generate` step in the deploy
+  // pipeline, and it auto-heals on the next restart even if a future
+  // schema change ships without an explicit generate.
+  console.log('[boot] Regenerating Prisma client...');
+  execSync('npx prisma generate', {
+    stdio: 'inherit',
+    env: process.env,
+  });
+} catch (err) {
+  console.error('[boot] prisma generate failed:', err.message);
+  process.exit(1);
+}
+
+try {
   // MIGRATIONS_ENABLED=1 → use `prisma migrate deploy` (production-safe,
   // requires server/prisma/migrations/ to exist and be in sync with the
   // schema). Off → fall back to `prisma db push` (dev convenience).
-  // See server/prisma/migrations/20260630_add_product_variants/ for the
+  // --skip-generate is passed to BOTH because we just ran an explicit
+  // `prisma generate` above — running it again is harmless but
+  // wasteful (adds 5-15s of boot time on every restart). See
+  // server/prisma/migrations/20260630_add_product_variants/ for the
   // first migration that introduces the ProductVariant table.
   if (process.env.MIGRATIONS_ENABLED === '1') {
     console.log('[boot] Running prisma migrate deploy (MIGRATIONS_ENABLED=1)...');
-    execSync('npx prisma migrate deploy', {
+    execSync('npx prisma migrate deploy --skip-generate', {
       stdio: 'inherit',
       env: process.env,
     });
