@@ -292,21 +292,18 @@ app.use('/api/*', (_req, res) => {
   res.status(404).json({ error: 'NOT_FOUND' });
 });
 
-// Error handler — v0.3.14 diagnostic: surface the actual error
-// message + first few stack frames in production so we can see WHY
-// the cart endpoint is 500ing. The render.yaml build runs
-// `npx prisma generate` so the client is in sync, yet
-// `prisma.cartItem.create({ include: { variant: true } })` still
-// throws. We need the real error message to diagnose. This will be
-// reverted once we know the root cause.
+// Error handler — production-safe. In dev we surface the real
+// err.message + a small stack slice so the terminal is useful; in
+// production we only log to the server console and return a
+// generic 500 body so we never leak Prisma error messages,
+// internal paths, or schema details to the public.
 app.use((err, _req, res, _next) => {
   console.error('[server error]', err);
+  const isDev = process.env.NODE_ENV !== 'production';
   res.status(500).json({
     error: 'INTERNAL',
-    message: err.message || 'An internal server error occurred',
-    code: err.code,
-    name: err.name,
-    stack: err.stack ? err.stack.split('\n').slice(0, 8).join('\n') : undefined,
+    message: isDev ? err.message : 'An internal server error occurred',
+    ...(isDev && err.stack ? { stack: err.stack.split('\n').slice(0, 8).join('\n') } : {}),
   });
 });
 
