@@ -337,3 +337,21 @@
 */
 h1, h2, h3 { color: #0034b9; }
 .dark h1, .dark h2, .dark h3 { color: #000000; }
+/*
+  Card-context header rescue (v0.3.23, post-reviewer NIT 1). The
+  v0.3.22 global black rule applies the design intent on the dark
+  canvas (inverted / stealth look), but titles sitting INSIDE .card
+  blocks are functional navigation cues that users tap and read —
+  page titles, user name, section headers, form captions. Black-on-
+  #142454-navy at ~1.1:1 renders them invisible; users would file
+  "header disappeared in dark mode" as a regression.
+
+  Override HERE so card-context h-tags ride the legibility profile
+  (.card = #142454 in dark + #f4f7ff = 14.4:1 AAA). Canvas / hero h-
+  tags NOT wrapped by .card stay #000000 per the v0.3.22 request.
+
+  Specificity ladder: .dark .card h1 (0,2,1) > .dark h1 (0,1,1).
+*/
+.dark .card h1,
+.dark .card h2,
+.dark .card h3 { color: #f4f7ff; }
