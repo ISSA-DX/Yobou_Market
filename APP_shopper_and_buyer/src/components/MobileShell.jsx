@@ -28,13 +28,16 @@ export default function MobileShell() {
           below the device notch and never gets clipped by the status bar. */}
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-outline-variant/30">
         <div
-          className="max-w-screen-md mx-auto flex items-center justify-between px-4"
+          className="max-w-screen-md mx-auto flex items-center justify-end px-4"
           style={{ height: 'calc(3rem + env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' }}
         >
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-md bg-primary text-white flex items-center justify-center font-black text-sm">Y</div>
-            <span className="font-bold text-sm">Yobou</span>
-          </div>
+          {/* Y+ 'Yobou' wordmark removed from the persistent top bar.
+              The Home page's hero card carries 'Welcome to Yobou'
+              which acts as the page-level identifier; on every other
+              page the bottom-nav (Home / Categories / Cart / Orders
+              / Profile) is the navigational chrome. Repeating the
+              wordmark on every screen was visual noise eating
+              vertical real estate. BellLink keeps its right slot. */}
           <BellLink />
         </div>
       </header>

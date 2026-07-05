@@ -27,12 +27,14 @@ export default function Register() {
   }
 
   return (
-    <div className="py-8 auth-page">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-md bg-primary text-white flex items-center justify-center font-black">Y</div>
-          <span className="font-bold text-lg">Yobou</span>
-        </div>
+    <div className="py-6 auth-page">
+      {/* Header row used to carry a Y+ 'Yobou' wordmark above the
+          <h1>Create account</h1> below it — duplicate brand chrome.
+          The card already brands the page via the welcome message;
+          the wordmark atop it was repetition. Help affordance
+          stays, end-aligned, with reduced top padding to claw back
+          vertical real estate. */}
+      <div className="flex items-center justify-end mb-4">
         <Link to="/help" className="p-2 rounded-full hover:bg-surface-low" aria-label="Help">
           <Icon name="help" className="text-[22px] text-on-surface-variant" />
         </Link>

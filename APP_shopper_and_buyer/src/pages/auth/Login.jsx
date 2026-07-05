@@ -51,12 +51,15 @@ export default function Login() {
   }
 
   return (
-    <div className="py-8 auth-page">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-md bg-primary text-white flex items-center justify-center font-black">Y</div>
-          <span className="font-bold text-lg">Yobou</span>
-        </div>
+    <div className="py-6 auth-page">
+      {/* Header row used to carry a Y+ 'Yobou' wordmark above the
+          <h1>Welcome back</h1> below it — duplicate brand chrome.
+          The card itself establishes the brand via the welcome
+          message + form context; the wordmark row was pure
+          repetition. We now only render the Help affordance,
+          end-aligned, with reduced top padding to claw back
+          vertical real estate the wordmark was eating. */}
+      <div className="flex items-center justify-end mb-4">
         <Link to="/help" className="p-2 rounded-full hover:bg-surface-low" aria-label="Help">
           <Icon name="help" className="text-[22px] text-on-surface-variant" />
         </Link>
@@ -151,7 +154,7 @@ export default function Login() {
           <h2 className="text-sm text-on-surface text-center font-semibold uppercase tracking-wide">New to Yobou?</h2>
           <Link
             to="/register"
-            className="mt-3 inline-flex w-full btn-secondary py-3 justify-center font-semibold"
+            className="mt-3 inline-flex w-full btn-primary py-3 justify-center font-semibold"
           >
             Create account
             <Icon name="arrow_forward" className="text-[18px]" />
