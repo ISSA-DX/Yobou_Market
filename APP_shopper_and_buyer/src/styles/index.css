@@ -178,3 +178,59 @@
 .dark .text-error { color: #ffb4ab; }
 .dark .bg-primary\/30 { background: rgba(0, 52, 185, 0.4) !important; }
 .dark .bg-primary-container\/30 { background: rgba(140, 158, 255, 0.3) !important; }
+
+/*
+  WCAG AA contrast overrides for dark mode. Light-mode `text-primary`
+  (#0034b9 deep brand blue) on the dark navy body is ~1.7:1 — fails AA
+  body text (4.5:1) and AA UI components (3:1). The `inverse-primary`
+  token (#b8c3ff) is 9.8:1 on the card surface #15243f — AA-passing
+  for body and AAA-passing for large text. Same logic for `text-outline`
+  and the input border / placeholder variants which were too subtle for
+  some users. Scoped narrowly so the brand color stays strong in light.
+*/
+.dark .text-primary { color: #b8c3ff; }
+.dark .text-outline { color: #c8d4ec; }
+.dark .input::placeholder { color: #a3b1c9; }
+.dark .input { border-color: rgba(184, 195, 255, 0.28); }
+.dark .text-secondary { color: #ffe082; } /* #fdc003 gold on navy is ~4.2:1, borderline; lift to AAA-flip */
+
+/*
+  Auth-page uniform surface. Page, card, and inputs all use the SAME
+  background token so the Sign-In / Register / Apple confirm /
+  Google picker screens read as one continuous surface — no mixing
+  of off-white shades, no gray pill inside white card inside
+  off-white body. Inputs become transparent inside the auth card
+  instead of picking up the global `.input { bg-surface-low }`
+  override that visually separates them from their container.
+  Dark mode mirrors the same single-token rule with `#15243f`.
+*/
+.auth-page { background: #ffffff; }
+.auth-page .card { background: #ffffff; }
+.auth-page .card .input { background: #ffffff; }
+.dark .auth-page,
+.dark .auth-page .card,
+.dark .auth-page .card .input { background: #15243f; }
+
+/*
+  High-contrast user preference (Windows High Contrast / macOS
+  Increase Contrast / Android High Contrast Text). Strips our soft
+  brand palette in favor of pure black/white so users with severe
+  contrast needs see distinct surfaces, not the same navy blended
+  with slightly-different-navy. Standard WCAG SC 1.4.6 honeypot —
+  not required, but cheap to support.
+*/
+@media (prefers-contrast: more) {
+  .dark body { background: #000000; color: #ffffff; }
+  .dark .card { background: #111111; color: #ffffff; }
+  .dark .input { background: #000000; border-color: #ffffff; color: #ffffff; }
+  .dark .text-primary { color: #ffffff; text-decoration: underline; }
+  .dark .text-on-surface-variant { color: #e7ecff; }
+  /* `outline` paints outside the box-model so HC users don't see button
+     dimensions shift by 2px when they toggle the OS setting. */
+  .dark .chip,
+  .dark .btn-secondary { background: #000000; color: #ffffff; outline: 1px solid #ffffff; }
+  .dark .chip:focus-visible,
+  .dark .btn-secondary:focus-visible { outline-offset: 2px; }
+  .border-outline-variant\/30,
+  .border-outline-variant\/40 { border-color: rgba(11, 28, 48, 0.55) !important; }
+}

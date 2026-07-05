@@ -27,11 +27,11 @@ export default function Register() {
   }
 
   return (
-    <div className="py-8">
+    <div className="py-8 auth-page">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 rounded-md bg-primary text-white flex items-center justify-center font-black">Y</div>
-          <span className="font-bold text-lg">Yobou Market</span>
+          <span className="font-bold text-lg">Yobou</span>
         </div>
         <Link to="/help" className="p-2 rounded-full hover:bg-surface-low" aria-label="Help">
           <Icon name="help" className="text-[22px] text-on-surface-variant" />

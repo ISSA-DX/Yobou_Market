@@ -163,7 +163,13 @@ export const useStore = create((set, get) => ({
   async logout() {
     try { await api('/api/auth/logout', { method: 'POST' }); } catch {}
     setAccessToken(null);
+    // Set user=null FIRST so App.jsx's ProtectedRoute guard instantly
+    // routes to /login, THEN flip the theme — the Login screen mounts
+    // already in light mode with zero whitewash flash on the previous
+    // screen. (Reversed order would briefly render the home/cart in
+    // light theme before the route guard fires, reading as a bug.)
     set({ user: null, cartCount: 0 });
+    get()._applyTheme('light', false);
   },
 
   async updateProfile(payload) {
@@ -231,6 +237,16 @@ export const useStore = create((set, get) => ({
 
   // Called once on boot to restore the session from the refresh cookie.
   async boot() {
+    // Pre-auth theme is ALWAYS light so the Sign-In / Register /
+    // AppleConfirm / GooglePicker screens are predictably bright.
+    // Returning sessions with a stored dark theme used to bleed into
+    // the login screen (the boot refresh would re-apply `dark` before
+    // the user had re-auth'd), which read as a UI bug. After the
+    // refresh resolves with a valid user, their stored theme takes
+    // over — see below.
+    if (!get().user) {
+      get()._applyTheme('light', false);
+    }
     try {
       // cache: 'no-store' + Date.now() suffix defends against the
       // Capacitor WebView serving a stale cached 401 from a prior
