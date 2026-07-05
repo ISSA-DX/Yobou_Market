@@ -218,13 +218,16 @@ export const useStore = create((set, get) => ({
       // a shopper reopening the app after a server restart would
       // see "Couldn't load your cart" forever — the refresh would
       // never actually reach the server.
+      // CRITICAL: no Cache-Control / Pragma headers — those are
+      // not CORS-safelisted and the WebView's preflight gets
+      // rejected by the server's Content-Type + Authorization
+      // allow-list. See api.js api() for full rationale.
       const r = await fetch(
         (import.meta.env.VITE_API_BASE || '') + '/api/auth/refresh?_t=' + Date.now(),
         {
           method: 'POST',
           credentials: 'include',
           cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
         }
       );
       if (r.ok) {

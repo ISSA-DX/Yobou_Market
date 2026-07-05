@@ -55,7 +55,6 @@ export async function refreshAccessToken() {
     method: 'POST',
     credentials: 'include',
     cache: 'no-store',
-    headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
   })
     .then(async (r) => {
       if (!r.ok) throw new Error('NO_REFRESH');
@@ -83,9 +82,16 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
   // Android Capacitor WebView from re-serving a stale 401 body for
   // an identical-URL repeat call (root cause of v0.3.9's "Couldn't
   // load your cart" — see refreshAccessToken for full context).
-  // The Cache-Control headers are belt-and-braces: some WebView
-  // builds ignore `cache: 'no-store'` but still respect explicit
-  // request headers.
+  // CRITICAL: do NOT add Cache-Control / Pragma / If-Modified-Since
+  // request headers here. None of them are CORS-safelisted, so the
+  // Capacitor WebView's OPTIONS preflight (origin=https://localhost
+  // → yobou-server.onrender.com) requests them in
+  // Access-Control-Request-Headers, the server only allows
+  // Content-Type + Authorization, the preflight is rejected, and
+  // fetch throws TypeError("Failed to fetch") which my
+  // networkErr catch surfaces as the misleading "Could not reach
+  // the server" message. The fetch option + URL suffix alone are
+  // sufficient cache-busting; the explicit headers are pure risk.
   const noCacheSuffix = method === 'GET' && !body ? `?_t=${Date.now()}` : '';
   const opts = {
     method,
@@ -93,8 +99,6 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
     cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
-      'Cache-Control': 'no-cache',
-      Pragma: 'no-cache',
       ...headers,
     },
   };
@@ -180,13 +184,12 @@ export async function apiForm(path, { method = 'POST', body, auth = true, retry 
     cache: 'no-store',
     // Do NOT set Content-Type — the browser will set the correct
     // `multipart/form-data; boundary=...` based on the FormData.
+    // Also do NOT add Cache-Control / Pragma — they trigger CORS
+    // preflight rejection on the cross-site Android WebView.
+    // See api() for full rationale.
     body,
-    headers: {
-      'Cache-Control': 'no-cache',
-      Pragma: 'no-cache',
-    },
   };
-  if (auth && accessToken) opts.headers = { Authorization: `Bearer ${accessToken}`, ...opts.headers };
+  if (auth && accessToken) opts.headers = { Authorization: `Bearer ${accessToken}` };
 
   let res;
   try {
