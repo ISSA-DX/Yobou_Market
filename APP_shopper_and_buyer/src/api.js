@@ -45,6 +45,19 @@ function notifyAuthChange(state) {
 
 export async function refreshAccessToken() {
   if (refreshing) return refreshing;
+  // v0.3.13 token-wipeout guard. Capture the in-memory token that
+  // triggered this refresh. If the catch below runs, only nullify
+  // the token if NO fresher session was minted in the meantime
+  // (e.g. ensureGuestSession succeeded and set a new guest token
+  // while this refresh round-trip was still in flight). The bug
+  // it fixes: an early background 401 from a hydrated stale
+  // localStorage token kicks off refresh, the user taps Add to
+  // Cart, ensureGuestSession mints a fresh guest, the POST
+  // succeeds, the background refresh eventually fails, and the
+  // blind setAccessToken(null) wipes the fresh token — leaving
+  // the next refreshCartCount and useApi('/api/cart') 401ing and
+  // the cart badge stuck at 0 with "Couldn't load your cart".
+  const currentToken = accessToken;
   // cache: 'no-store' + a per-request timestamp query string prevent
   // the Android Capacitor WebView from serving a stale cached 401
   // body for an identical-URI refresh POST. The disk-cache replay
@@ -59,6 +72,16 @@ export async function refreshAccessToken() {
     .then(async (r) => {
       if (!r.ok) throw new Error('NO_REFRESH');
       const data = await r.json();
+      // v0.3.13 success-path guard (reviewer NIT 1). If a fresher
+      // token was installed while this refresh was in flight (e.g.
+      // ensureGuestSession minted a guest for an in-progress Add to
+      // Cart), don't clobber it. Returning data.accessToken without
+      // writing it lets the next api() call in the chain use the
+      // fresh in-memory token, not the rotated-but-stale-by-context
+      // one. The returned value is unused by today's api() 401
+      // handler (which just re-calls api()), but returning it keeps
+      // the contract intact for any future caller.
+      if (accessToken !== currentToken) return data.accessToken;
       // Centralize the in-memory + localStorage write through
       // setAccessToken so the v0.3.10 localStorage invariant has
       // exactly one mutation site. notifyAuthChange stays here
@@ -69,8 +92,13 @@ export async function refreshAccessToken() {
       return data.accessToken;
     })
     .catch((err) => {
-      setAccessToken(null);
-      notifyAuthChange({ user: null });
+      // Only wipe the token if no fresher one was installed in
+      // the meantime. See the comment above currentToken for the
+      // full race-condition story.
+      if (accessToken === currentToken) {
+        setAccessToken(null);
+        notifyAuthChange({ user: null });
+      }
       throw err;
     })
     .finally(() => { refreshing = null; });
@@ -131,19 +159,28 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
   }
 
   if (res.status === 401 && auth && retry) {
+    // v0.3.13 token-wipeout guard. Capture the token that just 401'd
+    // so the catch can tell whether a fresher token was installed
+    // (by ensureGuestSession) while the refresh round-trip was in
+    // flight. See refreshAccessToken's comment for the full story.
+    const failedToken = accessToken;
     // Try one silent refresh, then retry once.
     try {
       await refreshAccessToken();
       return api(path, { method, body, headers, auth, retry: false });
     } catch {
-      // Clear via the central setAccessToken() so localStorage retracts
-      // in lockstep — the v0.3.10 reviewer flagged that direct
-      // `accessToken = null` would orphan a still-valid persisted JWT
-      // if a 401 hit after refreshAccessToken() had already written
-      // a fresh token. Using setAccessToken() keeps disk + memory
-      // in lockstep on every transition.
-      setAccessToken(null);
-      notifyAuthChange({ user: null });
+      // Only clear the token if no fresher one was installed. If
+      // accessToken already moved on (e.g. ensureGuestSession set
+      // a fresh guest while the refresh was in flight), keep it —
+      // a forced clear would orphan the valid session and break
+      // the next request in the chain.
+      if (accessToken === failedToken) {
+        // Clear via the central setAccessToken() so localStorage
+        // retracts in lockstep. Using setAccessToken() keeps disk
+        // + memory in lockstep on every transition.
+        setAccessToken(null);
+        notifyAuthChange({ user: null });
+      }
       const err = new Error('UNAUTHENTICATED');
       err.status = 401;
       err.data = { error: 'UNAUTHENTICATED' };
@@ -207,15 +244,21 @@ export async function apiForm(path, { method = 'POST', body, auth = true, retry 
   }
 
   if (res.status === 401 && auth && retry) {
+    // v0.3.13 token-wipeout guard. Same shape as api()'s 401 catch.
+    const failedToken = accessToken;
     try {
       await refreshAccessToken();
       return apiForm(path, { method, body, auth, retry: false });
     } catch {
-      // Mirror the api() 401 catch: clear via setAccessToken so
-      // localStorage retracts in lockstep. See the api() catch above
-      // for the full rationale.
-      setAccessToken(null);
-      notifyAuthChange({ user: null });
+      // Only clear the token if no fresher one was installed. If
+      // ensureGuestSession replaced it during the refresh, keep it.
+      if (accessToken === failedToken) {
+        // Mirror the api() 401 catch: clear via setAccessToken so
+        // localStorage retracts in lockstep. See the api() catch above
+        // for the full rationale.
+        setAccessToken(null);
+        notifyAuthChange({ user: null });
+      }
       const err = new Error('UNAUTHENTICATED');
       err.status = 401;
       err.data = { error: 'UNAUTHENTICATED' };

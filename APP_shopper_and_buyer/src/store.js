@@ -76,6 +76,14 @@ function applyDark(dark) {
   }
 }
 
+// v0.3.13 stale-response dedup token. Monotonic per-module id so
+// refreshCartCount() can discard older in-flight responses. Lives
+// at module scope rather than inside the create() closure because
+// the object literal that create() returns can't host a `let` —
+// putting it here keeps the dedup state co-located with the store
+// and avoids leaking the variable into any future HMR reload.
+let cartReqId = 0;
+
 export const useStore = create((set, get) => ({
   user: null,
   bootDone: false,
@@ -172,7 +180,15 @@ export const useStore = create((set, get) => ({
     return get().updateProfile(payload);
   },
 
+  // v0.3.13 stale-response dedup (see module-scope `let cartReqId`
+  // at the top of this file). MobileShell's user-change useEffect
+  // and quickAdd's explicit post-add call fire in parallel — the
+  // EARLIER (empty-cart) response can resolve after the LATER
+  // (populated-cart) one and overwrite the count back to 0, leaving
+  // the badge empty even though the item is on the server. Only
+  // the newest call's response may write to zustand.
   async refreshCartCount() {
+    const myId = ++cartReqId;
     const user = get().user;
     // Guests have a server-side User row (created via /api/auth/guest)
     // and a valid access token, so /api/cart works for them too. The
@@ -180,13 +196,17 @@ export const useStore = create((set, get) => ({
     // is in zustand yet (e.g. boot just finished with no refresh cookie).
     if (!user) {
       const ensured = await get().ensureGuestSession();
-      if (!ensured) { set({ cartCount: 0 }); return; }
+      if (!ensured) {
+        if (myId === cartReqId) set({ cartCount: 0 });
+        return;
+      }
     }
     try {
       const { items } = await api('/api/cart');
+      if (myId !== cartReqId) return; // stale — newer call took over
       set({ cartCount: items.reduce((s, i) => s + i.quantity, 0) });
     } catch {
-      set({ cartCount: 0 });
+      if (myId === cartReqId) set({ cartCount: 0 });
     }
   },
 
