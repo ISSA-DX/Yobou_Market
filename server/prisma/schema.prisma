@@ -77,9 +77,27 @@ model Product {
   stock       Int         @default(0)
   status      String      @default("LIVE") // LIVE / DRAFT / HIDDEN
   createdAt   DateTime    @default(now())
+  variants    ProductVariant[]
   orderItems  OrderItem[]
   cartItems   CartItem[]
   changes     ProductChange[]
+}
+
+model ProductVariant {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  color     String
+  size      String
+  stock     Int      @default(0)
+  imageUrls String   @default("[]") // JSON array per variant
+  createdAt DateTime @default(now())
+
+  cartItems CartItem[]
+  orderItems OrderItem[]
+
+  @@index([productId])
+  @@unique([productId, color, size])
 }
 
 // Curated catalogue of product categories. Replaces the free-form
@@ -97,14 +115,16 @@ model Category {
 }
 
 model CartItem {
-  id        String  @id @default(cuid())
+  id        String          @id @default(cuid())
   userId    String
   productId String
-  quantity  Int     @default(1)
-  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  quantity  Int             @default(1)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
-  @@unique([userId, productId])
+  @@unique([userId, productId, variantId])
 }
 
 model Address {
@@ -200,13 +220,15 @@ model MobileMoneyTxn {
 }
 
 model OrderItem {
-  id         String  @id @default(cuid())
+  id         String          @id @default(cuid())
   orderId    String
   productId  String
+  variantId  String?
   quantity   Int
   priceCents Int
-  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product    Product @relation(fields: [productId], references: [id])
+  order      Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product    Product         @relation(fields: [productId], references: [id])
+  variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 }
 
 model TimelineEvent {

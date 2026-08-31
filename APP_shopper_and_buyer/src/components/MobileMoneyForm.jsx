@@ -5,6 +5,8 @@ const PROVIDERS = [
   { id: 'MTN', label: 'MTN Mobile Money', color: 'bg-yellow-500' },
   { id: 'AIRTEL', label: 'Airtel Money', color: 'bg-red-600' },
   { id: 'ORANGE', label: 'Orange Money', color: 'bg-orange-500' },
+  { id: 'MOBICASH', label: 'MobiCash', color: 'bg-violet-600' },
+  { id: 'ORANGE_MONEY', label: 'Orange Money Mali', color: 'bg-orange-600' },
 ];
 
 const COUNTRIES = [

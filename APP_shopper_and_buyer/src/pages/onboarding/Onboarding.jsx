@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 
 const SLIDES = [
@@ -26,10 +27,15 @@ const SLIDES = [
 export default function Onboarding() {
   const [i, setI] = useState(0);
   const navigate = useNavigate();
+  const user = useStore((s) => s.user);
   const slide = SLIDES[i];
 
+  useEffect(() => {
+    if (user) navigate('/home', { replace: true });
+  }, [user, navigate]);
+
   function next() {
-    if (i === SLIDES.length - 1) navigate('/home');
+    if (i === SLIDES.length - 1) navigate(user ? '/home' : '/login', { replace: true });
     else setI(i + 1);
   }
 
@@ -37,7 +43,7 @@ export default function Onboarding() {
     <div className={`min-h-screen bg-gradient-to-br ${slide.bg} text-white flex flex-col`}>
       <div className="flex items-center justify-between p-4">
         <div className="w-9 h-9 rounded-md bg-white/20 backdrop-blur flex items-center justify-center font-black">Y</div>
-        <button onClick={() => navigate('/home')} className="text-sm font-semibold">Skip</button>
+        <button type="button" onClick={() => navigate(user ? '/home' : '/login', { replace: true })} className="text-sm font-semibold">Skip</button>
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
@@ -67,7 +73,7 @@ export default function Onboarding() {
             />
           ))}
         </div>
-        <button onClick={next} className="w-full bg-white text-primary font-bold py-3 rounded-full hover:bg-white/90 transition">
+        <button type="button" onClick={next} className="w-full bg-white text-primary font-bold py-3 rounded-full hover:bg-white/90 transition">
           {i === SLIDES.length - 1 ? 'Get started' : 'Next'}
         </button>
       </div>

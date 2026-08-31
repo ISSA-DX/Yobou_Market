@@ -36,28 +36,53 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const data = cartAdd.parse(req.body);
-    const product = await prisma.product.findUnique({ where: { id: data.productId } });
+    const product = await prisma.product.findUnique({
+      where: { id: data.productId },
+      include: { variants: true },
+    });
     if (!product) return res.status(404).json({ error: 'PRODUCT_NOT_FOUND' });
     if (product.status !== 'LIVE') return res.status(400).json({ error: 'PRODUCT_NOT_AVAILABLE' });
 
-    const existing = await prisma.cartItem.findUnique({
-      where: { userId_productId: { userId: req.user.id, productId: data.productId } },
+    let availableStock = product.stock;
+    let variant = null;
+    if (data.variantId) {
+      variant = await prisma.productVariant.findUnique({ where: { id: data.variantId } });
+      if (!variant || variant.productId !== product.id) {
+        return res.status(400).json({ error: 'INVALID_VARIANT' });
+      }
+      availableStock = variant.stock;
+    }
+
+    const existing = await prisma.cartItem.findFirst({
+      where: { userId: req.user.id, productId: data.productId, variantId: data.variantId || null },
     });
     const currentQty = existing?.quantity || 0;
-    if (product.stock < currentQty + data.quantity) {
+    if (availableStock < currentQty + data.quantity) {
       return res.status(400).json({
         error: 'INSUFFICIENT_STOCK',
-        available: product.stock,
+        available: availableStock,
         requested: currentQty + data.quantity,
       });
     }
 
-    const item = await prisma.cartItem.upsert({
-      where: { userId_productId: { userId: req.user.id, productId: data.productId } },
-      update: { quantity: { increment: data.quantity } },
-      create: { userId: req.user.id, productId: data.productId, quantity: data.quantity },
-      include: { product: { include: { vendor: { select: { id: true, businessName: true, status: true } } } } },
-    });
+    let item;
+    if (existing) {
+      item = await prisma.cartItem.update({
+        where: { id: existing.id },
+        data: { quantity: existing.quantity + data.quantity },
+        include: { product: { include: { vendor: { select: { id: true, businessName: true, status: true } } } } },
+      });
+    } else {
+      item = await prisma.cartItem.create({
+        data: {
+          userId: req.user.id,
+          productId: data.productId,
+          variantId: data.variantId || null,
+          quantity: data.quantity,
+        },
+        include: { product: { include: { vendor: { select: { id: true, businessName: true, status: true } } } } },
+      });
+    }
     res.status(201).json({ item: parseCartItem(item) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
@@ -68,28 +93,45 @@ router.post('/', async (req, res, next) => {
 router.patch('/:productId', async (req, res, next) => {
   try {
     const quantity = Number(req.body?.quantity);
+    const variantId = req.body?.variantId || null;
     if (!Number.isInteger(quantity) || quantity < 0 || quantity > 99) {
       return res.status(400).json({ error: 'INVALID_QUANTITY' });
     }
+
+    const product = await prisma.product.findUnique({ where: { id: req.params.productId }, include: { variants: true } });
+    if (!product) return res.status(404).json({ error: 'PRODUCT_NOT_FOUND' });
+
+    let availableStock = product.stock;
+    if (variantId) {
+      const variant = await prisma.productVariant.findUnique({ where: { id: variantId } });
+      if (!variant || variant.productId !== product.id) {
+        return res.status(400).json({ error: 'INVALID_VARIANT' });
+      }
+      availableStock = variant.stock;
+    }
+
     if (quantity === 0) {
       await prisma.cartItem.deleteMany({
-        where: { userId: req.user.id, productId: req.params.productId },
+        where: { userId: req.user.id, productId: req.params.productId, variantId },
       });
       return res.json({ ok: true });
     }
 
-    const product = await prisma.product.findUnique({ where: { id: req.params.productId } });
-    if (!product) return res.status(404).json({ error: 'PRODUCT_NOT_FOUND' });
-    if (quantity > product.stock) {
+    if (quantity > availableStock) {
       return res.status(400).json({
         error: 'INSUFFICIENT_STOCK',
-        available: product.stock,
+        available: availableStock,
         requested: quantity,
       });
     }
 
+    const existing = await prisma.cartItem.findFirst({
+      where: { userId: req.user.id, productId: req.params.productId, variantId },
+    });
+    if (!existing) return res.status(404).json({ error: 'CART_ITEM_NOT_FOUND' });
+
     const item = await prisma.cartItem.update({
-      where: { userId_productId: { userId: req.user.id, productId: req.params.productId } },
+      where: { id: existing.id },
       data: { quantity },
       include: { product: { include: { vendor: { select: { id: true, businessName: true, status: true } } } } },
     });
@@ -102,8 +144,9 @@ router.patch('/:productId', async (req, res, next) => {
 
 router.delete('/:productId', async (req, res, next) => {
   try {
+    const variantId = req.body?.variantId || req.query?.variantId || null;
     await prisma.cartItem.deleteMany({
-      where: { userId: req.user.id, productId: req.params.productId },
+      where: { userId: req.user.id, productId: req.params.productId, variantId },
     });
     res.json({ ok: true });
   } catch (err) { next(err); }

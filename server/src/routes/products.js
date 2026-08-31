@@ -22,9 +22,52 @@ function parseImageUrls(product) {
   }
 }
 
+function parseVariants(product) {
+  if (!product) return product;
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  return {
+    ...product,
+    variants: variants.map((variant) => ({
+      ...variant,
+      imageUrls: Array.isArray(variant.imageUrls)
+        ? variant.imageUrls
+        : (() => {
+            if (typeof variant.imageUrls !== 'string') return [];
+            try { return JSON.parse(variant.imageUrls) || []; } catch { return []; }
+          })(),
+    })),
+  };
+}
+
+function parseExtraCategories(product) {
+  if (!product) return product;
+  return product;
+}
+
 function stringifyImageUrls(data) {
   if (data.imageUrls === undefined) return data;
   return { ...data, imageUrls: JSON.stringify(data.imageUrls || []) };
+}
+
+function variantStockTotal(variants) {
+  if (!Array.isArray(variants)) return 0;
+  return variants.reduce((sum, variant) => sum + (Number(variant.stock) || 0), 0);
+}
+
+async function applyVariants(tx, productId, variants) {
+  const rows = Array.isArray(variants) ? variants : [];
+  await tx.productVariant.deleteMany({ where: { productId } });
+  if (rows.length === 0) return [];
+
+  return Promise.all(rows.map((variant) => tx.productVariant.create({
+    data: {
+      productId,
+      color: String(variant.color || '').trim(),
+      size: String(variant.size || '').trim(),
+      stock: Number(variant.stock) || 0,
+      imageUrls: JSON.stringify(Array.isArray(variant.imageUrls) ? variant.imageUrls : []),
+    },
+  })));
 }
 
 function requireAdminOrApprovedVendor(req, res, next) {
@@ -90,9 +133,12 @@ router.get('/', async (req, res, next) => {
       where,
       orderBy: { createdAt: 'desc' },
       take,
-      include: { vendor: { select: { id: true, businessName: true, status: true } } },
+      include: {
+        vendor: { select: { id: true, businessName: true, status: true } },
+        variants: { orderBy: { createdAt: 'asc' } },
+      },
     });
-    res.json({ products: products.map(parseImageUrls) });
+    res.json({ products: products.map((p) => parseExtraCategories(parseVariants(parseImageUrls(p)))) });
   } catch (err) { next(err); }
 });
 
@@ -244,7 +290,10 @@ router.get('/:id', async (req, res, next) => {
   try {
     const product = await prisma.product.findUnique({
       where: { id: req.params.id },
-      include: { vendor: { select: { id: true, businessName: true, status: true } } },
+      include: {
+        vendor: { select: { id: true, businessName: true, status: true } },
+        variants: { orderBy: { createdAt: 'asc' } },
+      },
     });
     if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
     // Hide non-live products from the public storefront unless owner/admin.
@@ -253,7 +302,7 @@ router.get('/:id', async (req, res, next) => {
     if (product.status !== 'LIVE' && !isOwner && !isAdmin) {
       return res.status(404).json({ error: 'NOT_FOUND' });
     }
-    res.json({ product: parseImageUrls(product) });
+    res.json({ product: parseExtraCategories(parseVariants(parseImageUrls(product))) });
   } catch (err) { next(err); }
 });
 
@@ -286,7 +335,31 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
 router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) => {
   try {
     const data = productUpsert.parse(req.body);
-    const product = await prisma.product.create({ data: stringifyImageUrls(data) });
+    const variants = Array.isArray(data.variants) ? data.variants : [];
+    const effectiveStock = variants.length > 0 ? variantStockTotal(variants) : data.stock ?? 0;
+
+    const product = await prisma.$transaction(async (tx) => {
+      const { variants: _ignoredVariants, ...productData } = stringifyImageUrls(data);
+      const created = await tx.product.create({
+        data: {
+          ...productData,
+          stock: effectiveStock,
+          ...(variants.length > 0 ? {
+            variants: {
+              create: variants.map((variant) => ({
+                color: String(variant.color || '').trim(),
+                size: String(variant.size || '').trim(),
+                stock: Number(variant.stock) || 0,
+                imageUrls: JSON.stringify(Array.isArray(variant.imageUrls) ? variant.imageUrls : []),
+              })),
+            },
+          } : {}),
+        },
+        include: { variants: { orderBy: { createdAt: 'asc' } } },
+      });
+      return created;
+    });
+
     // Audit + live fan-out. notifyProductChange handles "vendor-less"
     // products by skipping the vendor owner branch internally.
     await audit(req.user.id, {
@@ -296,7 +369,7 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
       meta: { name: product.name, category: product.category, vendorId: product.vendorId },
     });
     await notifyProductChange({ action: 'create', product });
-    res.status(201).json({ product: parseImageUrls(product) });
+    res.status(201).json({ product: parseExtraCategories(parseVariants(parseImageUrls(product))) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
     next(err);
@@ -316,9 +389,32 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
 
     // Admin updates apply immediately; vendor updates go through approval.
     if (isAdmin) {
-      const updated = await prisma.product.update({
-        where: { id: req.params.id },
-        data: stringifyImageUrls(data),
+      const updated = await prisma.$transaction(async (tx) => {
+        const normalizedVariants = Array.isArray(data.variants) ? data.variants : undefined;
+        const nextStock = normalizedVariants !== undefined
+          ? (normalizedVariants.length > 0 ? variantStockTotal(normalizedVariants) : (data.stock ?? 0))
+          : undefined;
+
+        const { variants: _ignoredVariants, ...productData } = stringifyImageUrls(data);
+        const payload = { ...productData };
+        if (nextStock !== undefined) payload.stock = nextStock;
+
+        const updatedProduct = await tx.product.update({
+          where: { id: req.params.id },
+          data: payload,
+          include: { variants: { orderBy: { createdAt: 'asc' } } },
+        });
+
+        if (normalizedVariants !== undefined) {
+          await applyVariants(tx, req.params.id, normalizedVariants);
+          const refreshed = await tx.product.findUnique({
+            where: { id: req.params.id },
+            include: { variants: { orderBy: { createdAt: 'asc' } } },
+          });
+          return refreshed;
+        }
+
+        return updatedProduct;
       });
       await audit(req.user.id, {
         action: 'product.update',
@@ -327,7 +423,7 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         meta: { name: updated.name, category: updated.category, vendorId: updated.vendorId },
       });
       await notifyProductChange({ action: 'update', product: updated });
-      return res.json({ product: parseImageUrls(updated) });
+      return res.json({ product: parseExtraCategories(parseVariants(parseImageUrls(updated))) });
     }
 
     const change = await prisma.productChange.create({

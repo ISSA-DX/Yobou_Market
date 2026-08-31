@@ -27,19 +27,53 @@ const EMPTY_FORM = {
   description: '',
   category: '',
   priceCents: 0,
+  compareAtPriceCents: null,
   stock: 0,
   imageUrls: [],
+  variants: [],
   status: 'LIVE',
+  showOnHome: true,
+  showOnDeals: true,
+  showOnFlashDeals: false,
+  showOnSearch: true,
+  extraCategories: [],
 };
 
 const DRAFT_KEY = 'yobou-partner-product-draft';
+
+function sumVariantStock(variants = []) {
+  return variants.reduce((sum, variant) => sum + (Number(variant?.stock) || 0), 0);
+}
 
 function validate(form) {
   const errors = {};
   if (!form.name.trim()) errors.name = 'Product name is required.';
   if (!form.category || !form.category.trim()) errors.category = 'Pick a category.';
   if (form.priceCents < 0) errors.priceCents = 'Price must be zero or more.';
-  if (form.stock < 0 || !Number.isInteger(form.stock)) errors.stock = 'Stock must be a whole number.';
+  if (form.compareAtPriceCents != null && form.compareAtPriceCents < 0) {
+    errors.compareAtPriceCents = 'Compare-at price must be zero or more.';
+  } else if (form.compareAtPriceCents != null && form.compareAtPriceCents <= form.priceCents) {
+    errors.compareAtPriceCents = 'Compare-at price must be higher than the price to be a real deal.';
+  }
+  const variants = Array.isArray(form.variants) ? form.variants : [];
+  if (variants.length > 0) {
+    const rowErrors = [];
+    variants.forEach((variant, index) => {
+      const color = String(variant?.color || '').trim();
+      const size = String(variant?.size || '').trim();
+      const stock = Number(variant?.stock);
+      if (!color || !size) rowErrors[index] = true;
+      if (!Number.isInteger(stock) || stock < 0) rowErrors[index] = true;
+    });
+    if (rowErrors.some(Boolean)) {
+      errors.variants = 'Each variant needs a color, size, and non-negative stock.';
+      errors.rows = rowErrors;
+    }
+  }
+  const stockVal = Number(form.stock);
+  if (!Number.isInteger(stockVal) || stockVal < 0) {
+    errors.stock = 'Stock must be a whole number.';
+  }
   return errors;
 }
 
@@ -70,10 +104,17 @@ export default function ProductNew() {
         name: p.name || '',
         description: p.description || '',
         category: p.category || '',
-        priceCents: p.priceCents || 0,
-        stock: p.stock || 0,
+        priceCents: Number(p.priceCents) || 0,
+        compareAtPriceCents: p.compareAtPriceCents ?? null,
+        stock: Number(p.stock) || 0,
         imageUrls: Array.isArray(p.imageUrls) ? p.imageUrls : [],
+        variants: Array.isArray(p.variants) ? p.variants : [],
         status: p.status || 'LIVE',
+        showOnHome: p.showOnHome ?? true,
+        showOnDeals: p.showOnDeals ?? true,
+        showOnFlashDeals: p.showOnFlashDeals ?? false,
+        showOnSearch: p.showOnSearch ?? true,
+        extraCategories: Array.isArray(p.extraCategories) ? p.extraCategories : [],
       };
       setForm(next);
       initialFormRef.current = JSON.stringify(next);
@@ -81,12 +122,29 @@ export default function ProductNew() {
   }, [productApi.data]);
 
   function update(k, v) {
-    setForm((f) => ({ ...f, [k]: v }));
+    setForm((f) => {
+      const next = { ...f, [k]: v };
+      if (k === 'variants' && Array.isArray(v) && v.length > 0) {
+        next.stock = sumVariantStock(v);
+      }
+      return next;
+    });
     setErrors((prev) => ({ ...prev, [k]: undefined }));
   }
 
   async function submit() {
-    const fieldErrors = validate(form);
+    const normalized = {
+      ...form,
+      stock: Array.isArray(form.variants) && form.variants.length > 0 ? sumVariantStock(form.variants) : Number(form.stock) || 0,
+      compareAtPriceCents: form.compareAtPriceCents ?? null,
+      variants: Array.isArray(form.variants) ? form.variants : [],
+      extraCategories: Array.isArray(form.extraCategories) ? form.extraCategories : [],
+      showOnHome: Boolean(form.showOnHome),
+      showOnDeals: Boolean(form.showOnDeals),
+      showOnFlashDeals: Boolean(form.showOnFlashDeals),
+      showOnSearch: Boolean(form.showOnSearch),
+    };
+    const fieldErrors = validate(normalized);
     if (Object.keys(fieldErrors).length) {
       setErrors(fieldErrors);
       setErr('Please fix the highlighted fields before submitting.');
@@ -99,9 +157,9 @@ export default function ProductNew() {
     setErr('');
     try {
       if (isEdit) {
-        await api(`/api/products/${id}`, { method: 'PATCH', body: form });
+        await api(`/api/products/${id}`, { method: 'PATCH', body: normalized });
       } else {
-        await api('/api/products', { method: 'POST', body: form });
+        await api('/api/products', { method: 'POST', body: normalized });
       }
       clearDraft();
       toast.success('Submitted for review');

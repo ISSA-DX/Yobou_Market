@@ -14,14 +14,17 @@ import { productImage } from '../lib/productImage';
 const FALLBACK = `${import.meta.env.BASE_URL || '/'}seed-images/placeholder.svg`;
 
 export default function ProductPreviewCard({ form, vendorName }) {
-  // Lightweight "fake product" object — matches the shape productImage
-  // expects (imageUrls may be string|array|null per productImage.parseImages).
   const fake = {
     imageUrls: form.imageUrls || [],
     category: form.category,
   };
   const img = productImage(fake);
   const price = form.priceCents > 0 ? `$${(form.priceCents / 100).toFixed(2)}` : '—';
+  const compareAt = (typeof form.compareAtPriceCents === 'number' && form.compareAtPriceCents > (form.priceCents || 0))
+    ? form.compareAtPriceCents
+    : null;
+  const discount = compareAt ? Math.round(((compareAt - form.priceCents) / compareAt) * 100) : 0;
+  const variantCount = Array.isArray(form.variants) ? form.variants.length : 0;
   const status = form.status || 'LIVE';
 
   return (
@@ -41,8 +44,15 @@ export default function ProductPreviewCard({ form, vendorName }) {
         <div className="text-label-md text-on-surface-variant line-clamp-1">
           {form.category?.trim() || <span className="italic">Category</span>}
         </div>
-        <div className="flex items-center justify-between pt-1">
-          <div className="font-bold text-base">{price}</div>
+        <div className="flex items-center justify-between pt-1 gap-2">
+          <div className="font-bold text-base flex items-baseline gap-2">
+            <span>{price}</span>
+            {compareAt && (
+              <span className="text-xs line-through text-on-surface-variant">
+                ${((compareAt) / 100).toFixed(2)}
+              </span>
+            )}
+          </div>
           {form.stock > 0 ? (
             <span className="chip bg-tertiary-container/20 text-tertiary">
               <Icon name="check_circle" className="text-[14px]" /> In stock
@@ -53,7 +63,13 @@ export default function ProductPreviewCard({ form, vendorName }) {
             </span>
           )}
         </div>
-        <div className="text-label-sm text-on-surface-variant pt-1 flex items-center justify-between">
+        {compareAt && (
+          <div className="text-label-sm text-primary font-medium">Save {discount}%</div>
+        )}
+        {variantCount > 0 && (
+          <div className="text-label-sm text-on-surface-variant">{variantCount} variant option{variantCount === 1 ? '' : 's'}</div>
+        )}
+        <div className="text-label-sm text-on-surface-variant pt-1 flex items-center justify-between gap-2">
           <span>{vendorName || 'Yobou Direct'}</span>
           <span className={`chip ${status === 'LIVE' ? 'bg-tertiary-container/20 text-tertiary' : status === 'DRAFT' ? 'bg-secondary/20 text-secondary' : 'bg-error/10 text-error'}`}>
             {status}

@@ -15,7 +15,7 @@
 
 const crypto = require('crypto');
 
-const MOBILE_MONEY_PROVIDERS = new Set(['MPESA', 'MTN', 'AIRTEL', 'ORANGE']);
+const MOBILE_MONEY_PROVIDERS = new Set(['MPESA', 'MTN', 'AIRTEL', 'ORANGE', 'MOBICASH', 'ORANGE_MONEY']);
 
 // Simulation failure rate, configurable via env. In production this should be 0
 // and real provider responses should drive the status.

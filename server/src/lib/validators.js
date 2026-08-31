@@ -24,6 +24,14 @@ const vendorRegister = z.object({
   categories: z.array(z.string()).default([]),
 });
 
+const variantInput = z.object({
+  id: z.string().optional(),
+  color: z.string().min(1).max(80),
+  size: z.string().min(1).max(40),
+  stock: z.number().int().nonnegative().default(0),
+  imageUrls: z.array(z.string()).default([]),
+});
+
 const productUpsert = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).default(''),
@@ -31,11 +39,13 @@ const productUpsert = z.object({
   category: z.string().min(1).max(80),
   imageUrls: z.array(z.string()).default([]),
   stock: z.number().int().nonnegative().default(0),
+  variants: z.array(variantInput).max(200).default([]),
   status: z.enum(['LIVE', 'DRAFT', 'HIDDEN']).default('LIVE'),
 });
 
 const cartAdd = z.object({
   productId: z.string(),
+  variantId: z.string().nullable().optional(),
   quantity: z.number().int().positive().max(99),
 });
 
@@ -48,7 +58,7 @@ const address = z.object({
   isDefault: z.boolean().optional(),
 });
 
-const MOBILE_MONEY_PROVIDERS = ['MPESA', 'MTN', 'AIRTEL', 'ORANGE'];
+const MOBILE_MONEY_PROVIDERS = ['MPESA', 'MTN', 'AIRTEL', 'ORANGE', 'MOBICASH', 'ORANGE_MONEY'];
 
 const mobileMoney = z.object({
   provider: z.enum(MOBILE_MONEY_PROVIDERS),

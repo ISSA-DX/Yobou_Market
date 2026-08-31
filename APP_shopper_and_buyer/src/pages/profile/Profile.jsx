@@ -232,7 +232,7 @@ export default function Profile() {
         </button>
 
         <div className="text-center text-label-md text-on-surface-variant pb-4">
-          Yobou v1.0.0 · <Link to="#" className="text-primary">Terms</Link> · <Link to="#" className="text-primary">Privacy</Link>
+          Yobou v1.0.0 · <Link to="/help" className="text-primary">Terms</Link> · <Link to="/help" className="text-primary">Privacy</Link>
         </div>
       </div>
     </div>

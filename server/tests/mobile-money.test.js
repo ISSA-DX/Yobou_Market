@@ -102,6 +102,29 @@ describe('Mobile Money API', () => {
     assert.equal(txn.maskedPhone, '********5678');
   });
 
+  it('accepts Mali mobile-money providers like MobiCash and Orange Money', async () => {
+    const providers = ['MOBICASH', 'ORANGE_MONEY'];
+    for (const provider of providers) {
+      const payload = {
+        addressId: 'address_123',
+        paymentMethod: 'MOBILE_MONEY',
+        mobileMoney: {
+          provider,
+          phone: '66700000',
+          country: 'ML',
+        },
+      };
+
+      const parsed = await (async () => {
+        const { orderCreate } = require('../src/lib/validators');
+        return orderCreate.parse(payload);
+      })();
+
+      assert.equal(parsed.mobileMoney.provider, provider);
+      assert.equal(parsed.mobileMoney.country, 'ML');
+    }
+  });
+
   it('rejects mobile-money order without details', async () => {
     const { token, addressId } = await seedCustomerWithCartAndAddress();
     await request(app)
