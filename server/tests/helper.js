@@ -11,6 +11,7 @@ function setupTestDb() {
   process.env.JWT_ACCESS_SECRET = 'test-access-secret-must-be-at-least-32-characters-long';
   process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-must-be-at-least-32-characters-long';
   process.env.NODE_ENV = 'test';
+  process.env.MOBILE_MONEY_SIM_FAILURE_RATE = '0';
 
   // Push the schema to the test database.
   execSync('npx prisma db push --skip-generate', {
@@ -36,6 +37,7 @@ async function resetTestDb() {
     prisma.sseConnection.deleteMany(),
     prisma.adminAuditLog.deleteMany(),
     prisma.timelineEvent.deleteMany(),
+    prisma.mobileMoneyTxn.deleteMany(),
     prisma.refund.deleteMany(),
     prisma.orderItem.deleteMany(),
     prisma.order.deleteMany(),

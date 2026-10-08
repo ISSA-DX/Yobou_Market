@@ -16,6 +16,13 @@ export default function CheckoutSuccess() {
   const { data: recData } = useApi('/api/products?limit=6');
   const order = data?.order;
   const recommended = (recData?.products || []).slice(0, 6);
+  const pendingMobileMoney = order?.paymentMethod === 'MOBILE_MONEY' && order?.status === 'PLACED';
+  const isPaid = order?.status === 'PAID' || pendingMobileMoney;
+
+  const ringClass = 'absolute inset-0 rounded-full ' + (pendingMobileMoney ? 'bg-primary/20' : 'bg-tertiary-container/20') + ' animate-ping';
+  const middleRingClass = 'absolute inset-2 rounded-full ' + (pendingMobileMoney ? 'bg-primary/30' : 'bg-tertiary-container/30') + ' flex items-center justify-center';
+  const innerClass = 'w-20 h-20 rounded-full ' + (pendingMobileMoney ? 'bg-primary' : 'bg-tertiary') + ' flex items-center justify-center shadow-float';
+  const statusChipClass = 'chip border-0 ' + (pendingMobileMoney ? 'bg-primary/10 text-primary' : 'bg-tertiary-container/20 text-tertiary');
 
   useEffect(() => { refreshCart(); }, [refreshCart]);
 
@@ -34,16 +41,20 @@ export default function CheckoutSuccess() {
 
       {/* Animated check */}
       <div className="relative mx-auto w-32 h-32">
-        <div className="absolute inset-0 rounded-full bg-tertiary-container/20 animate-ping" />
-        <div className="absolute inset-2 rounded-full bg-tertiary-container/30 flex items-center justify-center">
-          <div className="w-20 h-20 rounded-full bg-tertiary flex items-center justify-center shadow-float">
-            <Icon name="check" className="text-white text-[44px]" fill />
+        <div className={ringClass} />
+        <div className={middleRingClass}>
+          <div className={innerClass}>
+            <Icon name={pendingMobileMoney ? 'phone_iphone' : 'check'} className="text-white text-[44px]" fill />
           </div>
         </div>
       </div>
 
-      <h1 className="mt-8 text-headline-lg font-bold">Thank you!</h1>
-      <p className="mt-2 text-on-surface-variant">Your order has been placed successfully.</p>
+      <h1 className="mt-8 text-headline-lg font-bold">{pendingMobileMoney ? 'Approve payment on your phone' : 'Thank you!'}</h1>
+      <p className="mt-2 text-on-surface-variant">
+        {pendingMobileMoney
+          ? 'Your order is placed. Check your mobile phone and approve the M-Pesa / MoMo prompt to complete payment.'
+          : 'Your order has been placed successfully.'}
+      </p>
 
       <div className="mt-6 grid grid-cols-2 gap-3 text-left">
         <div className="card p-4">
@@ -59,11 +70,11 @@ export default function CheckoutSuccess() {
       <div className="mt-4 card p-4 text-left">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-label-md text-on-surface-variant">Total paid</div>
+            <div className="text-label-md text-on-surface-variant">{pendingMobileMoney ? 'Total to pay' : 'Total paid'}</div>
             <div className="text-headline-md font-bold">{formatPrice(order.totalCents, currency)}</div>
           </div>
-          <div className="chip bg-tertiary-container/20 text-tertiary border-0">
-            <Icon name="verified" className="text-[14px]" /> Confirmed
+          <div className={statusChipClass}>
+            <Icon name={pendingMobileMoney ? 'phone_iphone' : 'verified'} className="text-[14px]" /> {pendingMobileMoney ? 'Awaiting payment' : 'Confirmed'}
           </div>
         </div>
         {order.address?.recipientName && (

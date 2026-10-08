@@ -15,6 +15,8 @@ export default function ProfilePreferences() {
   const user = useStore((s) => s.user);
   const theme = useStore((s) => s.theme);
   const dark = useStore((s) => s.dark);
+  const dataSaver = useStore((s) => s.dataSaver);
+  const toggleDataSaver = useStore((s) => s.toggleDataSaver);
   const setTheme = useStore((s) => s.setTheme);
   const updatePreferences = useStore((s) => s.updatePreferences);
 
@@ -255,8 +257,21 @@ export default function ProfilePreferences() {
         </section>
 
         <section className="card p-4 md:p-5">
-          {/* text-on-surface dropped (v0.3.20 h2 default = brand blue). */}
-          <h2 className="text-base font-semibold mb-2 flex items-center gap-2">
+          <h2 className="text-base font-semibold text-on-surface mb-4 flex items-center gap-2">
+            <Icon name="data_saver_on" className="text-[20px] text-primary" /> Data saver
+          </h2>
+          <Toggle
+            icon="data_saver_on"
+            label="Reduce data usage"
+            desc="Disable auto-playing carousels, image zoom animations, and non-essential media."
+            checked={dataSaver}
+            onChange={toggleDataSaver}
+            busy={false}
+          />
+        </section>
+
+        <section className="card p-4 md:p-5">
+          <h2 className="text-base font-semibold text-on-surface mb-2 flex items-center gap-2">
             <Icon name="info" className="text-[20px] text-primary" /> About
           </h2>
           <p className="text-sm text-on-surface-variant">

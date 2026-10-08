@@ -30,68 +30,56 @@ const EMPTY_FORM = {
   description: '',
   category: '',
   priceCents: 0,
-  // Optional list/deal price (USD cents). When set and greater than
-  // priceCents, the storefront renders a strikethrough + "X% off"
-  // badge. null = no deal. The user enters dollars in the UI; we
-  // convert to cents on the way in and back to dollars on the way out.
   compareAtPriceCents: null,
   stock: 0,
   imageUrls: [],
-  status: 'LIVE',
-  // Optional color/size variants. When the array is empty, the legacy
-  // single-stock UX is preserved. When non-empty, the server computes
-  // Product.stock as sum-of-variant-stock on save.
   variants: [],
-  // Placement flags — which shopper surfaces this product appears on.
-  // Defaults match the Product schema (home/deals/search ON, flash
-  // OFF) so a newly-published product is visible everywhere by default
-  // and the admin only has to opt in to Flash / opt out of Search.
+  status: 'LIVE',
   showOnHome: true,
   showOnDeals: true,
   showOnFlashDeals: false,
   showOnSearch: true,
-  // Additional category pin targets. Empty by default; the primary
-  // `category` is the product's main page. Server-side normalize
-  // (trim / dedupe / cap 10 / cap 80 chars) happens on save.
   extraCategories: [],
 };
 
 const DRAFT_KEY = 'yobou-admin-product-draft';
+
+function sumVariantStock(variants = []) {
+  return variants.reduce((sum, variant) => sum + (Number(variant?.stock) || 0), 0);
+}
 
 function validate(form) {
   const errors = {};
   if (!form.name.trim()) errors.name = 'Product name is required.';
   if (!form.category || !form.category.trim()) errors.category = 'Pick a category — or create a new one.';
   if (form.priceCents < 0) errors.priceCents = 'Price must be zero or more.';
-  // Cross-field deal-price rule. A deal must be strictly more expensive
-  // than the current price or the storefront's "X% off" badge becomes
-  // either a visual bug (no discount) or a price hike mislabelled as a
-  // discount. The same rule is re-asserted by the zod validator on the
-  // server, so this is the friendlier in-form check.
-  if (form.compareAtPriceCents != null) {
-    if (form.compareAtPriceCents < 0) {
-      errors.compareAtPriceCents = 'Compare-at price must be zero or more.';
-    } else if (form.compareAtPriceCents <= form.priceCents) {
-      errors.compareAtPriceCents = 'Compare-at price must be higher than the price to be a real deal.';
-    }
+  if (form.compareAtPriceCents != null && form.compareAtPriceCents < 0) {
+    errors.compareAtPriceCents = 'Compare-at price must be zero or more.';
+  } else if (form.compareAtPriceCents != null && form.compareAtPriceCents <= form.priceCents) {
+    errors.compareAtPriceCents = 'Compare-at price must be higher than the price to be a real deal.';
   }
-  // Legacy stock validation only applies when there are no variants —
-  // when variants exist, Product.stock is derived server-side and the
-  // per-row validation below is what matters.
-  const hasVariants = Array.isArray(form.variants) && form.variants.length > 0;
-  if (!hasVariants && (form.stock < 0 || !Number.isInteger(form.stock))) {
-    errors.stock = 'Stock must be a whole number, zero or more.';
-  }
-  if (hasVariants) {
-    const rowErrors = form.variants.map((v) => {
-      if (!v.color || !v.color.trim()) return 'Color is required.';
-      if (!v.size || !v.size.trim()) return 'Size is required.';
-      if (!Number.isFinite(v.stock) || v.stock < 0 || !Number.isInteger(v.stock)) return 'Stock must be a whole number, zero or more.';
-      return null;
+  const variants = Array.isArray(form.variants) ? form.variants : [];
+  if (variants.length > 0) {
+    const rowErrors = [];
+    variants.forEach((variant, index) => {
+      const color = String(variant?.color || '').trim();
+      const size = String(variant?.size || '').trim();
+      const stock = Number(variant?.stock);
+      if (!color || !size) {
+        rowErrors[index] = true;
+      }
+      if (!Number.isInteger(stock) || stock < 0) {
+        rowErrors[index] = true;
+      }
     });
     if (rowErrors.some(Boolean)) {
-      errors.variants = { variants: 'Some variant rows need attention.', rows: rowErrors };
+      errors.variants = 'Each variant needs a color, size, and non-negative stock.';
+      errors.rows = rowErrors;
     }
+  }
+  const stockVal = Number(form.stock);
+  if (!Number.isInteger(stockVal) || stockVal < 0) {
+    errors.stock = 'Stock must be a whole number, zero or more.';
   }
   return errors;
 }
@@ -131,30 +119,17 @@ export default function ProductNew() {
         name: p.name || '',
         description: p.description || '',
         category: p.category || '',
-        priceCents: p.priceCents || 0,
-        // p.compareAtPriceCents is null on plain products, a number on
-        // products that have a deal. Coerce to null when missing so the
-        // "is deal set?" check (`!= null`) in the form is consistent.
-        compareAtPriceCents: typeof p.compareAtPriceCents === 'number' ? p.compareAtPriceCents : null,
-        stock: p.stock || 0,
+        priceCents: Number(p.priceCents) || 0,
+        compareAtPriceCents: p.compareAtPriceCents ?? null,
+        stock: Number(p.stock) || 0,
         imageUrls: Array.isArray(p.imageUrls) ? p.imageUrls : [],
+        variants: Array.isArray(p.variants) ? p.variants : [],
         status: p.status || 'LIVE',
-        variants: Array.isArray(p.variants)
-          ? p.variants.map((v) => ({ id: v.id, color: v.color, size: v.size, stock: v.stock }))
-          : [],
-        // Placement flags — fall through to schema defaults if the
-        // product was created before the migration that added the
-        // columns (defensive; the migration backfills them, but a
-        // stale read could still be missing).
-        showOnHome: p.showOnHome !== undefined ? p.showOnHome : true,
-        showOnDeals: p.showOnDeals !== undefined ? p.showOnDeals : true,
-        showOnFlashDeals: p.showOnFlashDeals !== undefined ? p.showOnFlashDeals : false,
-        showOnSearch: p.showOnSearch !== undefined ? p.showOnSearch : true,
-        // extraCategories arrives as [{id, name}]; flatten to string[]
-        // for the form / submit payload.
-        extraCategories: Array.isArray(p.extraCategories)
-          ? p.extraCategories.map((e) => (typeof e === 'string' ? e : e.name))
-          : [],
+        showOnHome: p.showOnHome ?? true,
+        showOnDeals: p.showOnDeals ?? true,
+        showOnFlashDeals: p.showOnFlashDeals ?? false,
+        showOnSearch: p.showOnSearch ?? true,
+        extraCategories: Array.isArray(p.extraCategories) ? p.extraCategories : [],
       };
       setForm(next);
       initialFormRef.current = JSON.stringify(next);
@@ -162,13 +137,30 @@ export default function ProductNew() {
   }, [productApi.data]);
 
   function update(k, v) {
-    setForm((f) => ({ ...f, [k]: v }));
-    setErrors((prev) => ({ ...prev, [k]: undefined })); // clear that field's error on edit
+    setForm((f) => {
+      const next = { ...f, [k]: v };
+      if (k === 'variants' && Array.isArray(v) && v.length > 0) {
+        next.stock = sumVariantStock(v);
+      }
+      return next;
+    });
+    setErrors((prev) => ({ ...prev, [k]: undefined }));
   }
 
   async function submit({ statusOverride } = {}) {
     const next = statusOverride ? { ...form, status: statusOverride } : form;
-    const fieldErrors = validate(next);
+    const normalized = {
+      ...next,
+      stock: Array.isArray(next.variants) && next.variants.length > 0 ? sumVariantStock(next.variants) : Number(next.stock) || 0,
+      compareAtPriceCents: next.compareAtPriceCents ?? null,
+      variants: Array.isArray(next.variants) ? next.variants : [],
+      extraCategories: Array.isArray(next.extraCategories) ? next.extraCategories : [],
+      showOnHome: Boolean(next.showOnHome),
+      showOnDeals: Boolean(next.showOnDeals),
+      showOnFlashDeals: Boolean(next.showOnFlashDeals),
+      showOnSearch: Boolean(next.showOnSearch),
+    };
+    const fieldErrors = validate(normalized);
     if (Object.keys(fieldErrors).length) {
       setErrors(fieldErrors);
       setErr('Please fix the highlighted fields before publishing.');
@@ -198,11 +190,9 @@ export default function ProductNew() {
     try {
       let saved;
       if (isEdit) {
-        const res = await api(`/api/products/${id}`, { method: 'PATCH', body: next });
-        saved = res.product;
+        await api(`/api/products/${id}`, { method: 'PATCH', body: normalized });
       } else {
-        const res = await api('/api/products/admin', { method: 'POST', body: next });
-        saved = res.product;
+        await api('/api/products/admin', { method: 'POST', body: normalized });
       }
       clearDraft();
       setSavedAt(new Date());

@@ -4,6 +4,7 @@ import { api, setAccessToken, onAuthChange } from './api';
 const THEME_KEY = 'yobou:theme';
 const DARK_KEY = 'yobou:dark';
 const WISHLIST_KEY = 'yobou:wishlist';
+const DATA_SAVER_KEY = 'yobou:data-saver';
 
 function safeGet(key, fallback) {
   try {
@@ -91,6 +92,7 @@ export const useStore = create((set, get) => ({
   theme: initialTheme(),
   dark: themeToDark(initialTheme(), safeGet(DARK_KEY, '0') === '1'),
   wishlist: readWishlist(),
+  dataSaver: safeGet(DATA_SAVER_KEY, '0') === '1',
 
   setUser(user) {
     set({ user });
@@ -133,8 +135,21 @@ export const useStore = create((set, get) => ({
     return get().wishlist.includes(productId);
   },
 
+  setDataSaver(v) {
+    safeSet(DATA_SAVER_KEY, v ? '1' : '0');
+    set({ dataSaver: v });
+  },
+
+  toggleDataSaver() {
+    const next = !get().dataSaver;
+    safeSet(DATA_SAVER_KEY, next ? '1' : '0');
+    set({ dataSaver: next });
+  },
+
   async login(email, password) {
-    const data = await api('/api/auth/login', { method: 'POST', body: { email, password }, auth: false });
+    // Login is safe to retry when a phone briefly loses the API connection
+    // (for example while a free hosting instance is waking up).
+    const data = await api('/api/auth/login', { method: 'POST', body: { email, password }, auth: false, retryNetwork: true });
     if (!data?.accessToken || !data?.user) {
       const err = new Error(data?.error || 'LOGIN_FAILED');
       err.data = data;

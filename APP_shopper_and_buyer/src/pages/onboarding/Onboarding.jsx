@@ -28,33 +28,14 @@ export default function Onboarding() {
   const [i, setI] = useState(0);
   const navigate = useNavigate();
   const user = useStore((s) => s.user);
-  const bootDone = useStore((s) => s.bootDone);
-
-  // Cold-start returning users skip the splash carousel entirely.
-  // boot() (in store.js) restores user from the refresh cookie via
-  // /api/auth/refresh on first App mount; once bootDone flips true we
-  // know the auth-restoration has had its chance and can short-circuit.
-  // Without this, a signed-in customer re-installing or re-launching
-  // sees the three marketing slides on every cold start and is forced
-  // back to /login despite holding a valid session.
-  useEffect(() => {
-    if (!bootDone) return;
-    if (user) navigate('/home', { replace: true });
-  }, [user, bootDone, navigate]);
-
   const slide = SLIDES[i];
 
+  useEffect(() => {
+    if (user) navigate('/home', { replace: true });
+  }, [user, navigate]);
+
   function next() {
-    // Last slide's CTA must ALWAYS land on the sign-in screen. The
-    // product expectation in 2026 is that a Yobou account is required
-    // to browse (so orders, addresses, and cart selection persist to
-    // a real identity, not just an anonymous query string). Previous
-    // versions routed straight to /home and dipped the user into a
-    // guest session — that path was a regression on day one of the
-    // Phase-2 APK pilot ("The signing page should enabled").
-    // `replace: true` so the back button doesn't bounce the user out
-    // of the sign-in screen back into the splash carousel.
-    if (i === SLIDES.length - 1) navigate('/login', { replace: true });
+    if (i === SLIDES.length - 1) navigate(user ? '/home' : '/login', { replace: true });
     else setI(i + 1);
   }
 
@@ -62,14 +43,7 @@ export default function Onboarding() {
     <div className={`min-h-screen bg-gradient-to-br ${slide.bg} text-white flex flex-col`}>
       <div className="flex items-center justify-between p-4">
         <div className="w-9 h-9 rounded-md bg-white/20 backdrop-blur flex items-center justify-center font-black">Y</div>
-        {/* Top-right pill originally read "Sign in" — renamed to
-            "Skip" because once the marketing carousel finishes, the
-            final slide presents BOTH "Sign in" AND "Create account"
-            as filled CTAs at the bottom; duplicating "Sign in" up
-            here read like two different actions. "Skip" matches the
-            actual behaviour (skip the remaining slides) and removes
-            the label dup on slide 3. */}
-        <button type="button" onClick={() => navigate('/login', { replace: true })} className="text-sm font-semibold">Skip intro</button>
+        <button type="button" onClick={() => navigate(user ? '/home' : '/login', { replace: true })} className="text-sm font-semibold">Skip</button>
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
@@ -99,34 +73,9 @@ export default function Onboarding() {
             />
           ))}
         </div>
-        {i === SLIDES.length - 1 ? (
-          <>
-            {/* Final slide: separate the two paths visually so a
-                new visitor doesn't end up on the sign-in screen and
-                have to hunt for a "Sign up" link buried inside
-                Login.jsx. The white pill = primary path (returning
-                users have credentials to enter); the outlined pill
-                = clearly labelled "Create account". Both use
-                replace:true so the back button doesn't bounce the
-                user back into the splash carousel. */}
-            <button
-              onClick={() => navigate('/login', { replace: true })}
-              className="w-full bg-white text-primary font-bold py-3 rounded-full hover:bg-white/90 transition"
-            >
-              Sign in
-            </button>
-            <button
-              onClick={() => navigate('/register', { replace: true })}
-              className="mt-3 w-full bg-white/10 backdrop-blur border border-white/50 text-white font-bold py-3 rounded-full hover:bg-white/20 transition"
-            >
-              Create account
-            </button>
-          </>
-        ) : (
-          <button type="button" onClick={next} className="w-full bg-white text-primary font-bold py-3 rounded-full hover:bg-white/90 transition">
-            Next
-          </button>
-        )}
+        <button type="button" onClick={next} className="w-full bg-white text-primary font-bold py-3 rounded-full hover:bg-white/90 transition">
+          {i === SLIDES.length - 1 ? 'Get started' : 'Next'}
+        </button>
       </div>
     </div>
   );

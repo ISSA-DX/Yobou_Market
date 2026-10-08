@@ -1,0 +1,24 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="14" y1="18" x2="302" y2="314" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1B3A"/>
+      <stop offset="0.45" stop-color="#0034B9"/>
+      <stop offset="1" stop-color="#071734"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="164" y1="82" x2="276" y2="246" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDE9A8"/>
+      <stop offset="0.48" stop-color="#F4C75B"/>
+      <stop offset="1" stop-color="#C98A00"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="30" y="30" width="260" height="260" rx="64" fill="url(#bg)"/>
+  <path d="M94 82H202C219.673 82 234 96.3269 234 114V129C234 146.673 219.673 161 202 161H180V233H164V161H94V82ZM164 98H202C210.837 98 218 105.163 218 114V129C218 137.837 210.837 145 202 145H164V98Z" fill="white" fill-opacity="0.12"/>
+  <path d="M94 80H158L198 146L240 80H272L219 177L219 233H203V177L150 80H94Z" fill="white"/>
+  <path d="M180 118L218 80H254L202 170H180V118Z" fill="url(#gold)"/>
+  <circle cx="248" cy="90" r="15" fill="#F1BF46"/>
+
+  <text x="350" y="184" font-family="Georgia, 'Times New Roman', serif" font-size="104" font-weight="700" fill="#0B1C30" letter-spacing="-3">Yobou</text>
+  <text x="360" y="244" font-family="'Segoe UI', sans-serif" font-size="32" font-weight="700" fill="#0E4FFF" letter-spacing="10">MARKET</text>
+  <rect x="360" y="274" width="280" height="8" rx="4" fill="url(#gold)"/>
+</svg>

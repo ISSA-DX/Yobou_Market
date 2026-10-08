@@ -112,9 +112,24 @@ const address = z.object({
   isDefault: z.boolean().optional(),
 });
 
+const MOBILE_MONEY_PROVIDERS = ['MPESA', 'MTN', 'AIRTEL', 'ORANGE', 'MOBICASH', 'ORANGE_MONEY'];
+
+const mobileMoney = z.object({
+  provider: z.enum(MOBILE_MONEY_PROVIDERS),
+  phone: z.string().min(8).max(20),
+  country: z.string().length(2),
+});
+
+const mobileMoneyMethodCreate = z.object({
+  provider: z.enum(MOBILE_MONEY_PROVIDERS),
+  phone: z.string().min(8).max(20),
+  country: z.string().length(2),
+  isDefault: z.boolean().optional().default(false),
+});
+
 const orderCreate = z.object({
   addressId: z.string(),
-  paymentMethod: z.enum(['CARD', 'PAYPAL', 'COD']),
+  paymentMethod: z.enum(['CARD', 'PAYPAL', 'COD', 'MOBILE_MONEY']),
   card: z
     .object({
       number: z.string().min(12).max(25),
@@ -123,9 +138,13 @@ const orderCreate = z.object({
       cvv: z.string().min(3).max(4),
     })
     .optional(),
+  mobileMoney: mobileMoney.optional(),
 }).refine(
   (data) => data.paymentMethod !== 'CARD' || (data.card && data.card.number && data.card.cvv),
   { message: 'Card details are required for card payments', path: ['card'] }
+).refine(
+  (data) => data.paymentMethod !== 'MOBILE_MONEY' || data.mobileMoney,
+  { message: 'Mobile money details are required for mobile money payments', path: ['mobileMoney'] }
 );
 
 const orderStatus = z.object({
@@ -341,4 +360,7 @@ module.exports = {
   reviewCreate,
   reviewListQuery,
   productListQuery,
+  MOBILE_MONEY_PROVIDERS,
+  mobileMoney,
+  mobileMoneyMethodCreate,
 };

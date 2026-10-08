@@ -59,6 +59,40 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+
+// Distinct products from the user's recent non-cancelled/refunded orders,
+// surfaced on the home page as a "Buy Again" horizontal row.
+router.get('/buy-again', async (req, res, next) => {
+  try {
+    const orders = await prisma.order.findMany({
+      where: {
+        userId: req.user.id,
+        status: { notIn: ['CANCELLED', 'REFUNDED'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+      include: { items: { include: { product: true } } },
+    });
+
+    const seen = new Map();
+    for (const order of orders) {
+      for (const item of order.items) {
+        const p = item.product;
+        if (!p || p.status !== 'LIVE') continue;
+        if (!seen.has(p.id)) {
+          seen.set(p.id, {
+            ...parseProductImages(p),
+            lastOrderedAt: order.createdAt,
+            lastQuantity: item.quantity,
+          });
+        }
+      }
+    }
+
+    res.json({ products: Array.from(seen.values()).slice(0, 10) });
+  } catch (err) { next(err); }
+});
+
 router.get('/:id', async (req, res, next) => {
   try {
     const order = await prisma.order.findUnique({
@@ -68,6 +102,7 @@ router.get('/:id', async (req, res, next) => {
         timeline: { orderBy: { at: 'asc' } },
         user: { select: { id: true, name: true, email: true } },
         address: true,
+        mobileMoneyTxns: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
     });
     if (!order) return res.status(404).json({ error: 'NOT_FOUND' });
@@ -144,13 +179,15 @@ router.post('/', async (req, res, next) => {
       method: data.paymentMethod,
       amountCents: totalCents,
       card: data.card,
+      mobileMoney: data.mobileMoney ? { ...data.mobileMoney, orderId: 'pending' } : undefined,
     });
 
     if (!result.ok) {
       return res.status(402).json({ error: 'PAYMENT_FAILED', payment: result });
     }
 
-    const initialStatus = data.paymentMethod === 'COD' ? 'PLACED' : 'PAID';
+    const isPendingMobileMoney = data.paymentMethod === 'MOBILE_MONEY' && result.status === 'PENDING';
+    const initialStatus = (data.paymentMethod === 'COD' || isPendingMobileMoney) ? 'PLACED' : 'PAID';
 
     const order = await prisma.$transaction(async (tx) => {
       // Decrement stock for successful orders.
@@ -203,6 +240,24 @@ router.post('/', async (req, res, next) => {
       await tx.cartItem.deleteMany({
         where: { userId: req.user.id, selectedForCheckout: true },
       });
+
+      // Record pending mobile-money transaction so the shopper can poll / be
+      // notified when the customer approves the prompt.
+      if (data.paymentMethod === 'MOBILE_MONEY') {
+        await tx.mobileMoneyTxn.create({
+          data: {
+            orderId: created.id,
+            userId: req.user.id,
+            provider: data.mobileMoney.provider,
+            country: data.mobileMoney.country,
+            amountCents: totalCents,
+            currency: req.user.currency || 'USD',
+            status: result.status || 'PENDING',
+            providerTxnId: result.txnId,
+            maskedPhone: result.maskedPhone,
+          },
+        });
+      }
 
       return created;
     });

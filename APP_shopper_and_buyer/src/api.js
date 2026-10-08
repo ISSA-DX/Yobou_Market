@@ -105,22 +105,19 @@ export async function refreshAccessToken() {
   return refreshing;
 }
 
-export async function api(path, { method = 'GET', body, headers = {}, auth = true, retry = true } = {}) {
-  // cache: 'no-store' + per-request Date.now() suffix prevent the
-  // Android Capacitor WebView from re-serving a stale 401 body for
-  // an identical-URL repeat call (root cause of v0.3.9's "Couldn't
-  // load your cart" — see refreshAccessToken for full context).
-  // CRITICAL: do NOT add Cache-Control / Pragma / If-Modified-Since
-  // request headers here. None of them are CORS-safelisted, so the
-  // Capacitor WebView's OPTIONS preflight (origin=https://localhost
-  // → yobou-server.onrender.com) requests them in
-  // Access-Control-Request-Headers, the server only allows
-  // Content-Type + Authorization, the preflight is rejected, and
-  // fetch throws TypeError("Failed to fetch") which my
-  // networkErr catch surfaces as the misleading "Could not reach
-  // the server" message. The fetch option + URL suffix alone are
-  // sufficient cache-busting; the explicit headers are pure risk.
-  const noCacheSuffix = method === 'GET' && !body ? `?_t=${Date.now()}` : '';
+const MAX_NETWORK_RETRIES = 3;
+const RETRY_BASE_MS = 500;
+
+function isIdempotent(method) {
+  return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+}
+
+export async function api(path, { method = 'GET', body, headers = {}, auth = true, retry = true, retryCount = 0, retryNetwork = false } = {}) {
+  // A unique query parameter prevents Android WebView from replaying stale
+  // cached GET responses. POST/PUT/PATCH requests are already non-cacheable.
+  const noCacheSuffix = method === 'GET' || method === 'HEAD'
+    ? `${path.includes('?') ? '&' : '?'}_t=${Date.now()}`
+    : '';
   const opts = {
     method,
     credentials: 'include',
@@ -137,6 +134,8 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
   // TypeError("Failed to fetch") before we ever see a Response. Wrap the call
   // so the error carries a `code` and a useful `message`, so callers can
   // distinguish "no network" from a real HTTP error.
+  // Idempotent GETs are retried with exponential backoff so a brief dropout
+  // doesn't break the home feed or search.
   let res;
   try {
     // noCacheSuffix flips GETs into unique-URL fetches so the Android
@@ -145,6 +144,11 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
     // suffix isn't appended — POST requests aren't cached by fetch.
     res = await fetch(`${BASE}${path}${noCacheSuffix}`, opts);
   } catch (networkErr) {
+    if (retry && (isIdempotent(method) || retryNetwork) && retryCount < MAX_NETWORK_RETRIES) {
+      const delay = RETRY_BASE_MS * 2 ** retryCount;
+      await new Promise((r) => setTimeout(r, delay));
+      return api(path, { method, body, headers, auth, retry, retryCount: retryCount + 1, retryNetwork });
+    }
     const err = new Error(
       networkErr?.message || 'Network request failed'
     );

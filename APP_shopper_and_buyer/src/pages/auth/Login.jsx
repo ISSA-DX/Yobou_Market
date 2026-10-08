@@ -114,7 +114,7 @@ export default function Login() {
           </button>
 
           <div className="text-center">
-            <Link to="#" className="text-sm text-primary font-medium">Forgot password?</Link>
+            <Link to="/help" className="text-sm text-primary font-medium">Forgot password?</Link>
           </div>
         </form>
 

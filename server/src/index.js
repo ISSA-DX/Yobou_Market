@@ -24,6 +24,8 @@ const paymentsRoutes = require('./routes/payments');
 const categoriesRoutes = require('./routes/categories');
 const eventsRoutes = require('./routes/events');
 const reviewsRoutes = require('./routes/reviews');
+const { rateLimit } = require('./lib/rateLimit');
+const { securityHeaders } = require('./lib/securityHeaders');
 
 const app = express();
 
@@ -35,54 +37,8 @@ const app = express();
 // for Render — without this, every request looks like 127.0.0.1.
 app.set('trust proxy', 1);
 
-// helmet — sensible security headers on every response (nosniff,
-// X-Frame-Options: SAMEORIGIN, Referrer-Policy: no-referrer, HSTS, etc.).
-// CSP stays disabled here on purpose: the shopper/partner/pre-JS splash
-// uses inline <script> + inline <style>, and the apps link fonts from
-// fonts.googleapis.com. Tightening CSP needs nonces/allow-lists and is
-// out of scope for this pass — the rest of helmet's headers still harden
-// the API surface.
-app.use(helmet({
-  contentSecurityPolicy: false,
-  // Cross-Origin-Resource-Policy defaults to `same-origin` which would
-  // block the shopper on https://issa-dx.github.io from decoding images
-  // served from the API host's /uploads/. Cross-origin is required so
-  // GH-Pages + any future white-label host can still load product media.
-  crossOriginResourcePolicy: { policy: 'cross-origin' },
-  // COEP defaults to off; pin it explicitly so a future helmet upgrade
-  // can't quietly turn it on and break every cross-origin image.
-  crossOriginEmbedderPolicy: false,
-}));
-
-// compression — gzip JSON + static assets for ~70–80% bandwidth savings
-// on list endpoints. Critically, we MUST skip streamed responses:
-// compression buffers the response and breaks streaming, which would
-// kill the live-sync notifications (`/api/events` SSE).
-//
-// Two-layer guard because the right "Accept" header can't be guaranteed:
-//   - Layer 1: explicit path allow-list (`/api/events`). Cheap and the
-//     only SSE endpoint in the codebase today.
-//   - Layer 2: Accept header check. EventSource auto-sets
-//     `Accept: text/event-stream`; fetch + ReadableStream does not. Belt
-//     AND braces so either path-style safely skips compression.
-// Allow multiple SSE paths; the current codebase only streams at
-// `/api/events`, so the array has a single entry today. Adding a new
-// streaming endpoint is a one-line change. The `startsWith(sp + '/')`
-// branch covers future sub-paths (e.g. `/api/events/admin`).
-const SSE_PATHS = ['/api/events'];
-const isSsePath = (p) => SSE_PATHS.some((sp) => p === sp || p.startsWith(sp + '/'));
-const shouldCompress = (req, res) => {
-  if (isSsePath(req.path)) return false;
-  const accept = (req.headers['accept'] || '').split(',').map((a) => a.trim());
-  if (accept.includes('text/event-stream')) return false;
-  return compression.filter(req, res);
-};
-// Threshold 256 bytes (below Express default 1kb) so the curated
-// 28-category list, notification toggles, and other "small but
-// compressible" JSON payloads actually benefit from gzip on mobile
-// networks — which is the Yobou target audience. 1kb skips compression
-// on the very responses that matter most for first-paint perf.
-app.use(compression({ filter: shouldCompress, threshold: 256 }));
+// Security headers — applied to every request, before routing.
+app.use(securityHeaders);
 
 const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || './uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -175,7 +131,10 @@ app.use((req, res, next) => {
       });
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    // Capacitor WebViews can add cache directives to cross-origin requests
+    // when fetch() is called with cache: 'no-store'. Allow them on preflight
+    // so Android devices do not surface a misleading generic network error.
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
     res.setHeader('Access-Control-Max-Age', '86400');
     return res.status(204).end();
   }
@@ -226,19 +185,24 @@ app.get('/api/health', (_req, res) =>
   })
 );
 
+// Rate limits (in-memory; swap for Redis in multi-instance production).
+const authRateLimit = rateLimit({ category: 'auth', windowMs: 15 * 60_000, maxRequests: 20 });
+const orderRateLimit = rateLimit({ category: 'orders', windowMs: 60_000, maxRequests: 10 });
+const paymentRateLimit = rateLimit({ category: 'payments', windowMs: 60_000, maxRequests: 15 });
+
 // Routes
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authRateLimit, authRoutes);
 app.use('/api/products', productsRoutes);
 app.use('/api/product-changes', productChangesRoutes);
 app.use('/api/cart', cartRoutes);
-app.use('/api/orders', ordersRoutes);
+app.use('/api/orders', orderRateLimit, ordersRoutes);
 app.use('/api/orders/vendor', vendorOrdersRoutes);
 app.use('/api/vendor', vendorAnalyticsRoutes);
 app.use('/api/vendors', vendorsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/refunds', refundsRoutes);
 app.use('/api/addresses', addressesRoutes);
-app.use('/api/payments', paymentsRoutes);
+app.use('/api/payments', paymentRateLimit, paymentsRoutes);
 app.use('/api/categories', categoriesRoutes);
 app.use('/api', eventsRoutes);
 // Mounted after /api/products so the products router's `/` list and
