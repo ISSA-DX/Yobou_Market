@@ -24,12 +24,19 @@ const vendorRegister = z.object({
   categories: z.array(z.string()).default([]),
 });
 
+// One row in a product's color/size variant matrix. Free-text color +
+// size (the admin UI offers preset datalists but allows custom values);
+// per-row stock; id is present on PATCH (existing row) and absent on
+// POST (new row). imageUrls is the per-color photo gallery override —
+// empty array means "fall back to the product-level imageUrls" on the
+// storefront; populated array swaps the carousel when the shopper picks
+// this color.
 const variantInput = z.object({
   id: z.string().optional(),
-  color: z.string().min(1).max(80),
+  color: z.string().min(1).max(40),
   size: z.string().min(1).max(40),
   stock: z.number().int().nonnegative().default(0),
-  imageUrls: z.array(z.string()).default([]),
+  imageUrls: z.array(z.string()).max(10).default([]),
 });
 
 const productUpsert = z.object({
@@ -45,7 +52,6 @@ const productUpsert = z.object({
   category: z.string().min(1).max(80),
   imageUrls: z.array(z.string()).default([]),
   stock: z.number().int().nonnegative().default(0),
-  variants: z.array(variantInput).max(200).default([]),
   status: z.enum(['LIVE', 'DRAFT', 'HIDDEN']).default('LIVE'),
   // Optional color/size variants. When at least one row is provided the
   // server computes Product.stock = sum(variants.stock). When empty,
@@ -90,6 +96,9 @@ const productUpsertPartial = productUpsert.innerType().partial().refine(
 
 const cartAdd = z.object({
   productId: z.string(),
+  // Optional. When the product has variants, the shopper's selected
+  // (color, size) row is sent so the cart's stock check is per-variant.
+  // Null on legacy single-stock products.
   variantId: z.string().nullable().optional(),
   quantity: z.number().int().positive().max(99),
 });
@@ -348,6 +357,9 @@ module.exports = {
   CARRIERS,
   categoryCreate,
   categoryUpdate,
+  reviewCreate,
+  reviewListQuery,
+  productListQuery,
   MOBILE_MONEY_PROVIDERS,
   mobileMoney,
   mobileMoneyMethodCreate,

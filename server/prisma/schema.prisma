@@ -81,11 +81,32 @@ model Product {
   // "remove the deal" empty value without the DB caring.
   compareAtPriceCents Int?
   category    String
-  imageUrls   String      @default("[]") // JSON array
-  stock       Int         @default(0)
-  status      String      @default("LIVE") // LIVE / DRAFT / HIDDEN
-  createdAt   DateTime    @default(now())
-  variants    ProductVariant[]
+  imageUrls   String           @default("[]") // JSON array
+  // `stock` is the canonical available-quantity count for the storefront:
+  // when the product has variants, it's the SUM(variants.stock); when no
+  // variants exist, it's the legacy single number the admin entered.
+  // Server routes keep this in sync inside the same transaction as any
+  // variant write (see server/src/routes/products.js applyVariants).
+  stock       Int              @default(0)
+  status      String           @default("LIVE") // LIVE / DRAFT / HIDDEN
+  // Placement flags. Each controls whether the product appears on a
+  // given shopper surface. Defaults: home/deals/search ON, flash OFF
+  // (Flash is meant to be a curated subset, not a free-for-all).
+  //   - showOnHome: Home main grid (and anywhere the unfiltered
+  //     /api/products list is rendered, except Deals/Flash which have
+  //     their own flags).
+  //   - showOnDeals: Home Deals rail. Auto-detection
+  //     (compareAt > price) is still applied on top of this flag, so
+  //     a product with showOnDeals=false is never in the rail even
+  //     if it has a strikethrough price.
+  //   - showOnFlashDeals: Home Flash deals rail. New curated surface.
+  //   - showOnSearch: surfaces that match buyer search queries
+  //     (APP_shopper_and_buyer /api/products?q= and the partner app).
+  showOnHome        Boolean         @default(true)
+  showOnDeals       Boolean         @default(true)
+  showOnFlashDeals  Boolean         @default(false)
+  showOnSearch      Boolean         @default(true)
+  createdAt   DateTime         @default(now())
   orderItems  OrderItem[]
   cartItems   CartItem[]
   changes     ProductChange[]
@@ -121,26 +142,10 @@ model ProductVariant {
   // Back-relation so cart-items can resolve to the source variant
   // row for inventory accounting.
   cartItems CartItem[]
+  orderItems OrderItem[]
 
   @@unique([productId, color, size]) // prevent duplicate variant rows for the same combo
   @@index([productId])
-}
-
-model ProductVariant {
-  id        String   @id @default(cuid())
-  productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  color     String
-  size      String
-  stock     Int      @default(0)
-  imageUrls String   @default("[]") // JSON array per variant
-  createdAt DateTime @default(now())
-
-  cartItems CartItem[]
-  orderItems OrderItem[]
-
-  @@index([productId])
-  @@unique([productId, color, size])
 }
 
 // Curated catalogue of product categories. Replaces the free-form
@@ -176,15 +181,36 @@ model CategoryExtra {
 }
 
 model CartItem {
-  id        String          @id @default(cuid())
+  id        String  @id @default(cuid())
   userId    String
   productId String
+  // VariantId is set when the shopper picked a specific color/size
+  // row of a variant-enabled product. Null on legacy single-stock
+  // products. Per-variant inventory accounting lives here so the
+  // cart's stock check is accurate.
   variantId String?
-  quantity  Int             @default(1)
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity  Int     @default(1)
+  // "Ready for checkout" toggle. The Cart page shows a per-row checkbox
+  // so the shopper can deselect items they're saving for later; only
+  // rows where this is true flow into POST /api/orders. Customers
+  // rarely need this behavior, but on big multi-item carts (think:
+  // holiday shopping with 12 items) it's how Amazon's classic
+  // "save-for-later" pattern works. The column is intentionally single-
+  // bit per row rather than a separate saved-for-later table — the
+  // product remains in the cart while unselected, so we never need to
+  // re-insert on reselect. POST /api/cart sets it to true on brand-new
+  // rows (Amazon-style just-added = checked). PATCH /api/cart/:id
+  // toggles individual rows. PATCH /api/cart/selection bulk-syncs.
+  // POST /api/orders reads only selectedForCheckout=true rows and
+  // deletes only those rows on success.
+  selectedForCheckout Boolean @default(false)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
+  // A user can only have one cart row per (product, variant) combo;
+  // for legacy products variantId is null and the unique still works
+  // because SQLite treats NULL as distinct.
   @@unique([userId, productId, variantId])
 }
 
@@ -204,21 +230,19 @@ model Address {
 }
 
 model PaymentMethod {
-  id             String   @id @default(cuid())
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type           String   // 'CARD' | 'MOBILE_MONEY'
-  // Card-only fields
-  brand          String?   // 'visa' | 'mastercard' | 'amex' | 'discover'
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           String // 'CARD' | 'MOBILE_MONEY'
+  brand          String? // card brand
   last4          String?
   expiryMonth    String?
   expiryYear     String?
-  // Mobile-money-only fields
-  mobileProvider String?  // 'MPESA' | 'MTN' | 'AIRTEL' | 'ORANGE'
-  mobileNumber   String?  // full phone number, masked on display
-  mobileCountry  String?  // ISO country code, e.g. 'KE', 'NG', 'GH', 'CI'
-  isDefault      Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  mobileProvider String?
+  mobileNumber   String?
+  mobileCountry  String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
 
   @@index([userId])
 }
@@ -231,7 +255,7 @@ model Order {
   subtotalCents  Int     @default(0)
   shippingCents  Int     @default(0)
   totalCents     Int
-  paymentMethod  String // CARD | PAYPAL | COD
+  paymentMethod  String // CARD | PAYPAL | COD | MOBILE_MONEY
   paymentTxnId   String?
   addressId      String
   address        Address @relation(fields: [addressId], references: [id], onDelete: Restrict)
@@ -251,12 +275,12 @@ model Order {
   cancelReason String?
   cancelledBy  String? // userId of the admin who initiated
 
-  items          OrderItem[]
-  timeline       TimelineEvent[]
-  refunds        Refund[]
+  items     OrderItem[]
+  timeline  TimelineEvent[]
+  refunds   Refund[]
   mobileMoneyTxns MobileMoneyTxn[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 }
 
 model MobileMoneyTxn {
@@ -264,13 +288,13 @@ model MobileMoneyTxn {
   orderId       String
   order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   userId        String
-  provider      String   // 'MPESA' | 'MTN' | 'AIRTEL' | 'ORANGE'
+  provider      String
   country       String
   amountCents   Int
   currency      String   @default("USD")
-  status        String   @default("PENDING") // PENDING | SUCCESS | FAILED | TIMEOUT | CANCELLED
-  providerTxnId String?  // opaque reference returned by the provider simulation
-  maskedPhone   String   // last 4 digits of the phone number for display
+  status        String   @default("PENDING")
+  providerTxnId String?
+  maskedPhone   String
   failureReason String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -281,14 +305,14 @@ model MobileMoneyTxn {
 }
 
 model OrderItem {
-  id         String          @id @default(cuid())
+  id         String  @id @default(cuid())
   orderId    String
   productId  String
   variantId  String?
   quantity   Int
   priceCents Int
-  order      Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product    Product         @relation(fields: [productId], references: [id])
+  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product    Product @relation(fields: [productId], references: [id])
   variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 }
 

@@ -25,7 +25,10 @@ router.get('/', async (req, res, next) => {
   try {
     const items = await prisma.cartItem.findMany({
       where: { userId: req.user.id },
-      include: { product: { include: { vendor: { select: { id: true, businessName: true, status: true } } } } },
+      include: {
+        product: { include: { vendor: { select: { id: true, businessName: true } } } },
+        variant: true,
+      },
       orderBy: { id: 'asc' },
     });
     const subtotal = items.reduce((s, i) => s + i.product.priceCents * i.quantity, 0);
@@ -36,41 +39,55 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const data = cartAdd.parse(req.body);
-    const product = await prisma.product.findUnique({
-      where: { id: data.productId },
-      include: { variants: true },
-    });
+    const product = await prisma.product.findUnique({ where: { id: data.productId } });
     if (!product) return res.status(404).json({ error: 'PRODUCT_NOT_FOUND' });
     if (product.status !== 'LIVE') return res.status(400).json({ error: 'PRODUCT_NOT_AVAILABLE' });
 
-    let availableStock = product.stock;
+    // When the client supplied a variantId, scope the stock check to
+    // that row so the cart never accepts more than the picked color/size
+    // has. Falls back to Product.stock for legacy products.
+    let stockAvailable = product.stock;
     let variant = null;
     if (data.variantId) {
       variant = await prisma.productVariant.findUnique({ where: { id: data.variantId } });
       if (!variant || variant.productId !== product.id) {
         return res.status(400).json({ error: 'INVALID_VARIANT' });
       }
-      availableStock = variant.stock;
+      stockAvailable = variant.stock;
     }
 
+    // findFirst (not findUnique) because SQLite + Prisma 5 don't accept
+    // `null` inside a composite-unique where — we want a unique key
+    // (userId, productId, variantId) but variantId is nullable. Using
+    // findUnique would explode when variantId is null; findFirst is
+    // safe and the underlying index still keeps it O(1).
     const existing = await prisma.cartItem.findFirst({
-      where: { userId: req.user.id, productId: data.productId, variantId: data.variantId || null },
+      where: {
+        userId: req.user.id,
+        productId: data.productId,
+        variantId: data.variantId || null,
+      },
     });
     const currentQty = existing?.quantity || 0;
-    if (availableStock < currentQty + data.quantity) {
+    if (stockAvailable < currentQty + data.quantity) {
       return res.status(400).json({
         error: 'INSUFFICIENT_STOCK',
-        available: availableStock,
+        available: stockAvailable,
         requested: currentQty + data.quantity,
       });
     }
 
+    // Same reason: build the upsert key manually with findFirst + create
+    // or update. findUnique's null-in-where is what triggered the bug.
     let item;
     if (existing) {
       item = await prisma.cartItem.update({
         where: { id: existing.id },
-        data: { quantity: existing.quantity + data.quantity },
-        include: { product: { include: { vendor: { select: { id: true, businessName: true, status: true } } } } },
+        data: { quantity: { increment: data.quantity } },
+        include: {
+          product: { include: { vendor: { select: { id: true, businessName: true } } } },
+          variant: true,
+        },
       });
     } else {
       item = await prisma.cartItem.create({
@@ -79,8 +96,17 @@ router.post('/', async (req, res, next) => {
           productId: data.productId,
           variantId: data.variantId || null,
           quantity: data.quantity,
+          // Brand-new cart rows default to "selected for checkout". Amazon
+          // behavior: tapping Add-to-Cart lands the item in the order,
+          // not in a saved-for-later pile. Existing rows (existing truthy)
+          // keep their selection — bumping the quantity should never
+          // silently flip a saved-for-later row back into checkout.
+          selectedForCheckout: true,
         },
-        include: { product: { include: { vendor: { select: { id: true, businessName: true, status: true } } } } },
+        include: {
+          product: { include: { vendor: { select: { id: true, businessName: true } } } },
+          variant: true,
+        },
       });
     }
     res.status(201).json({ item: parseCartItem(item) });
@@ -164,47 +190,49 @@ router.patch('/selection', async (req, res, next) => {
 router.patch('/:productId', async (req, res, next) => {
   try {
     const quantity = Number(req.body?.quantity);
-    const variantId = req.body?.variantId || null;
     if (!Number.isInteger(quantity) || quantity < 0 || quantity > 99) {
       return res.status(400).json({ error: 'INVALID_QUANTITY' });
     }
+    // Optional variantId — when the cart row is pinned to a specific
+    // (color, size) variant we need it in the lookup key. Old callers
+    // that omit it still work because the @@unique includes null.
+    const variantId = req.body?.variantId || null;
+    const whereKey = {
+      userId: req.user.id,
+      productId: req.params.productId,
+      variantId,
+    };
+    if (quantity === 0) {
+      await prisma.cartItem.deleteMany({ where: whereKey });
+      return res.json({ ok: true });
+    }
 
-    const product = await prisma.product.findUnique({ where: { id: req.params.productId }, include: { variants: true } });
+    const product = await prisma.product.findUnique({ where: { id: req.params.productId } });
     if (!product) return res.status(404).json({ error: 'PRODUCT_NOT_FOUND' });
 
-    let availableStock = product.stock;
+    // Stock check against the variant when one is selected, else Product.stock.
+    let stockAvailable = product.stock;
     if (variantId) {
       const variant = await prisma.productVariant.findUnique({ where: { id: variantId } });
       if (!variant || variant.productId !== product.id) {
         return res.status(400).json({ error: 'INVALID_VARIANT' });
       }
-      availableStock = variant.stock;
+      stockAvailable = variant.stock;
     }
-
-    if (quantity === 0) {
-      await prisma.cartItem.deleteMany({
-        where: { userId: req.user.id, productId: req.params.productId, variantId },
-      });
-      return res.json({ ok: true });
-    }
-
-    if (quantity > availableStock) {
+    if (quantity > stockAvailable) {
       return res.status(400).json({
         error: 'INSUFFICIENT_STOCK',
-        available: availableStock,
+        available: stockAvailable,
         requested: quantity,
       });
     }
 
-    const existing = await prisma.cartItem.findFirst({
-      where: { userId: req.user.id, productId: req.params.productId, variantId },
-    });
-    if (!existing) return res.status(404).json({ error: 'CART_ITEM_NOT_FOUND' });
-
-    const item = await prisma.cartItem.update({
-      where: { id: existing.id },
-      data: { quantity },
-      include: { product: { include: { vendor: { select: { id: true, businessName: true, status: true } } } } },
+    const item = await prisma.cartItem.findFirst({
+      where: whereKey,
+      include: {
+        product: { include: { vendor: { select: { id: true, businessName: true } } } },
+        variant: true,
+      },
     });
     if (!item) return res.status(404).json({ error: 'CART_ITEM_NOT_FOUND' });
     const updated = await prisma.cartItem.update({
@@ -224,10 +252,21 @@ router.patch('/:productId', async (req, res, next) => {
 
 router.delete('/:productId', async (req, res, next) => {
   try {
-    const variantId = req.body?.variantId || req.query?.variantId || null;
-    await prisma.cartItem.deleteMany({
-      where: { userId: req.user.id, productId: req.params.productId, variantId },
-    });
+    // When the caller specifies ?variantId=... in the query string
+    // (or in the JSON body), only delete that specific row. Without
+    // it, deletes all variants of the product for this user — old
+    // behaviour preserved for Cart.jsx callers that don't know about
+    // variants yet.
+    const variantId = req.query?.variantId || req.body?.variantId || null;
+    if (variantId === null) {
+      await prisma.cartItem.deleteMany({
+        where: { userId: req.user.id, productId: req.params.productId },
+      });
+    } else {
+      await prisma.cartItem.deleteMany({
+        where: { userId: req.user.id, productId: req.params.productId, variantId },
+      });
+    }
     res.json({ ok: true });
   } catch (err) { next(err); }
 });

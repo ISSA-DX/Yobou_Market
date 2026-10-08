@@ -22,52 +22,109 @@ function parseImageUrls(product) {
   }
 }
 
-function parseVariants(product) {
-  if (!product) return product;
-  const variants = Array.isArray(product.variants) ? product.variants : [];
-  return {
-    ...product,
-    variants: variants.map((variant) => ({
-      ...variant,
-      imageUrls: Array.isArray(variant.imageUrls)
-        ? variant.imageUrls
-        : (() => {
-            if (typeof variant.imageUrls !== 'string') return [];
-            try { return JSON.parse(variant.imageUrls) || []; } catch { return []; }
-          })(),
-    })),
-  };
-}
-
-function parseExtraCategories(product) {
-  if (!product) return product;
-  return product;
-}
-
 function stringifyImageUrls(data) {
   if (data.imageUrls === undefined) return data;
   return { ...data, imageUrls: JSON.stringify(data.imageUrls || []) };
 }
 
-function variantStockTotal(variants) {
-  if (!Array.isArray(variants)) return 0;
-  return variants.reduce((sum, variant) => sum + (Number(variant.stock) || 0), 0);
+// JSON.parse wrapper used for the per-row ProductVariant.imageUrls
+// column. Returns null on any parse failure so the caller can fall back
+// to an empty array; the variant input validator (see
+// server/src/lib/validators.js variantInput) guarantees well-formed
+// values on write, so a non-null result on read is the happy path.
+function safeParse(raw) {
+  if (typeof raw !== 'string') return null;
+  try { return JSON.parse(raw); } catch { return null; }
 }
 
-async function applyVariants(tx, productId, variants) {
-  const rows = Array.isArray(variants) ? variants : [];
-  await tx.productVariant.deleteMany({ where: { productId } });
-  if (rows.length === 0) return [];
+// Re-shape Product.variants into a clean client-facing array. Caller may
+// pass either the raw Prisma row or a transformed one (without variants).
+// imageUrls is the per-color photo gallery override (JSON-string in DB).
+function parseVariants(product) {
+  if (!product || !Array.isArray(product.variants)) return product;
+  return { ...product, variants: product.variants.map((v) => ({
+    id: v.id,
+    color: v.color,
+    size: v.size,
+    stock: v.stock,
+    imageUrls: safeParse(v.imageUrls) || [],
+  })) };
+}
 
-  return Promise.all(rows.map((variant) => tx.productVariant.create({
-    data: {
-      productId,
-      color: String(variant.color || '').trim(),
-      size: String(variant.size || '').trim(),
-      stock: Number(variant.stock) || 0,
-      imageUrls: JSON.stringify(Array.isArray(variant.imageUrls) ? variant.imageUrls : []),
-    },
-  })));
+// Reshape the CategoryExtra join-table rows into a clean
+// { name } array on the product wire shape. Mirrors parseImageUrls'
+// JSON-string → array pattern. Returns the product unchanged when
+// the field is absent (e.g. legacy include without the relation).
+function parseExtraCategories(product) {
+  if (!product || !Array.isArray(product.extraCategories)) return product;
+  return { ...product, extraCategories: product.extraCategories.map((e) => ({ id: e.id, name: e.name })) };
+}
+
+/**
+ * Reconcile a product's variant rows in `db.productVariant` with the
+ * caller-provided array. The reconciliation rules:
+ *
+ * - Rows in `variants` whose `id` matches an existing row are updated.
+ * - Rows in `variants` without an `id` are created.
+ * - Existing rows not present (by id) in `variants` are deleted.
+ *
+ * Run inside a `prisma.$transaction` that already holds a lock on the
+ * product row so the resulting Product.stock stays in sync with the new
+ * variant set.
+ *
+ * Returns the final sum-of-variant-stock. Caller is responsible for
+ * updating Product.stock to this value on the same transaction.
+ */
+async function applyVariants(tx, productId, variants) {
+  if (!Array.isArray(variants)) return 0;
+  const ids = variants.map((v) => v.id).filter(Boolean);
+  // Delete-then-create-then-update is sufficient because we're inside a
+  // transaction holding the product row. Order matters: delete first so
+  // the @@unique(productId, color, size) constraint doesn't fire while
+  // we add a "new" row that duplicates one we're about to drop.
+  if (ids.length === 0) {
+    await tx.productVariant.deleteMany({ where: { productId } });
+    for (const v of variants) {
+      await tx.productVariant.create({
+        data: {
+          productId,
+          color: v.color,
+          size: v.size,
+          stock: typeof v.stock === 'number' ? v.stock : 0,
+          imageUrls: JSON.stringify(Array.isArray(v.imageUrls) ? v.imageUrls : []),
+        },
+      });
+    }
+  } else {
+    await tx.productVariant.deleteMany({
+      where: { productId, NOT: { id: { in: ids } } },
+    });
+    for (const v of variants) {
+      if (v.id) {
+        await tx.productVariant.update({
+          where: { id: v.id },
+          data: {
+            color: v.color,
+            size: v.size,
+            stock: typeof v.stock === 'number' ? v.stock : 0,
+            imageUrls: JSON.stringify(Array.isArray(v.imageUrls) ? v.imageUrls : []),
+          },
+        });
+      } else {
+        await tx.productVariant.create({
+          data: {
+            productId,
+            color: v.color,
+            size: v.size,
+            stock: typeof v.stock === 'number' ? v.stock : 0,
+            imageUrls: JSON.stringify(Array.isArray(v.imageUrls) ? v.imageUrls : []),
+          },
+        });
+      }
+    }
+  }
+  const sum = variants.reduce((s, v) => s + (typeof v.stock === 'number' ? v.stock : 0), 0);
+  return sum;
 }
 
 function requireAdminOrApprovedVendor(req, res, next) {
@@ -185,18 +242,75 @@ router.get('/', async (req, res, next) => {
         { description: { contains: term } },
       ];
     }
-    const take = limit ? Math.max(1, Math.min(100, Number(limit) || 100)) : 100;
-    const products = await prisma.product.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take,
-      include: {
-        vendor: { select: { id: true, businessName: true, status: true } },
-        variants: { orderBy: { createdAt: 'asc' } },
+    if (parsed.minPrice != null) where.priceCents = { ...(where.priceCents || {}), gte: parsed.minPrice };
+    if (parsed.maxPrice != null) where.priceCents = { ...(where.priceCents || {}), lte: parsed.maxPrice };
+    if (parsed.inStock === true) where.stock = { gt: 0 };
+    if (parsed.showOnHome != null) where.showOnHome = parsed.showOnHome;
+    if (parsed.showOnDeals != null) where.showOnDeals = parsed.showOnDeals;
+    if (parsed.showOnFlashDeals != null) where.showOnFlashDeals = parsed.showOnFlashDeals;
+    if (parsed.showOnSearch != null) where.showOnSearch = parsed.showOnSearch;
+
+    // Resolved page size: explicit pageSize wins, legacy `limit`
+    // follows (kept for callers like Home.jsx that don't pass a
+    // pageSize), otherwise 24 (Shopify-style default).
+    const pageSize = parsed.pageSize ?? parsed.limit ?? 24;
+    const skip = (parsed.page - 1) * pageSize;
+    const orderBy = sortToOrderBy(parsed.sort);
+
+    // Six round-trips in parallel: filtered count + filtered page +
+    // four facet aggregations over the unfiltered live set. SQLite +
+    // Prisma's `groupBy` is fast enough on pilot-scale catalogs that
+    // we don't need a denormalized facet cache for Phase 0; when the
+    // catalog crosses ~10k products, swap this for a single raw
+    // `SELECT ... GROUP BY` batch.
+    const facetWhere = { status: 'LIVE' };
+    const [total, products, categoriesFacet, vendorsFacet, priceRange] = await Promise.all([
+      prisma.product.count({ where }),
+      prisma.product.findMany({
+        where, orderBy, skip, take: pageSize,
+        include: {
+          vendor: { select: { id: true, businessName: true } },
+          variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
+        },
+      }),
+      prisma.product.groupBy({ by: ['category'], where: facetWhere, _count: { _all: true } }),
+      prisma.product.groupBy({ by: ['vendorId'], where: { ...facetWhere, vendorId: { not: null } }, _count: { _all: true } }),
+      prisma.product.aggregate({ where: facetWhere, _min: { priceCents: true }, _max: { priceCents: true } }),
+    ]);
+
+    // Vendor name lookup: groupBy gives vendorId+count only; need one
+    // extra query for the names. Done as a second Promise.all slot
+    // so the rest of the response still ships together.
+    const vendorIds = vendorsFacet.map((v) => v.vendorId).filter(Boolean);
+    const vendorRows = vendorIds.length
+      ? await prisma.vendor.findMany({ where: { id: { in: vendorIds } }, select: { id: true, businessName: true } })
+      : [];
+    const vendorNameById = new Map(vendorRows.map((v) => [v.id, v.businessName]));
+
+    const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+    res.json({
+      products: products.map((p) => parseVariants(parseImageUrls(p))),
+      facets: {
+        categories: categoriesFacet
+          .map((c) => ({ name: c.category, count: c._count._all }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+        vendors: vendorsFacet
+          .map((v) => ({ id: v.vendorId, name: vendorNameById.get(v.vendorId) || '', count: v._count._all }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+        priceRange: { min: priceRange._min.priceCents, max: priceRange._max.priceCents },
+      },
+      pagination: {
+        page: parsed.page,
+        pageSize,
+        total,
+        totalPages,
+        hasMore: skip + products.length < total,
       },
     });
-    res.json({ products: products.map((p) => parseExtraCategories(parseVariants(parseImageUrls(p)))) });
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
 });
 
 // Backwards-compatible legacy list — derived from the curated Category
@@ -216,66 +330,6 @@ router.get('/categories', async (_req, res, next) => {
     });
     const counts = Object.fromEntries(groups.map((g) => [g.category, g._count._all]));
     res.json({ categories: rows.map((c) => ({ name: c.name, count: counts[c.name] || 0 })) });
-  } catch (err) { next(err); }
-});
-
-function discountPercent(product) {
-  if (!product?.compareAtPriceCents || product.compareAtPriceCents <= product.priceCents) return 0;
-  return Math.round(((product.compareAtPriceCents - product.priceCents) / product.compareAtPriceCents) * 100);
-}
-
-// Public curated home feed — returns the data slices the customer homepage
-// needs in a single round-trip, so the app can render skeletons once and
-// fill content without multiple cascading requests.
-// Each product also gets a `soldCount` so the UI can show real social proof
-// ("X sold") without adding a new schema column.
-router.get('/feed', async (_req, res, next) => {
-  try {
-    const all = await prisma.product.findMany({
-      where: { status: 'LIVE' },
-      orderBy: { createdAt: 'desc' },
-      include: { vendor: { select: { id: true, businessName: true, status: true } } },
-    });
-
-    // Real sales counts across non-cancelled/refunded orders.
-    const soldAgg = await prisma.orderItem.groupBy({
-      by: ['productId'],
-      where: {
-        order: { status: { notIn: ['CANCELLED', 'REFUNDED'] } },
-      },
-      _sum: { quantity: true },
-    });
-    const soldByProduct = Object.fromEntries(
-      soldAgg.map((r) => [r.productId, r._sum.quantity || 0])
-    );
-
-    const parsed = all.map((p) => ({
-      ...parseImageUrls(p),
-      soldCount: soldByProduct[p.id] || 0,
-    }));
-
-    const deals = parsed
-      .filter((p) => p.compareAtPriceCents && p.compareAtPriceCents > p.priceCents)
-      .sort((a, b) => discountPercent(b) - discountPercent(a))
-      .slice(0, 10)
-      .map((p) => ({ ...p, discountPercent: discountPercent(p) }));
-
-    const newArrivals = parsed.slice(0, 10);
-
-    const featuredCategories = ['Electronics', 'Fashion', 'Home', 'Beauty', 'Gaming', 'Phones', 'Sports'];
-    const featured = parsed
-      .filter((p) => featuredCategories.includes(p.category))
-      .slice(0, 10);
-
-    const trending = parsed
-      .filter((p) => p.soldCount > 0)
-      .sort((a, b) => b.soldCount - a.soldCount)
-      .slice(0, 10);
-
-    const usedIds = new Set([...deals, ...newArrivals, ...featured, ...trending].map((p) => p.id));
-    const rest = parsed.filter((p) => !usedIds.has(p.id));
-
-    res.json({ deals, newArrivals, featured, trending, all: rest.slice(0, 100) });
   } catch (err) { next(err); }
 });
 
@@ -392,8 +446,9 @@ router.get('/:id', async (req, res, next) => {
     const product = await prisma.product.findUnique({
       where: { id: req.params.id },
       include: {
-        vendor: { select: { id: true, businessName: true, status: true } },
-        variants: { orderBy: { createdAt: 'asc' } },
+        vendor: { select: { id: true, businessName: true } },
+        variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
+        extraCategories: { select: { id: true, name: true } },
       },
     });
     if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
@@ -467,31 +522,35 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
 router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) => {
   try {
     const data = productUpsert.parse(req.body);
-    const variants = Array.isArray(data.variants) ? data.variants : [];
-    const effectiveStock = variants.length > 0 ? variantStockTotal(variants) : data.stock ?? 0;
-
     const product = await prisma.$transaction(async (tx) => {
-      const { variants: _ignoredVariants, ...productData } = stringifyImageUrls(data);
+      // Pull out the relation-only fields that don't belong on the
+      // Product row itself. The 4 booleans DO go on Product; the
+      // extraCategories array is normalized then persisted via the
+      // CategoryExtra join table.
+      const { variants, extraCategories, ...rest } = data;
+      const normalizedExtras = normalizeExtraCategories(extraCategories);
+      // If variants are provided, Product.stock is the sum — server is
+      // the source of truth, not the client.
+      const stock = Array.isArray(variants) && variants.length > 0
+        ? variants.reduce((s, v) => s + (typeof v.stock === 'number' ? v.stock : 0), 0)
+        : data.stock;
       const created = await tx.product.create({
-        data: {
-          ...productData,
-          stock: effectiveStock,
-          ...(variants.length > 0 ? {
-            variants: {
-              create: variants.map((variant) => ({
-                color: String(variant.color || '').trim(),
-                size: String(variant.size || '').trim(),
-                stock: Number(variant.stock) || 0,
-                imageUrls: JSON.stringify(Array.isArray(variant.imageUrls) ? variant.imageUrls : []),
-              })),
-            },
-          } : {}),
-        },
-        include: { variants: { orderBy: { createdAt: 'asc' } } },
+        data: { ...stringifyImageUrls(rest), stock },
       });
-      return created;
+      if (Array.isArray(variants) && variants.length > 0) {
+        await applyVariants(tx, created.id, variants.map((v) => ({ ...v, id: undefined })));
+      }
+      if (normalizedExtras.length > 0) {
+        await applyExtraCategories(tx, created.id, normalizedExtras);
+      }
+      return tx.product.findUnique({
+        where: { id: created.id },
+        include: {
+          variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
+          extraCategories: { select: { id: true, name: true } },
+        },
+      });
     });
-
     // Audit + live fan-out. notifyProductChange handles "vendor-less"
     // products by skipping the vendor owner branch internally.
     await audit(req.user.id, {
@@ -536,31 +595,42 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
     // Admin updates apply immediately; vendor updates go through approval.
     if (isAdmin) {
       const updated = await prisma.$transaction(async (tx) => {
-        const normalizedVariants = Array.isArray(data.variants) ? data.variants : undefined;
-        const nextStock = normalizedVariants !== undefined
-          ? (normalizedVariants.length > 0 ? variantStockTotal(normalizedVariants) : (data.stock ?? 0))
-          : undefined;
-
-        const { variants: _ignoredVariants, ...productData } = stringifyImageUrls(data);
-        const payload = { ...productData };
-        if (nextStock !== undefined) payload.stock = nextStock;
-
-        const updatedProduct = await tx.product.update({
-          where: { id: req.params.id },
-          data: payload,
-          include: { variants: { orderBy: { createdAt: 'asc' } } },
-        });
-
-        if (normalizedVariants !== undefined) {
-          await applyVariants(tx, req.params.id, normalizedVariants);
-          const refreshed = await tx.product.findUnique({
-            where: { id: req.params.id },
-            include: { variants: { orderBy: { createdAt: 'asc' } } },
-          });
-          return refreshed;
+        // Pull out the relation-only fields. The 4 booleans stay on
+        // the Product row (the partial schema makes them optional,
+        // so an admin PATCH that only updates a price doesn't have
+        // to send them). extraCategories is normalized then
+        // reconciled against the CategoryExtra join table.
+        const { variants, extraCategories, ...rest } = data;
+        const updateData = stringifyImageUrls(rest);
+        // If variants are provided, recompute Product.stock. If variants
+        // is an empty array, that's "clear all variants" — stock falls
+        // back to the legacy `data.stock` (or stays where it is if the
+        // client didn't change it; we never wipe the field here).
+        if (Array.isArray(variants)) {
+          if (variants.length > 0) {
+            updateData.stock = variants.reduce((s, v) => s + (typeof v.stock === 'number' ? v.stock : 0), 0);
+          } else {
+            updateData.stock = data.stock ?? 0;
+          }
         }
-
-        return updatedProduct;
+        await tx.product.update({ where: { id: req.params.id }, data: updateData });
+        if (Array.isArray(variants)) {
+          await applyVariants(tx, req.params.id, variants);
+        }
+        // Only reconcile CategoryExtra when the field was actually
+        // sent in the body. An admin PATCH that doesn't touch
+        // placements leaves existing rows alone.
+        if (extraCategories !== undefined) {
+          const normalizedExtras = normalizeExtraCategories(extraCategories);
+          await applyExtraCategories(tx, req.params.id, normalizedExtras);
+        }
+        return tx.product.findUnique({
+          where: { id: req.params.id },
+          include: {
+            variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
+            extraCategories: { select: { id: true, name: true } },
+          },
+        });
       });
       await audit(req.user.id, {
         action: 'product.update',

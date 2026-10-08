@@ -4,6 +4,7 @@ const { prisma } = require('../prisma');
 const { requireAuth } = require('../auth/middleware');
 const { mobileMoneyMethodCreate, MOBILE_MONEY_PROVIDERS } = require('../lib/validators');
 const { maskPhone, verifyCallbackSignature } = require('../lib/mobileMoney');
+const stripeLib = require('../lib/stripe');
 
 const router = express.Router();
 
@@ -318,4 +319,5 @@ router.post('/mobile-money/methods', async (req, res, next) => {
   }
 });
 
+router.webhookHandler = webhookHandler;
 module.exports = router;

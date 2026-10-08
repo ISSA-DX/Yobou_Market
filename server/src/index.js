@@ -23,6 +23,7 @@ const addressesRoutes = require('./routes/addresses');
 const paymentsRoutes = require('./routes/payments');
 const categoriesRoutes = require('./routes/categories');
 const eventsRoutes = require('./routes/events');
+const reviewsRoutes = require('./routes/reviews');
 const { rateLimit } = require('./lib/rateLimit');
 const { securityHeaders } = require('./lib/securityHeaders');
 
