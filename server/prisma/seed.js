@@ -13,7 +13,23 @@ const USERS = [
   { email: 'vendor2@yobou.test', name: 'Pending Partner', password: 'Vendor123!', role: 'VENDOR', vendor: { businessName: 'Pending Partner Co', phone: '+1-555-0102', status: 'PENDING' } },
 ];
 
-const CATEGORIES = ['Electronics', 'Fashion', 'Home', 'Beauty'];
+// Curated product categories that ship with every fresh install. This
+// is the canonical list both the admin/partner pickers and the
+// customer storefront rely on — when an admin adds a new product
+// they pick from this list (or click "Other" to add a brand-new one).
+// Backfills (boot + the admin-only POST /api/categories/backfill
+// endpoint) use the same array, so live databases that pre-date this
+// expanded set get promoted to it on the next restart.
+//
+// `Pharmacy` is intentionally absent — health/medicine needs
+// regulatory review before we ship it.
+const CATEGORIES = [
+  'Electronics', 'Phones', 'Computer', 'Fashion', 'Shoes', 'Beauty',
+  'Home', 'Kitchen', 'Sports', 'Fitness', 'Toys', 'Gaming',
+  'TV & Audio', 'Appliances', 'Automotive', 'Books', 'Grocery',
+  'Health', 'Pet Supplies', 'Baby', 'Jewelry', 'Watches', 'Bags',
+  'Office', 'Garden', 'Tools', 'Arts & Crafts', 'Musical Instruments',
+];
 
 const PRODUCTS = [
   { name: 'Wireless Earbuds Pro', priceCents: 4999, category: 'Electronics', description: 'Active noise-cancelling earbuds with 30-hour battery life.' },
@@ -90,6 +106,19 @@ async function main() {
         status: 'LIVE',
         vendorId: i < 8 ? vendor1.id : null,
       },
+    });
+  }
+
+  // Curated Category table — the admin/partner Add Product pickers
+  // read from this list via GET /api/categories. We upsert the four
+  // seed categories so the dropdown is non-empty after seeding. Using
+  // upsert (not create) makes the function idempotent — re-running the
+  // seed does not throw on the second pass.
+  for (const name of CATEGORIES) {
+    await prisma.category.upsert({
+      where: { name },
+      update: {},
+      create: { name, slug: name.toLowerCase(), isActive: true },
     });
   }
 

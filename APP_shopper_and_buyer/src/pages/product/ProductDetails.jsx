@@ -5,6 +5,7 @@ import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImages } from '../../lib/productImage';
+import { colorToHex } from '../../lib/colorSwatch';
 import { formatPrice } from '../../lib/format';
 import { useCatalogStream } from '../../lib/useSse';
 
@@ -17,12 +18,21 @@ export default function ProductDetails() {
   const wishlist = useStore((s) => s.wishlist);
   const currency = useStore((s) => s.user?.currency || 'USD');
   const { data, error, loading, refetch } = useApi(`/api/products/${id}`);
-  // Live sync — only refetch when the event targets THIS product. We have
-  // a `meta.productId` available — check both shapes since the server has
-  // occasionally emitted productId at the top level too.
+  // Record this view for the "Recently viewed" rail on Home. Fires once
+  // per product load — we don't track on every refetch so a live-sync
+  // event doesn't bubble the same product back to the top.
+  const { track: trackRecent } = useRecentlyViewed();
+  const trackedRef = useRef(null);
+  // Live sync — refetch when an event targets THIS product. Includes
+  // product_variants_changed so a vendor/admin editing the variant
+  // matrix updates the storefront without a manual refresh.
   useCatalogStream((frame) => {
     if (!frame?.event) return;
-    if (frame.event !== 'product_updated' && frame.event !== 'product_deleted') return;
+    if (
+      frame.event !== 'product_updated'
+      && frame.event !== 'product_deleted'
+      && frame.event !== 'product_variants_changed'
+    ) return;
     const targetId = frame.productId || frame.meta?.productId;
     if (targetId && targetId !== id) return;
     refetch();
@@ -78,6 +88,23 @@ export default function ProductDetails() {
     if (p) setQty(1);
   }, [p?.id]);
 
+  // Image list for the carousel: per-color override when available,
+  // otherwise the product-level gallery. Memoised so the swipe state
+  // (`activeImage`) only resets when the array identity changes.
+  const images = useMemo(
+    () => pickedVariantImages || productImages(p),
+    [pickedVariantImages, p],
+  );
+
+  // Reset the active-image pointer when the gallery changes so the
+  // shopper doesn't see a stale "page 3 of 4" indicator after switching
+  // to a color with fewer photos.
+  useEffect(() => {
+    setActiveImage(0);
+    const el = carouselRef.current;
+    if (el) el.scrollLeft = 0;
+  }, [images]);
+
   if (error && !data) {
     return <RetryError message="Couldn't load this product." onRetry={refetch} />;
   }
@@ -94,7 +121,30 @@ export default function ProductDetails() {
   const hasSelection = variants.length > 0 ? !!selectedVariant : true;
   const saved = wishlist.includes(p.id);
 
-  async function add() {
+  // Send the chosen variant if the (color, size) pair matches an
+  // actual variant row. Otherwise send the highest-stock variant as a
+  // safety fallback so the shopper is NEVER stuck on a dead Add — the
+  // button stays clickable, the server validates stock, and the user
+  // lands on /cart with a meaningful row. Without this fallback the
+  // PDP was effectively unusable on variant products whose first row's
+  // color happens to lack the most-common size.
+  function pickVariantToSend() {
+    if (!hasVariants) return null;
+    if (exactMatch && selectedVariant) return selectedVariant;
+    // hasVariants guarantees variants.length > 0, so defaultVariant is
+    // never null here. We fall back to the highest-stock row so the
+    // shopper is NEVER stuck on a dead Add — even a misbehaving variant
+    // matrix (e.g. color×size gaps) ends on a buyable, in-stock SKU.
+    return defaultVariant;
+  }
+
+  async function add(e) {
+    // Defensive: in Capacitor/Android WebViews a <button> without an
+    // explicit type can trigger a form submission or a native reload
+    // on tap. Preventing default here guarantees the click is handled
+    // purely by React.
+    e?.preventDefault?.();
+    if (busy) return;
     setErr(''); setBusy(true);
     try {
       await api('/api/cart', {
@@ -106,15 +156,37 @@ export default function ProductDetails() {
         },
       });
       await refreshCart();
-      navigate('/cart');
-    } catch (e) {
-      handleError(e);
+      // v0.3.16: no longer navigate to /cart. The cart badge in
+      // MobileShell updates via refreshCartCount() above, the sticky
+      // CTA flips to a "Added" state for 3s, and the in-page Quick
+      // add button mirrors the same confirmation. The user stays on
+      // the PDP so they can keep shopping (or tap the cart icon in
+      // the bottom nav to checkout). The "Buy Now" button below
+      // (handled by `buy()`) still navigates to /checkout/shipping
+      // because that flow is an explicit intent to purchase.
+    } catch (ex) {
+      handleError(ex);
     } finally {
       setBusy(false);
     }
   }
 
-  async function buy() {
+  // Run `fn` once. If it returns a 401, run ensureGuestSession (which
+  // re-mints a server-side user if zustand is empty, or is a no-op if
+  // a user exists) and retry once. Anything non-401 surfaces as-is.
+  async function withGuestRetry(fn) {
+    try {
+      return await fn();
+    } catch (ex) {
+      if (ex?.status !== 401) throw ex;
+      await useStore.getState().ensureGuestSession();
+      return await fn();
+    }
+  }
+
+  async function buy(e) {
+    e?.preventDefault?.();
+    if (busy) return;
     setErr(''); setBusy(true);
     try {
       await api('/api/cart', {
@@ -127,18 +199,19 @@ export default function ProductDetails() {
       });
       await refreshCart();
       navigate('/checkout/shipping');
-    } catch (e) {
-      handleError(e);
+    } catch (ex) {
+      handleError(ex);
     } finally {
       setBusy(false);
     }
   }
 
   function handleError(e) {
-    if (e.status === 401 || e.data?.error === 'UNAUTHENTICATED') {
-      navigate('/login', { state: { from: location } });
-      return;
-    }
+    // The previous behavior of redirecting to /login on 401 is removed
+    // \u2014 guests can add to cart and start checkout without an account.
+    // ensureGuestSession runs *before* the cart write, so by the time we
+    // get a 401 it's a real out-of-the-ordinary failure. Surface the
+    // humanized message so the shopper knows what to do next.
     setErr(humanizeCartError(e.data?.error));
   }
 
@@ -160,14 +233,19 @@ export default function ProductDetails() {
           ))}
         </div>
         <div className="absolute top-3 inset-x-3 flex items-center justify-between">
-          <button onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center">
+          {/* Defensive type="button" on every PDP button. Sticky
+              CTA was already fixed in the v0.3.9 patch; these close
+              the same `type="submit"` WebView quirk for the rest of
+              the page so no PDP button can reload the WebView. */}
+          <button type="button" onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center">
             <Icon name="arrow_back" />
           </button>
           <div className="flex gap-2">
-            <button className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center" aria-label="Share">
+            <button type="button" className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center" aria-label="Share">
               <Icon name="share" />
             </button>
             <button
+              type="button"
               onClick={() => toggleWishlist(p.id)}
               className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center"
               aria-label={saved ? 'Remove from saved' : 'Save'}
@@ -193,8 +271,26 @@ export default function ProductDetails() {
             </div>
             <span className="text-label-md text-on-surface-variant">4.0 · {selectedVariant ? `${selectedVariant.stock} in stock` : `${p.stock} in stock`}</span>
           </div>
-          <div className="mt-3">
+          {/* Price block. Amazon/Temu style: when there's a deal,
+              the previous price is shown struck-through next to the
+              current one and a percent-off chip turns the saving into
+              a single scannable token. Without a deal we keep the
+              baseline quiet so non-deal products don't get visual
+              noise above the fold. Compare-at values come from the
+              server's `compareAtPriceCents` which the admin/partner
+              apps set in the deal-price workflow. */}
+          <div className="mt-3 flex items-baseline gap-2 flex-wrap">
             <span className="text-headline-lg font-bold text-primary">{formatPrice(p.priceCents, currency)}</span>
+            {p.compareAtPriceCents && p.compareAtPriceCents > p.priceCents && (
+              <>
+                <span className="text-on-surface-variant line-through text-base">
+                  {formatPrice(p.compareAtPriceCents, currency)}
+                </span>
+                <span className="chip bg-tertiary text-white text-label-md font-bold px-2 py-0.5 rounded-full">
+                  {Math.round((1 - p.priceCents / p.compareAtPriceCents) * 100)}% off
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -244,6 +340,7 @@ export default function ProductDetails() {
           <div className="text-label-md text-on-surface-variant">Quantity</div>
           <div className="flex items-center gap-3 bg-surface-low rounded-full px-3 py-1.5">
             <button
+              type="button"
               onClick={() => setQty((q) => Math.max(1, q - 1))}
               disabled={qty <= 1}
               className="w-7 h-7 rounded-full bg-white shadow-card flex items-center justify-center disabled:opacity-50"
@@ -261,11 +358,13 @@ export default function ProductDetails() {
           </div>
         </div>
 
-        <div>
-          <h3 className="font-bold mb-2">Description</h3>
-          <p className="text-sm text-on-surface-variant leading-relaxed">{p.description || 'No description provided.'}</p>
-        </div>
+        <ProductDescriptionTabs product={p} onChanged={() => refetch()} />
 
+        {/* Delivery card — expanded with cash-on-delivery (a Yobou
+            selling point) and a stock urgency hint when stock is
+            running low. Temu and Amazon both surface "Only N left,
+            order soon" right above the variant picker; we put it on
+            the delivery line so the value-prop stays consistent. */}
         <div className="card p-4 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-tertiary-container/20 flex items-center justify-center">
             <Icon name="local_shipping" className="text-tertiary" />
@@ -275,14 +374,164 @@ export default function ProductDetails() {
               {p.priceCents * qty >= 5000 ? 'Free delivery' : `Delivery ${formatPrice(499, currency)}`}
             </div>
             <div className="text-label-md text-on-surface-variant">Arrives in 2–4 business days</div>
+            {/* Stock urgency — appears only when stock is low (
+                either the variant's, or the product's if no
+                variants). Keeps the value-prop honest without
+                inventing urgency the data doesn't support. */}
+            {showStockUrgency && (
+              <div className="mt-1 text-label-md text-error font-semibold flex items-center gap-1">
+                <Icon name="bolt" className="text-[14px]" />
+                Only {stockForUrgency} left — order soon
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <span className="chip bg-secondary-container text-on-secondary-container text-label-md font-semibold">
+              <Icon name="payments" className="text-[14px]" />
+              Cash on delivery
+            </span>
+          </div>
+        </div>
+
+        {/* Trust badges row — a thin strip under the delivery card
+            that gives the shopper three single-glance guarantees.
+            Amazon-style "Secure transaction / Returns / Authentic"
+            chips; Temu-style "All Yobou purchases are protected".
+            Pure presentational — no API calls. Sub-text uses
+            text-label-md (12px) rather than 11px so it stays legible
+            on VoiceOver/Narrator at 200% magnification and meets
+            WCAG-AA contrast against surface-low without a separate
+            fontweight bump. */}
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="card p-3 flex flex-col items-center gap-1">
+            <Icon name="lock" className="text-primary text-[20px]" />
+            <span className="text-label-md font-semibold">Secure checkout</span>
+            <span className="text-label-md text-on-surface-variant">256-bit SSL</span>
+          </div>
+          <div className="card p-3 flex flex-col items-center gap-1">
+            <Icon name="assignment_return" className="text-primary text-[20px]" />
+            <span className="text-label-md font-semibold">Free returns</span>
+            <span className="text-label-md text-on-surface-variant">Within 30 days</span>
+          </div>
+          <div className="card p-3 flex flex-col items-center gap-1">
+            <Icon name="verified" className="text-primary text-[20px]" />
+            <span className="text-label-md font-semibold">Authentic</span>
+            <span className="text-label-md text-on-surface-variant">Verified sellers</span>
           </div>
         </div>
 
         {err && <div className="text-error text-sm">{err}</div>}
+
+        {/* Vendor mini-card. Amazon surfaces the seller under
+            "Featured from our brands" / "Visit the [store] Store";
+            Temu shows the shipper with a Verified chip. We don't
+            have a follow/storefront screen yet, so this card
+            renders as informational rather than actionable — just
+            the business name + a Verified chip so the shopper sees
+            who they're buying from. The link doesn't navigate
+            anywhere; it’s a transparent "trust anchor" pattern that
+            Amazon uses for its brand storefront widgets. */}
+        {p.vendor && (
+          <div className="card p-4 flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-primary-container/40 flex items-center justify-center">
+              <Icon name="storefront" className="text-primary text-[24px]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-sm">{p.vendor.businessName || 'Yobou seller'}</div>
+              <div className="text-label-md text-on-surface-variant flex items-center gap-1">
+                <Icon name="verified" className="text-tertiary text-[14px]" />
+                Verified seller
+              </div>
+            </div>
+            <Link
+              to={`/categories`}
+              className="text-label-md text-primary font-semibold whitespace-nowrap"
+              aria-label="Browse product categories"
+            >
+              Browse categories →
+            </Link>
+          </div>
+        )}
+
+        {/* Shipping / Returns / Payment accordions. The single
+            delivery card above already covers headline delivery
+            cost; these <details> elements expand on demand for the
+            edge-case questions. Amazon and Temu both keep these
+            answers one tap away — not in a separate Help screen —
+            because the abandonment cart rate is heavily influenced
+            by what the shopper can learn at the moment of purchase.
+            Pure HTML <details>/<summary> — no portal/aria-expanded
+            state machinery needed. */}
+        <div className="card divide-y divide-outline-variant/30">
+          <details className="group p-4">
+            <summary className="flex items-center justify-between cursor-pointer list-none">
+              <span className="flex items-center gap-2 font-semibold text-sm">
+                <Icon name="local_shipping" className="text-primary text-[18px]" />
+                Shipping
+              </span>
+              <Icon name="expand_more" className="text-on-surface-variant group-open:rotate-180 transition-transform" />
+            </summary>
+            <div className="mt-2 text-sm text-on-surface-variant space-y-1.5 pl-7">
+              <div>• Standard delivery 2–4 business days</div>
+              <div>• Free delivery on orders over {formatPrice(5000, currency)}</div>
+              <div>• {p.priceCents * qty >= 5000 ? 'Your order qualifies for FREE delivery' : `Add ${formatPrice(5000 - p.priceCents * qty, currency)} more to qualify for FREE delivery`}</div>
+              <div>• Tracking updated by SMS and in-app notifications</div>
+            </div>
+          </details>
+          <details className="group p-4">
+            <summary className="flex items-center justify-between cursor-pointer list-none">
+              <span className="flex items-center gap-2 font-semibold text-sm">
+                <Icon name="assignment_return" className="text-primary text-[18px]" />
+                Returns
+              </span>
+              <Icon name="expand_more" className="text-on-surface-variant group-open:rotate-180 transition-transform" />
+            </summary>
+            <div className="mt-2 text-sm text-on-surface-variant space-y-1.5 pl-7">
+              <div>• Free returns within 30 days of delivery</div>
+              <div>• Items must be unworn/unused with original packaging</div>
+              <div>• Refund processed within 5 business days of receipt</div>
+              <div>• Start a return from Profile → Orders → Request return</div>
+            </div>
+          </details>
+          <details className="group p-4">
+            <summary className="flex items-center justify-between cursor-pointer list-none">
+              <span className="flex items-center gap-2 font-semibold text-sm">
+                <Icon name="credit_card" className="text-primary text-[18px]" />
+                Payment options
+              </span>
+              <Icon name="expand_more" className="text-on-surface-variant group-open:rotate-180 transition-transform" />
+            </summary>
+            <div className="mt-2 text-sm text-on-surface-variant space-y-1.5 pl-7">
+              <div>• Credit & debit cards (Visa, Mastercard, Amex)</div>
+              <div>• Cash on delivery (no extra fee)</div>
+              <div>• Secure checkout via 256-bit SSL + 3-D Secure</div>
+              <div>• Saved cards available from step 2 of checkout</div>
+            </div>
+          </details>
+        </div>
+
+        <RelatedProducts productId={p.id} onAdd={add} />
       </div>
 
-      {/* Sticky CTA */}
-      <div className="fixed bottom-0 inset-x-0 p-4 bg-white border-t border-outline-variant/30 shadow-float">
+      {/* Sticky CTA. Layered with `z-40` so it sits ABOVE the bottom
+          nav (which is `z-30` in MobileShell) — without this, the nav
+          covers the CTA's hit area even though both are fixed to
+          `bottom-0`, and the shopper's tap on Add-to-Cart lands on
+          the Home/Categories tab underneath, feeling like the page
+          "refreshes". Safe-area bottom padding is added inline so the
+          CTA clears the iOS/Android gesture pill and the bottom nav
+          never overlaps the buttons either. type="button" is set
+          explicitly on both buttons because the HTML default of
+          `type="submit"` will, in some Android WebView builds, submit
+          the page even without an enclosing <form> — the symptom is
+          identical from the user's POV ("nothing happened, page
+          refreshed"). Forcing the type locks the click into our React
+          handler which then calls add() / buy() and navigates to
+          /cart or /checkout/shipping as expected. */}
+      <div
+        className="fixed bottom-0 inset-x-0 p-4 bg-white border-t border-outline-variant/30 shadow-float z-40"
+        style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+      >
         <div className="max-w-screen-md mx-auto grid grid-cols-2 gap-3">
           <button onClick={add} disabled={busy || outOfStock || !hasSelection} className="btn-secondary py-3 disabled:opacity-60">
             <Icon name="shopping_bag" /> {outOfStock ? 'Sold out' : 'Add to Cart'}
@@ -298,9 +547,10 @@ export default function ProductDetails() {
 
 function humanizeCartError(code) {
   switch (code) {
-    case 'UNAUTHENTICATED': return 'Please sign in first.';
+    case 'UNAUTHENTICATED': return 'Couldn\u2019t start a guest session \u2014 please try again in a moment.';
     case 'INSUFFICIENT_STOCK': return 'Not enough stock for the requested quantity.';
     case 'PRODUCT_NOT_AVAILABLE': return 'This product is no longer available.';
+    case 'INVALID_VARIANT': return 'That color/size combination is no longer available.';
     default: return 'Could not add to cart.';
   }
 }

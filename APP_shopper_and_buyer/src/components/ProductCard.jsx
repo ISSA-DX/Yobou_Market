@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Icon from './Icon';
 import { useStore } from '../store';
 import { productImage } from '../lib/productImage';
@@ -31,9 +31,15 @@ export default function ProductCard({ product, onAdd, layout = 'grid', badge }) 
   const cover = productImage(product);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
-  const outOfStock = product.stock === 0;
+  // Defensive: a missing .stock throws a TypeError on the related-
+  // products rail that crashes the parent PDP render. Coerce to 0
+  // so the "Out of stock" overlay still appears correctly.
+  const productStock = typeof product?.stock === 'number' ? product.stock : 0;
+  const outOfStock = productStock === 0;
   const price = formatPrice(product.priceCents, currency);
-  const listPrice = product.compareAtPriceCents
+  const hasDeal = typeof product.compareAtPriceCents === 'number'
+    && product.compareAtPriceCents > product.priceCents;
+  const listPrice = hasDeal
     ? formatPrice(product.compareAtPriceCents, currency)
     : null;
   const discount = product.discountPercent || discountFor(product);
@@ -42,10 +48,13 @@ export default function ProductCard({ product, onAdd, layout = 'grid', badge }) 
   async function handleAdd(e) {
     e.preventDefault();
     if (outOfStock || adding) return;
-    if (added) {
-      navigate('/cart');
-      return;
-    }
+    // v0.3.16: no longer redirect to /cart on the second click. The
+    // "Added" state below is a visual confirmation only — the user
+    // navigates to the cart explicitly via the cart icon in the
+    // bottom nav. This is the Temu/Amazon pattern: keep the shopper
+    // on the browsing surface so they can continue shopping
+    // uninterrupted.
+    if (added) return;
     if (!onAdd) {
       // eslint-disable-next-line no-console
       console.warn('ProductCard rendered without onAdd; add-to-cart is disabled.');
@@ -53,14 +62,20 @@ export default function ProductCard({ product, onAdd, layout = 'grid', badge }) 
     }
     setAdding(true);
     try {
+      // Make sure we have an authenticated session — guests get a
+      // server-side user created on first add so the rest of the
+      // cart flow doesn't need to branch on auth state. The previous
+      // behavior of redirecting to /login on 401 is intentionally
+      // removed: the user's spec is "guest can add to cart and buy
+      // now without an account".
+      await useStore.getState().ensureGuestSession();
       await onAdd(product);
       setAdded(true);
       setTimeout(() => setAdded(false), 3e3);
     } catch (e) {
-      if (e.status === 401 || e.data?.error === 'UNAUTHENTICATED') {
-        navigate('/login', { state: { from: location } });
-      }
       // Non-auth errors are surfaced by the consumer (toast/error state).
+      // There is no longer a 401 → /login branch: ensureGuestSession
+      // either succeeded (cart write proceeds) or failed (toast).
     } finally {
       setAdding(false);
     }
@@ -208,8 +223,8 @@ export default function ProductCard({ product, onAdd, layout = 'grid', badge }) 
               </span>
             ) : added ? (
               <span className="inline-flex items-center gap-1.5">
-                <Icon name="shopping_cart" className="text-[18px]" />
-                Go to Cart
+                <Icon name="check" className="text-[18px]" />
+                Added
               </span>
             ) : outOfStock ? (
               <span className="inline-flex items-center gap-1.5">

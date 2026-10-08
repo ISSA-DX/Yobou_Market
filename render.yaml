@@ -77,5 +77,18 @@ services:
       # is alive and to wake it from idle.
       - key: HEALTHCHECK_PATH
         value: /api/health
+      # v0.3.15: set to "0" (off) so boot.js falls back to
+      # `prisma db push` instead of `prisma migrate deploy`. The
+      # migrations/ folder was lagging the schema (CartItem.variant
+      # relation, selectedForCheckout column, ProductVariant model
+      # were added to schema.prisma without matching migration files),
+      # so `migrate deploy` was silently creating an outdated schema
+      # and the runtime was throwing "Unknown arg `variant` in
+      # include" on every cart query. `prisma db push` syncs the DB
+      # directly from schema.prisma so the database and the generated
+      # client always agree. When the migrations folder is brought
+      # back in sync (TODO), flip this back to "1".
+      - key: MIGRATIONS_ENABLED
+        value: "0"
     healthCheckPath: /api/health
     autoDeploy: true  # redeploy on every push to the repo's default branch

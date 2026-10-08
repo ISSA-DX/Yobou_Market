@@ -5,6 +5,7 @@ import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import ProductCard, { ProductCardSkeleton } from '../../components/ProductCard';
 import { useCatalogStream } from '../../lib/useSse';
+import { toast } from '../../lib/toast';
 
 const CATEGORY_META = {
   electronics: { icon: 'devices', gradient: 'from-blue-500 to-indigo-600' },
@@ -93,8 +94,19 @@ export default function CategoryDetail() {
   });
 
   async function quickAdd(p) {
-    await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
-    await refreshCart();
+    try {
+      await useStore.getState().ensureGuestSession();
+      await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
+      await refreshCart();
+      // v0.3.16: no longer navigate to /cart. The cart badge in
+      // MobileShell updates via refreshCartCount() above, the toast
+      // confirms the add, and the ProductCard flips to "Added" for
+      // 3s. The user stays on the category page so they can keep
+      // browsing.
+      toast.success(`Added ${p.name} to cart`);
+    } catch (e) {
+      toast.error(e?.data?.error || 'Could not add to cart');
+    }
   }
 
   const filtered = useMemo(() => {
@@ -130,7 +142,7 @@ export default function CategoryDetail() {
             >
               <Icon name="arrow_back" className="text-[24px]" />
             </Link>
-            <span className="text-label-md opacity-90">Categories</span>
+            <span className="text-label-md text-on-surface-variant">Categories</span>
           </header>
 
           <div className="flex items-center gap-4">
@@ -138,8 +150,15 @@ export default function CategoryDetail() {
               <Icon name={meta.icon} className="text-[36px]" />
             </div>
             <div>
-              <h1 className="text-headline-lg font-bold">{title}</h1>
-              <p className="text-label-md opacity-90">
+              {/* Text-white explicit override — this h1 sits on a
+                  per-category gradient (from-blue-500 to-indigo-600,
+                  from-pink-500 to-rose-500, etc.). The v0.3.20 global
+                  h1 { color: #0034b9 } rule would otherwise paint the
+                  category title in brand blue over its colored gradient
+                  background — unreadable. Stamp text-white so the
+                  category name stays legible across all 28 categories. */}
+              <h1 className="text-headline-lg font-bold text-white">{title}</h1>
+              <p className="text-label-md text-on-surface-variant">
                 {loading ? 'Loading…' : `${products.length} item${products.length === 1 ? '' : 's'}`}
               </p>
             </div>
@@ -202,7 +221,7 @@ export default function CategoryDetail() {
         {error && (
           <div className="card p-4 bg-error/10 text-error text-sm flex items-center justify-between">
             <span>{error}</span>
-            <button onClick={load} className="text-primary font-semibold">Retry</button>
+            <button type="button" onClick={load} className="text-primary font-semibold">Retry</button>
           </div>
         )}
 

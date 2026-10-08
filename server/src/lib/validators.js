@@ -36,12 +36,57 @@ const productUpsert = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).default(''),
   priceCents: z.number().int().nonnegative(),
+  // Optional list/deal price. When set, the storefront shows the
+  // strikethrough + "X% off" badge. When null/omitted, no deal is
+  // rendered. We enforce compareAt > priceCents as a cross-field
+  // invariant so the UI never ends up with a "deal" that isn't
+  // actually cheaper than the current price.
+  compareAtPriceCents: z.number().int().nonnegative().nullable().optional(),
   category: z.string().min(1).max(80),
   imageUrls: z.array(z.string()).default([]),
   stock: z.number().int().nonnegative().default(0),
   variants: z.array(variantInput).max(200).default([]),
   status: z.enum(['LIVE', 'DRAFT', 'HIDDEN']).default('LIVE'),
-});
+  // Optional color/size variants. When at least one row is provided the
+  // server computes Product.stock = sum(variants.stock). When empty,
+  // the legacy single stock value is used. Capped at 200 rows per
+  // product to guard against oversize bodies.
+  variants: z.array(variantInput).max(200).default([]),
+  // Placement flags — which shopper surfaces this product should
+  // appear on. Defaults: home/deals/search ON, flash OFF. The route
+  // handlers (admin POST/PATCH, change approve) write these to the
+  // Product row; the public list endpoint filters on them. See
+  // server/src/routes/products.js for the read side.
+  showOnHome: z.boolean().default(true),
+  showOnDeals: z.boolean().default(true),
+  showOnFlashDeals: z.boolean().default(false),
+  showOnSearch: z.boolean().default(true),
+  // Additional category pin targets (in addition to the primary
+  // `category` string). Free-text, max 10 entries, each trimmed +
+  // deduped + capped at 80 chars to match `category`. Server-side
+  // normalization happens in the route handler so the form can
+  // send whatever shape is convenient.
+  extraCategories: z.array(z.string()).max(10).default([]),
+}).refine(
+  // A deal is only valid if it's strictly more expensive than the
+  // current price. A non-null compareAtPriceCents <= priceCents would
+  // either be a no-op (visual bug) or a price hike mislabelled as a
+  // discount — reject so the form can correct the input.
+  (d) => d.compareAtPriceCents == null || d.compareAtPriceCents > d.priceCents,
+  { message: 'compareAtPriceCents must be greater than priceCents', path: ['compareAtPriceCents'] }
+);
+
+// Partial form for PATCH /api/products/:id. The cross-field rule
+// (compareAt > price) only kicks in when BOTH fields are present in the
+// body — otherwise we'd reject a partial update that just sets the
+// compareAt without touching the price. The route handler re-validates
+// against the live product on vendor-update approval.
+const productUpsertPartial = productUpsert.innerType().partial().refine(
+  (d) => d.compareAtPriceCents == null
+    || d.priceCents == null
+    || d.compareAtPriceCents > d.priceCents,
+  { message: 'compareAtPriceCents must be greater than priceCents', path: ['compareAtPriceCents'] }
+);
 
 const cartAdd = z.object({
   productId: z.string(),
@@ -125,16 +170,47 @@ const productChangeCreate = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().max(2000).optional(),
   priceCents: z.number().int().nonnegative().optional(),
+  // Same deal-price rules as productUpsert, but we can't enforce the
+  // "compareAt > price" cross-field rule at parse time because the
+  // existing priceCents may be coming from the live product (not in
+  // the body). The approve path (server/src/routes/productChanges.js)
+  // re-validates against the live product on apply and rejects with
+  // a clear error if the rule would be violated.
+  compareAtPriceCents: z.number().int().nonnegative().nullable().optional(),
   category: z.string().min(1).max(80).optional(),
   imageUrls: z.array(z.string()).optional(),
   stock: z.number().int().nonnegative().optional(),
   status: z.enum(['LIVE', 'DRAFT', 'HIDDEN']).optional(),
+  // Vendor's proposed variant snapshot. When present, admin approval
+  // applies it; when absent, existing variants (if any) are left alone.
+  variants: z.array(variantInput).max(200).optional(),
+  // Placement flags. Same null-vs-explicit convention as the other
+  // proposed* fields on UPDATE (null = "leave the existing Product
+  // value alone"). On CREATE the approve path falls through to the
+  // schema defaults when null, so vendors don't have to opt in to
+  // publish a new product.
+  showOnHome: z.boolean().optional(),
+  showOnDeals: z.boolean().optional(),
+  showOnFlashDeals: z.boolean().optional(),
+  showOnSearch: z.boolean().optional(),
+  // Additional category pin targets. Server-side normalized on apply.
+  extraCategories: z.array(z.string()).max(10).optional(),
 }).refine(
   (d) => d.action === 'CREATE' || !!d.productId,
   { message: 'productId is required for UPDATE/DELETE', path: ['productId'] }
 ).refine(
   (d) => d.action !== 'CREATE' || (d.name && d.category && d.priceCents !== undefined),
   { message: 'name, category, priceCents are required for CREATE', path: ['name'] }
+).refine(
+  // On CREATE the body must satisfy the same invariant as productUpsert.
+  // For UPDATE the existing priceCents lives on the product row, so we
+  // re-check on apply in the route handler.
+  (d) => {
+    if (d.action !== 'CREATE') return true;
+    if (d.compareAtPriceCents == null) return true;
+    return typeof d.priceCents === 'number' && d.compareAtPriceCents > d.priceCents;
+  },
+  { message: 'compareAtPriceCents must be greater than priceCents', path: ['compareAtPriceCents'] }
 );
 
 const adminReview = z.object({
@@ -181,13 +257,85 @@ const categoryUpdate = z.object({
   isActive: z.boolean().optional(),
 }).refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
 
+// Review payload submitted by a customer. rating is the only numeric
+// field; title is the headline shown in the list, body is the long
+// text. The 1..5 range and the size caps are the only hard rules —
+// profanity / moderation is out of scope for this iteration.
+const reviewCreate = z.object({
+  rating: z.number().int().min(1).max(5),
+  title: z.string().min(1).max(200),
+  body: z.string().min(1).max(2000),
+});
+
+// Query string for the public review list. `rating` filters the list
+// down to a single histogram bucket (the user clicked a bar). `sort`
+// is the obvious three: most recent, highest first, lowest first.
+// `offset` is capped to keep the deep-pagination scan bounded.
+const reviewListQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  offset: z.coerce.number().int().min(0).max(10000).default(0),
+  sort: z.enum(['recent', 'highest', 'lowest']).default('recent'),
+  rating: z.coerce.number().int().min(1).max(5).optional(),
+});
+
+// Query string for the public product list (GET /api/products).
+// `category` is the existing exact-string match on Product.category.
+// `q` is a contains search across name + category + description.
+// The four showOn* filters let the admin preview a specific surface
+// and (eventually) let the shopper pick "show only on flash" / etc.
+// All four default to "no filter" (null = skip the predicate).
+// Query-string booleans need explicit coercion: z.coerce.boolean() would
+// turn 'false' into true (Boolean('false') === true), which would make
+// `?showOnHome=false` match products with showOnHome: true. This preprocessor
+// accepts the common truthy/falsy spellings and rejects anything else so the
+// route's where-clause can rely on the parsed value.
+const queryBool = z.preprocess((v) => {
+  if (typeof v === 'boolean') return v;
+  if (typeof v !== 'string') return v;
+  const s = v.toLowerCase();
+  if (s === 'true' || s === '1') return true;
+  if (s === 'false' || s === '0') return false;
+  return v; // z.boolean() below will reject
+}, z.boolean());
+
+const SORT_VALUES = ['featured', 'price-asc', 'price-desc', 'name-asc', 'newest'];
+
+// Phase-0 storefront search + faceted filter query schema.
+// `vendor` accepts a vendor id (cuid). `minPrice`/`maxPrice` are cents.
+// `inStock` borrows the `queryBool` preprocessor so 'true'/'false'/'1'/'0'
+// all coerce consistently. `pageSize` caps at 60 to keep payloads bounded;
+// `limit` is a legacy alias kept for the unfiltered lists on the home page
+// (default 60) — the route handler picks the effective page size from
+// pageSize ?? limit ?? 60 in that priority order.
+const productListQuery = z.object({
+  q: z.string().min(1).max(200).optional(),
+  category: z.string().min(1).max(80).optional(),
+  vendor: z.string().min(1).max(80).optional(),
+  minPrice: z.coerce.number().int().min(0).max(100000000).optional(),
+  maxPrice: z.coerce.number().int().min(0).max(100000000).optional(),
+  inStock: queryBool.optional(),
+  sort: z.enum(SORT_VALUES).default('featured'),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(60).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  showOnHome: queryBool.optional(),
+  showOnDeals: queryBool.optional(),
+  showOnFlashDeals: queryBool.optional(),
+  showOnSearch: queryBool.optional(),
+}).refine(
+  (d) => d.minPrice == null || d.maxPrice == null || d.minPrice <= d.maxPrice,
+  { message: 'minPrice must be <= maxPrice', path: ['minPrice'] }
+);
+
 module.exports = {
   registerCustomer,
   login,
   vendorRegister,
   vendorSelfUpdate,
   productUpsert,
+  productUpsertPartial,
   productChangeCreate,
+  variantInput,
   adminReview,
   refundCreate,
   adminVendorCreate,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api';
 import { useStore } from '../../store';
@@ -6,6 +6,7 @@ import Icon from '../../components/Icon';
 import ProductCard, { ProductCardSkeleton } from '../../components/ProductCard';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useProductLiveSync } from '../../lib/useProductLiveSync';
+import { useRecentlyViewed } from '../../lib/useRecentlyViewed';
 import { toast } from '../../lib/toast';
 import HeroCarousel from './HeroCarousel';
 import ProductRow from './ProductRow';
@@ -111,6 +112,7 @@ export default function Home() {
 
   async function quickAdd(p) {
     try {
+      await useStore.getState().ensureGuestSession();
       await api('/api/cart', { method: 'POST', body: { productId: p.id, quantity: 1 } });
       await refreshCart();
       toast.success(`Added ${p.name} to cart`);

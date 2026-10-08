@@ -61,14 +61,35 @@ console.log(`[boot] DATA_DIR = ${DATA_DIR}`);
 console.log(`[boot] UPLOAD_DIR = ${UPLOAD_DIR}`);
 console.log(`[boot] DATABASE_URL = ${process.env.DATABASE_URL}`);
 
+// v0.3.14 → v0.3.15: REMOVED the explicit `npx prisma generate` step
+// here. The render.yaml build command already runs `npx prisma generate`
+// at build time, so re-running it at boot was redundant and was OOM-
+// crashing Render's 512MB free tier (the deploy was returning
+// `update_failed` because the start command was being killed). The
+// build's client is the one we want at runtime; the boot-time step
+// added boot latency (5-15s) and a memory spike for zero benefit.
 try {
-  console.log('[boot] Running prisma db push...');
-  execSync('npx prisma db push --skip-generate', {
-    stdio: 'inherit',
-    env: process.env,
-  });
+  // MIGRATIONS_ENABLED=1 → use `prisma migrate deploy` (production-safe,
+  // requires server/prisma/migrations/ to exist and be in sync with the
+  // schema). Off → fall back to `prisma db push` (dev convenience —
+  // syncs the DB directly from schema.prisma, no migration files
+  // needed). --skip-generate is passed to both because the build
+  // command already ran `prisma generate`.
+  if (process.env.MIGRATIONS_ENABLED === '1') {
+    console.log('[boot] Running prisma migrate deploy (MIGRATIONS_ENABLED=1)...');
+    execSync('npx prisma migrate deploy --skip-generate', {
+      stdio: 'inherit',
+      env: process.env,
+    });
+  } else {
+    console.log('[boot] Running prisma db push (dev mode)...');
+    execSync('npx prisma db push --skip-generate', {
+      stdio: 'inherit',
+      env: process.env,
+    });
+  }
 } catch (err) {
-  console.error('[boot] prisma db push failed:', err.message);
+  console.error('[boot] prisma schema sync failed:', err.message);
   process.exit(1);
 }
 

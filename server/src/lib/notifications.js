@@ -270,6 +270,54 @@ async function audit(actorId, { action, entityType, entityId, meta }) {
 }
 
 /**
+ * Notify every admin that a vendor has submitted a new ProductChange for
+ * approval. The vendor's submission would otherwise sit in the queue with
+ * no inbox signal — admins only saw the static badge in the sidebar. This
+ * fan-out is what makes the bell ring and gives the admin a one-click
+ * deep link to the pre-filtered pending list.
+ *
+ * Each admin gets a Notification row (so offline admins see it on next
+ * login) AND a live SSE push (so online admins see the badge increment
+ * without a refresh). The link targets `/changes?status=PENDING` so
+ * clicking the bell lands the admin on the approval page directly.
+ *
+ * Should not be called when the change was created by an admin directly
+ * (admin-initiated changes don't need an admin-side inbox ping).
+ *
+ * @param {object} opts
+ * @param {string} opts.changeId       the ProductChange.id
+ * @param {string} opts.vendorId       the vendor that submitted
+ * @param {'CREATE'|'UPDATE'|'DELETE'} opts.action
+ * @param {string|null} opts.productId  null for CREATE since the product
+ *                                       doesn't exist yet
+ * @param {string|null} opts.productName display name for the title
+ * @param {object} [opts.tx]            optional Prisma transaction client
+ */
+async function notifyAdminsProductChangeSubmitted({
+  changeId, vendorId, action, productId, productName, tx,
+}) {
+  const db = tx || prisma;
+  const vendorRow = await db.vendor.findUnique({
+    where: { id: vendorId },
+    select: { businessName: true },
+  });
+  const name = productName || (action === 'DELETE' ? 'a product' : 'a new product');
+  const actionLabel = action === 'CREATE' ? 'submitted a new product'
+                    : action === 'UPDATE' ? 'proposed an edit'
+                    : 'requested a removal';
+  const admins = await db.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
+  for (const a of admins) {
+    await notify(a.id, {
+      kind: 'product_change_submitted',
+      title: `${vendorRow?.businessName || 'A vendor'} ${actionLabel}: ${name}`,
+      body: 'Open the change queue to approve or reject.',
+      link: '/changes?status=PENDING',
+      meta: { changeId, vendorId, action, productId: productId || null },
+    }, db);
+  }
+}
+
+/**
  * Fan-out a product change to admins (inbox row) + every connected client
  * (catalog event). No customer inbox row is written — that would clutter
  * every shopper's inbox with every CRUD. Customers see the event by
@@ -301,7 +349,10 @@ async function notifyProductChange({ action, product, title, body, link, tx }) {
   const l = link || defaultLink;
 
   // 1. Catalog event to every connected client (customer + admin + partner).
-  //    No DB row, just an SSE frame.
+  //    No DB row, just an SSE frame. The placement flags are included
+  //    so client pages can filter the event without refetching the
+  //    full list — a product_created with showOnHome=false shouldn't
+  //    trigger a Home-page refetch.
   const catalogPayload = {
     action,
     productId: product.id,
@@ -314,8 +365,30 @@ async function notifyProductChange({ action, product, title, body, link, tx }) {
       ? safeParseJson(product.imageUrls) || []
       : (product.imageUrls || []),
     stock: product.stock != null ? product.stock : null,
+    // Placement flags. Defaults match the Product schema defaults so
+    // an older product row that somehow lacks the column (shouldn't
+    // happen post-migration, but defensive) still produces a coherent
+    // event frame.
+    showOnHome:       product.showOnHome       != null ? product.showOnHome       : true,
+    showOnDeals:      product.showOnDeals      != null ? product.showOnDeals      : true,
+    showOnFlashDeals: product.showOnFlashDeals != null ? product.showOnFlashDeals : false,
+    showOnSearch:     product.showOnSearch     != null ? product.showOnSearch     : true,
   };
   pushCatalog('catalog', { event: kind, ...catalogPayload });
+
+  // 1b. When the product carries a variant list, also fire a dedicated
+  //     catalog frame so list pages subscribed via the variants-specific
+  //     SSE channel can refetch without parsing the catalogue payload.
+  //     No inbox row — same as the main catalog event.
+  if (Array.isArray(product.variants) && product.variants.length > 0) {
+    pushCatalog('catalog', {
+      event: 'product_variants_changed',
+      productId: product.id,
+      variants: product.variants.map((v) => ({
+        id: v.id, color: v.color, size: v.size, stock: v.stock,
+      })),
+    });
+  }
 
   // 2. Inbox rows for admins (so the bell increments and they can audit).
   const admins = await db.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
@@ -339,6 +412,20 @@ async function notifyProductChange({ action, product, title, body, link, tx }) {
 
 function safeParseJson(s) {
   try { return JSON.parse(s); } catch { return null; }
+}
+
+/**
+ * Notify every connected client that a product's reviews changed.
+ * Reviews are not in the inbox — they're a derived, public count, and
+ * the PDP refetches on its own. The SSE frame just nudges any other
+ * open surface (a list page, a related-products rail, a cart-side
+ * "X% of buyers liked this" badge, if we add one) to refetch.
+ *
+ * No DB writes.
+ */
+function notifyReviewChange({ productId, action }) {
+  if (!productId) return;
+  pushCatalog('catalog', { event: 'reviews_changed', productId, action });
 }
 
 /**
@@ -396,5 +483,7 @@ module.exports = {
   pushPublic,
   notifyOrderAudience,
   notifyProductChange,
+  notifyAdminsProductChangeSubmitted,
+  notifyReviewChange,
   audit,
 };

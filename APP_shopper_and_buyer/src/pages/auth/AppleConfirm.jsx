@@ -11,7 +11,7 @@ export default function AppleConfirm() {
   }
 
   return (
-    <div className="py-6">
+    <div className="py-6 auth-page">
       <div className="flex items-center gap-3 mb-4">
         <Icon name="phone_iphone" className="text-[28px]" fill />
         <h1 className="text-headline-md font-bold">Sign in with Apple</h1>
@@ -30,7 +30,7 @@ export default function AppleConfirm() {
           <input type="radio" checked={mode === 'share'} onChange={() => setMode('share')} className="mt-1" />
           <div>
             <div className="font-semibold">Share my email</div>
-            <div className="text-label-md text-on-surface-variant">Yobou Market will receive shopper@yobou.test.</div>
+            <div className="text-label-md text-on-surface-variant">Yobou will receive shopper@yobou.test.</div>
           </div>
         </label>
         <label className="flex items-start gap-3 p-4 cursor-pointer">
@@ -51,7 +51,7 @@ export default function AppleConfirm() {
       </div>
 
       <div className="mt-8 space-y-3">
-        <button onClick={confirm} className="btn-primary w-full py-3 bg-black hover:bg-gray-900">Continue with Apple</button>
+        <button type="button" onClick={confirm} className="btn-primary w-full py-3 bg-black hover:bg-gray-900">Continue with Apple</button>
         <Link to="/login" className="btn-secondary w-full py-3">Cancel</Link>
       </div>
     </div>

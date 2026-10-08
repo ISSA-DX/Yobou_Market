@@ -22,7 +22,15 @@ export default function ToastHost() {
       {items.map((t) => {
         const meta = getTypeMeta(t.type);
         return (
+          // type="button" defensive fix: every toast closes through
+          // this click handler, and without an explicit type the
+          // Android Capacitor WebView has been seen to reload the
+          // current document on tap (the same default-submit quirk
+          // that was making PDP Add-to-Cart feel like a page
+          // refresh). See the v0.3.9 commit message for the full
+          // root-cause analysis.
           <button
+            type="button"
             key={t.id}
             onClick={() => dismiss(t.id)}
             className={`pointer-events-auto max-w-md shadow-float rounded-full px-4 py-2.5 flex items-center gap-2 ${meta.cls}`}

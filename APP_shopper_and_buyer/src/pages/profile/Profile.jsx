@@ -17,7 +17,7 @@ const SECTIONS = [
   {
     title: 'Shopping',
     items: [
-      { icon: 'favorite', label: 'Wishlist', to: '/profile' },
+      { icon: 'favorite', label: 'Wishlist', to: '/wishlist' },
       { icon: 'rate_review', label: 'My reviews', to: '/profile' },
       { icon: 'receipt_long', label: 'Order history', to: '/orders' },
     ],
@@ -86,7 +86,7 @@ export default function Profile() {
   return (
     <div className="pb-24 max-w-screen-md mx-auto">
       <header className="flex items-center justify-between px-4 h-14">
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
+        <button type="button" onClick={() => navigate(-1)} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
         <h1 className="font-bold">Profile</h1>
         <span className="w-10" />
       </header>
@@ -106,6 +106,10 @@ export default function Profile() {
               <Icon name={editing ? 'close' : 'edit'} className="text-[16px]" />
             </button>
           </div>
+          {/* Drop text-on-surface — v0.3.20 makes h2 brand-blue by
+              default, so the user's own name in the profile hero now
+              matches the rest of the page/section header treatment
+              instead of inheriting v0.3.19's pure-black on-surface. */}
           <h2 className="mt-3 text-headline-md font-bold">{user?.name}</h2>
           <div className="text-label-md text-on-surface-variant">{user?.email}</div>
         </div>
@@ -115,7 +119,7 @@ export default function Profile() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-title-lg font-semibold">Personal info</h3>
             {!editing && (
-              <button onClick={() => setEditing(true)} className="text-primary text-sm font-semibold flex items-center gap-1">
+              <button type="button" onClick={() => setEditing(true)} className="text-primary text-sm font-semibold flex items-center gap-1">
                 <Icon name="edit" className="text-[16px]" /> Edit
               </button>
             )}
@@ -179,7 +183,7 @@ export default function Profile() {
             <div className="mt-1 text-headline-md font-bold">{orders.length}</div>
             <div className="text-label-md text-on-surface-variant">Orders</div>
           </Link>
-          <Link to="/profile" className="card p-4 text-center hover:shadow-float transition">
+          <Link to="/wishlist" className="card p-4 text-center hover:shadow-float transition">
             <Icon name="favorite" className="text-tertiary text-[24px] mx-auto" />
             <div className="mt-1 text-headline-md font-bold">{wishlist.length}</div>
             <div className="text-label-md text-on-surface-variant">Wishlist</div>
@@ -221,13 +225,13 @@ export default function Profile() {
         ))}
 
         {/* Theme toggle */}
-        <button onClick={toggleDark} className="w-full card p-4 flex items-center gap-3 hover:bg-surface-low transition">
+        <button type="button" onClick={toggleDark} className="w-full card p-4 flex items-center gap-3 hover:bg-surface-low transition">
           <Icon name={dark ? 'light_mode' : 'dark_mode'} />
           <span className="flex-1 text-left font-medium">Theme: {dark ? 'Dark' : 'Light'}</span>
           <Icon name="chevron_right" className="text-on-surface-variant" />
         </button>
 
-        <button onClick={handleLogout} className="w-full text-error font-semibold py-3 rounded-md hover:bg-error/10 transition">
+        <button type="button" onClick={handleLogout} className="w-full text-error font-semibold py-3 rounded-md hover:bg-error/10 transition">
           Log out
         </button>
 

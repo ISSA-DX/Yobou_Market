@@ -35,6 +35,7 @@ const Profile = lazy(() => import('./pages/profile/Profile.jsx'));
 const ProfileAddresses = lazy(() => import('./pages/profile/ProfileAddresses.jsx'));
 const ProfileCards = lazy(() => import('./pages/profile/ProfileCards.jsx'));
 const ProfilePreferences = lazy(() => import('./pages/profile/ProfilePreferences.jsx'));
+const Wishlist = lazy(() => import('./pages/wishlist/Wishlist.jsx'));
 const Notifications = lazy(() => import('./pages/Notifications.jsx'));
 const GooglePicker = lazy(() => import('./pages/auth/GooglePicker.jsx'));
 const AppleConfirm = lazy(() => import('./pages/auth/AppleConfirm.jsx'));
@@ -98,24 +99,50 @@ export default function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/help" element={<Help />} />
 
-          {/* Customer (mobile shell) */}
-          <Route element={<RequireAuth><MobileShell /></RequireAuth>}>
+          {/* Browsing + cart — PUBLIC. Guests (anonymous shoppers) hit
+              /api/auth/guest on first cart-add so they get a server-side
+              user behind the scenes and the existing /api/cart + /api/orders
+              endpoints work without any client-side branching. */}
+          <Route element={<MobileShell />}>
             <Route path="/home" element={<Home />} />
             <Route path="/categories" element={<Categories />} />
             <Route path="/categories/:slug" element={<CategoryDetail />} />
-            <Route path="/product/:id" element={<ProductDetails />} />
+            {/* ErrorBoundary on PDP prevents a child-render crash (e.g.
+                a malformed live-sync event or a related-product card
+                missing a field) from blanking the whole page. Without
+                this, a single unguarded `.stock` access can take the
+                sticky "Add to cart" button down with it and the
+                shopper sees a silent dead-Page — misinterpreted as
+                "add to cart doesn't work". With the boundary the
+                failure is contained, the shopper sees a retry CTA,
+                and the rest of the UI keeps rendering. */}
+            <Route path="/product/:id" element={<ErrorBoundary><ProductDetails /></ErrorBoundary>} />
             <Route path="/cart" element={<ErrorBoundary><Cart /></ErrorBoundary>} />
+          </Route>
+
+          {/* Account-only (orders, profile, wishlist, notifications).
+              Guests still see these in the bottom nav but tapping them
+              routes through RequireAuth which redirects to /login. */}
+          <Route element={<RequireAuth><MobileShell /></RequireAuth>}>
             <Route path="/orders" element={<ErrorBoundary><Orders /></ErrorBoundary>} />
             <Route path="/orders/:id/track" element={<ErrorBoundary><TrackOrder /></ErrorBoundary>} />
             <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
             <Route path="/profile/addresses" element={<ErrorBoundary><ProfileAddresses /></ErrorBoundary>} />
             <Route path="/profile/cards" element={<ErrorBoundary><ProfileCards /></ErrorBoundary>} />
             <Route path="/profile/preferences" element={<ErrorBoundary><ProfilePreferences /></ErrorBoundary>} />
+            <Route path="/wishlist" element={<ErrorBoundary><Wishlist /></ErrorBoundary>} />
             <Route path="/notifications" element={<ErrorBoundary><Notifications /></ErrorBoundary>} />
           </Route>
 
-          {/* Checkout — sticky CTA, no bottom nav */}
-          <Route element={<RequireAuth><TransactionLayout /></RequireAuth>}>
+          {/* Checkout — sticky CTA, no bottom nav. Public so a guest
+              can deep-link straight here; each page bootstraps its own
+              guest session via ensureGuestSession() on mount so the
+              server-side user exists before the first auth-gated call.
+              This mirrors Amazon's "checkout without an account" model
+              and is required for the new "select / save-for-later"
+              cart UX where guests routinely arrive at checkout with a
+              mix of selected + unselected rows. */}
+          <Route element={<TransactionLayout />}>
             <Route path="/checkout/shipping" element={<ErrorBoundary><CheckoutShipping /></ErrorBoundary>} />
             <Route path="/checkout/payment" element={<ErrorBoundary><CheckoutPayment /></ErrorBoundary>} />
             <Route path="/checkout/card/new" element={<ErrorBoundary><CheckoutCardNew /></ErrorBoundary>} />

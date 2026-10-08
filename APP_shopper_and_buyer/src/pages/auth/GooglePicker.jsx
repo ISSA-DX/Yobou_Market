@@ -17,14 +17,14 @@ export default function GooglePicker() {
     setTimeout(() => navigate('/login'), 400);
   }
   return (
-    <div className="py-6">
+    <div className="py-6 auth-page">
       <div className="flex items-center gap-3 mb-6">
         <div className="w-9 h-9 rounded-md bg-white shadow-card flex items-center justify-center">
           <span className="font-bold text-primary text-lg">G</span>
         </div>
         <h1 className="text-headline-md font-bold">Sign in with Google</h1>
       </div>
-      <p className="text-on-surface-variant text-sm">Choose an account to continue to <strong>Yobou Market</strong>.</p>
+      <p className="text-on-surface-variant text-sm">Choose an account to continue to <strong>Yobou</strong>.</p>
 
       <div className="mt-4 card divide-y divide-outline-variant/20">
         {ACCOUNTS.map((a) => (
@@ -52,7 +52,7 @@ export default function GooglePicker() {
       </div>
 
       <p className="mt-6 text-label-md text-on-surface-variant text-center">
-        To continue, Google will share your name, email, and profile picture with Yobou Market.
+        To continue, Google will share your name, email, and profile picture with Yobou.
       </p>
 
       <div className="mt-8 flex items-center justify-center gap-4 text-label-md text-on-surface-variant">

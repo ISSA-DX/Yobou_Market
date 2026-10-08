@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useStore } from '../../store';
@@ -16,7 +16,11 @@ export default function Analytics() {
   const user = useStore((s) => s.user);
   const currency = user?.currency || 'USD';
   const [days, setDays] = useState(30);
-  const { data, error, loading, refetch } = useApi(`/api/vendor/analytics?days=${days}`);
+  const apiPath = useMemo(
+    () => `/api/vendor/analytics?days=${days}`,
+    [days]
+  );
+  const { data, error, loading, refetch } = useApi(apiPath);
 
   if (error && !data) {
     return <RetryError message="Couldn't load analytics." onRetry={refetch} />;

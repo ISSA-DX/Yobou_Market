@@ -4,6 +4,16 @@ import { api } from './api';
 /**
  * Tiny fetch helper that turns the app's silent-fail anti-pattern into
  * proper { data, error, loading, refetch } state.
+ *
+ * Stability notes (this hook has caused render loops in the past):
+ *   - `path` MUST be a stable primitive (string or null). Do NOT pass a
+ *     template literal that depends on a value created inline at the
+ *     call site — that path is recreated on every render and the
+ *     `useCallback` cache thrashes, triggering an infinite refetch
+ *     cycle. Pass a memoised string from the consumer instead.
+ *   - `body` and `headers` are spread into the fetch options as-is.
+ *     Reference changes are fine; we compare them via shallow equality
+ *     on JSON-stringified form to decide whether to refetch.
  */
 export function useApi(path, opts = {}) {
   const { fn, deps = [], method = 'GET', body, headers, auth = true, skip = false } = opts;
@@ -11,6 +21,12 @@ export function useApi(path, opts = {}) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(!skip);
   const reqId = useRef(0);
+
+  // Pre-stringify deps so the useCallback below doesn't re-create the
+  // function on every render. Strings are compared by value, so two
+  // identical bodies still hit the cache.
+  const bodyStr = body === undefined ? '' : JSON.stringify(body);
+  const headersStr = headers === undefined ? '' : JSON.stringify(headers);
 
   const run = useCallback(async () => {
     const myReq = ++reqId.current;
@@ -28,7 +44,7 @@ export function useApi(path, opts = {}) {
       if (reqId.current === myReq) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, JSON.stringify(body), JSON.stringify(headers), method, auth, skip, ...deps]);
+  }, [path, bodyStr, headersStr, method, auth, skip, ...deps]);
 
   useEffect(() => {
     if (skip) {
@@ -36,7 +52,12 @@ export function useApi(path, opts = {}) {
       return;
     }
     run();
-  }, [run, skip]);
+    // run is memoised via useCallback so the dep set is stable; tracking
+    // it explicitly here would re-fire the effect whenever `run` is
+    // recomputed (e.g. when `body` is a new object reference each
+    // render), which is exactly the render-loop we want to avoid.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, bodyStr, headersStr, method, skip, auth, ...deps]);
 
   return { data, error, loading, refetch: run, setData };
 }

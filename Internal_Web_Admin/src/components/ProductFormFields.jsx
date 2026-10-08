@@ -19,7 +19,9 @@
 import { useRef, useState } from 'react';
 import { apiForm } from '../api';
 import CategoryPicker from './CategoryPicker';
+import VariantsAccordion from './VariantsAccordion';
 import Icon from './Icon';
+import PlacementSection from './PlacementSection';
 
 export default function ProductFormFields({ form, update, errors = {} }) {
   const fileRef = useRef(null);
@@ -144,6 +146,11 @@ export default function ProductFormFields({ form, update, errors = {} }) {
               id="pf-stock"
               type="number"
               min="0"
+              // Once the product has variants, Product.stock is the
+              // sum-of-variants — the legacy single field is derived
+              // and read-only so the user can't type a contradictory
+              // number. The variants matrix is the only source of truth.
+              readOnly={Array.isArray(form.variants) && form.variants.length > 0}
               className="input mt-1"
               value={form.stock}
               onChange={(e) => update('stock', Math.max(0, Number(e.target.value) || 0))}
@@ -153,10 +160,17 @@ export default function ProductFormFields({ form, update, errors = {} }) {
               required
             />
             <div id="pf-stock-help" className="text-label-sm text-on-surface-variant mt-1">
-              Units available. Set to 0 to mark “Out of stock” without removing the listing.
+              {Array.isArray(form.variants) && form.variants.length > 0
+                ? 'Auto-calculated as the sum of variant stocks. Edit per-row stock below.'
+                : 'Units available. Set to 0 to mark “Out of stock” without removing the listing.'}
             </div>
           </div>
         </div>
+
+        {/* Variants live in the Identity card, collapsed by default, so
+            the optional feature is visible without scrolling past the
+            rest of the form. */}
+        <VariantsAccordion form={form} update={update} errors={errors.variants || {}} />
       </section>
 
       {/* ───── Pricing ───── */}
@@ -193,6 +207,51 @@ export default function ProductFormFields({ form, update, errors = {} }) {
             </div>
           )}
         </div>
+
+        {/* Compare-at / list price. Optional. The storefront renders a
+            strikethrough + "% off" badge when this is set strictly above
+            priceCents. Leave empty for a regular-priced product. The
+            server re-validates the invariant. */}
+        <div className="pt-1">
+          <label htmlFor="pf-compare-at" className="text-label-md text-on-surface-variant">
+            Compare-at price <span className="text-on-surface-variant/70 text-label-sm">(optional)</span>
+          </label>
+          <div className="mt-1 relative">
+            <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">$</span>
+            <input
+              id="pf-compare-at"
+              type="number"
+              min="0"
+              step="0.01"
+              // Empty string → "no deal" (null). Storing null rather than
+              // 0 means the storefront's deal-filter check (`compareAt >
+              // price`) correctly excludes the product and we don't
+              // render a misleading "$0.00 was $X.XX" badge.
+              value={form.compareAtPriceCents == null
+                ? ''
+                : (form.compareAtPriceCents / 100).toFixed(2)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (raw === '') {
+                  update('compareAtPriceCents', null);
+                } else {
+                  const cents = Math.round(Math.max(0, Number(raw) || 0) * 100);
+                  update('compareAtPriceCents', cents);
+                }
+              }}
+              placeholder="No deal"
+              aria-invalid={Boolean(errors.compareAtPriceCents) || undefined}
+              aria-describedby={errors.compareAtPriceCents ? 'pf-compare-at-err' : 'pf-compare-at-help'}
+            />
+          </div>
+          {errors.compareAtPriceCents ? (
+            <div id="pf-compare-at-err" role="alert" className="text-error text-sm mt-1">{errors.compareAtPriceCents}</div>
+          ) : (
+            <div id="pf-compare-at-help" className="text-label-sm text-on-surface-variant mt-1">
+              Optional. When set, the storefront shows a strikethrough and a discount badge. Must be higher than the price to be a real deal — leave empty if the product isn't on sale.
+            </div>
+          )}
+        </div>
       </section>
 
       {/* ───── Description ───── */}
@@ -214,6 +273,11 @@ export default function ProductFormFields({ form, update, errors = {} }) {
             Plain text is fine. Markdown is not rendered on the storefront yet.
           </div>
         </div>
+      </section>
+
+      {/* ───── Placements (where shoppers see it) ───── */}
+      <section className="pt-3 border-t border-outline-variant/30">
+        <PlacementSection form={form} update={update} errors={errors.placement || {}} />
       </section>
 
       {/* ───── Media ───── */}
@@ -340,6 +404,7 @@ export default function ProductFormFields({ form, update, errors = {} }) {
           </ol>
         )}
       </section>
+
     </div>
   );
 }

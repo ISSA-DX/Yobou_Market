@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
@@ -21,7 +21,11 @@ export default function Changes() {
   const params = new URLSearchParams();
   if (statusFilter) params.set('status', statusFilter);
   const qs = params.toString();
-  const { data, error, loading, refetch } = useApi(`/api/product-changes/mine${qs ? `?${qs}` : ''}`);
+  const apiPath = useMemo(
+    () => `/api/product-changes/mine${qs ? `?${qs}` : ''}`,
+    [qs]
+  );
+  const { data, error, loading, refetch } = useApi(apiPath);
 
   const changes = data?.changes || [];
 

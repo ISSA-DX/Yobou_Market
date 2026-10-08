@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
@@ -37,7 +37,11 @@ export default function Orders() {
   if (from) params.set('from', from);
   if (to) params.set('to', to);
   const qs = params.toString();
-  const { data, error, loading, refetch } = useApi(`/api/orders/vendor/mine${qs ? `?${qs}` : ''}`);
+  const apiPath = useMemo(
+    () => `/api/orders/vendor/mine${qs ? `?${qs}` : ''}`,
+    [qs]
+  );
+  const { data, error, loading, refetch } = useApi(apiPath);
 
   let orders = data?.orders || [];
   if (q) {

@@ -3,6 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
+const compression = require('compression');
+// Read the version directly from package.json so /api/health can't
+// drift from the truth after the next `npm version bump`.
+const { version: SERVER_VERSION } = require('../package.json');
 
 const authRoutes = require('./auth/routes');
 const productsRoutes = require('./routes/products');
@@ -25,7 +30,10 @@ const app = express();
 
 // Behind a reverse proxy (Render, Railway, Fly, nginx), trust X-Forwarded-*
 // so req.ip, rate limiters, and security middleware see the real client IP.
-// Required for Render — without this, every request looks like 127.0.0.1.
+// `trust proxy` also tells Express to honor X-Forwarded-Proto, which in
+// turn lets helmet's HSTS header only fire when the request is actually
+// HTTPS (preventing a stale HSTS cache on a dev http instance). Required
+// for Render — without this, every request looks like 127.0.0.1.
 app.set('trust proxy', 1);
 
 // Security headers — applied to every request, before routing.
@@ -138,6 +146,17 @@ app.use((req, res, next) => {
 
   next();
 });
+// IMPORTANT: Stripe webhook MUST be mounted BEFORE express.json()
+// so the raw request body survives for Stripe's signature
+// verification. The /api/payments router below applies requireAuth
+// to the auth-gated routes (PaymentMethod CRUD, /intent); the
+// webhook handler itself does its own checks via the Stripe SDK.
+app.post(
+  '/api/payments/webhook',
+  express.raw({ type: 'application/json' }),
+  require('./routes/payments').webhookHandler
+);
+
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 
@@ -150,8 +169,17 @@ if (fs.existsSync(publicDir)) {
   app.use(express.static(publicDir));
 }
 
-// Health
-app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+// Health — extended to include version (sourced from package.json) +
+// uptime so uptime monitors can scrape a single endpoint and so the
+// frontend can show a heartbeat that doesn't lie after a version bump.
+app.get('/api/health', (_req, res) =>
+  res.json({
+    ok: true,
+    version: SERVER_VERSION,
+    uptime: Math.round(process.uptime()),
+    time: new Date().toISOString(),
+  })
+);
 
 // Rate limits (in-memory; swap for Redis in multi-instance production).
 const authRateLimit = rateLimit({ category: 'auth', windowMs: 15 * 60_000, maxRequests: 20 });
@@ -173,6 +201,11 @@ app.use('/api/addresses', addressesRoutes);
 app.use('/api/payments', paymentRateLimit, paymentsRoutes);
 app.use('/api/categories', categoriesRoutes);
 app.use('/api', eventsRoutes);
+// Mounted after /api/products so the products router's `/` list and
+// `/:id` single-product routes still win. Reviews has no overlap with
+// any product route, so it picks up `/products/:id/reviews` and
+// `/reviews/:id` cleanly.
+app.use('/api', reviewsRoutes);
 
 // Serve the built React apps in production (single-deploy mode).
 // The shopper portal has two build targets: APP_shopper_and_buyer (the Capacitor /
@@ -219,14 +252,18 @@ app.use('/api/*', (_req, res) => {
   res.status(404).json({ error: 'NOT_FOUND' });
 });
 
-// Error handler
+// Error handler — production-safe. In dev we surface the real
+// err.message + a small stack slice so the terminal is useful; in
+// production we only log to the server console and return a
+// generic 500 body so we never leak Prisma error messages,
+// internal paths, or schema details to the public.
 app.use((err, _req, res, _next) => {
   console.error('[server error]', err);
   const isDev = process.env.NODE_ENV !== 'production';
   res.status(500).json({
     error: 'INTERNAL',
     message: isDev ? err.message : 'An internal server error occurred',
-    ...(isDev && err.stack ? { stack: err.stack } : {}),
+    ...(isDev && err.stack ? { stack: err.stack.split('\n').slice(0, 8).join('\n') } : {}),
   });
 });
 

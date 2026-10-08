@@ -6,6 +6,7 @@
 // Reuses productImage so the same image-render fix applies here.
 import Icon from './Icon';
 import { productImage } from '../lib/productImage';
+import { colorToHex } from '../lib/colorSwatch';
 import { useStore } from '../store';
 
 const FALLBACK = `${import.meta.env.BASE_URL || '/'}seed-images/placeholder.svg`;

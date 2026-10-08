@@ -4,9 +4,9 @@ const crypto = require('crypto');
 const multer = require('multer');
 const { z } = require('zod');
 const { prisma } = require('../prisma');
-const { productUpsert } = require('../lib/validators');
+const { productUpsert, productUpsertPartial, productListQuery } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
-const { audit, notifyProductChange } = require('../lib/notifications');
+const { audit, notifyProductChange, notifyAdminsProductChangeSubmitted } = require('../lib/notifications');
 
 const router = express.Router();
 
@@ -75,6 +75,39 @@ function requireAdminOrApprovedVendor(req, res, next) {
   return requireApprovedVendor(req, res, next);
 }
 
+// Normalize the extraCategories array. Mirrors the invariants the
+// admin form applies client-side (trim, drop empties, dedupe) plus a
+// 10-entry cap and an 80-char per-name cap to match `Product.category`.
+// Idempotent — safe to call on every write.
+function normalizeExtraCategories(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of input) {
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) continue;
+    if (trimmed.length > 80) continue;
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
+// Reconcile the CategoryExtra rows for a product with the caller's
+// array. The reconciliation matches the variant helper: delete all
+// existing rows for the product, then create the new ones. ≤10
+// inserts makes this trivially cheap. Run inside a transaction that
+// already holds the product row.
+async function applyExtraCategories(tx, productId, names) {
+  await tx.categoryExtra.deleteMany({ where: { productId } });
+  for (const name of names) {
+    await tx.categoryExtra.create({ data: { productId, name } });
+  }
+}
+
 // Build an absolute URL from the live request so <img src=...> resolves
 // correctly when the SPA is served from a different origin than the API
 // (e.g. the GitHub-Pages deployment where the API is on Render and the
@@ -114,14 +147,38 @@ router.post('/upload', requireAuth, requireAdminOrApprovedVendor, upload.single(
   } catch (err) { next(err); }
 });
 
+// Map the `sort` query value to a Prisma orderBy spec. Single-key
+// orders for now — features sort uses createdAt desc (same as
+// newest) so the Phase-0 UX costs nothing; promoting featured to
+// an ML score is a future-session problem.
+function sortToOrderBy(sort) {
+  switch (sort) {
+    case 'price-asc':  return [{ priceCents: 'asc' }, { createdAt: 'desc' }];
+    case 'price-desc': return [{ priceCents: 'desc' }, { createdAt: 'desc' }];
+    case 'name-asc':   return [{ name: 'asc' }];
+    case 'newest':     return [{ createdAt: 'desc' }];
+    case 'featured':
+    default:           return [{ createdAt: 'desc' }];
+  }
+}
+
 // Public list — anyone (including guests) can browse products.
+// Phase-0 storefront: accepts the full productListQuery schema
+// (q / category / vendor / minPrice / maxPrice / inStock / sort /
+// page / pageSize) and returns { products, facets, pagination }.
+// Facets are computed *unfiltered* against status='LIVE' so the
+// shopper sees the full range of available categories/vendors even
+// when a category is currently selected — this is the Shopify +
+// Amazon pattern and prevents the empty-facet death-spiral where
+// picking a leaf filter removes all alternative chips.
 router.get('/', async (req, res, next) => {
   try {
-    const { category, q, limit } = req.query;
+    const parsed = productListQuery.parse(req.query);
     const where = { status: 'LIVE' };
-    if (category) where.category = String(category);
-    if (q) {
-      const term = String(q);
+    if (parsed.category) where.category = parsed.category;
+    if (parsed.vendor) where.vendorId = parsed.vendor;
+    if (parsed.q) {
+      const term = parsed.q;
       where.OR = [
         { name: { contains: term } },
         { category: { contains: term } },
@@ -243,8 +300,11 @@ router.get('/vendor/mine', requireAuth, requireApprovedVendor, async (req, res, 
     const products = await prisma.product.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      include: {
+        variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
+      },
     });
-    res.json({ products: products.map(parseImageUrls) });
+    res.json({ products: products.map((p) => parseVariants(parseImageUrls(p))) });
   } catch (err) { next(err); }
 });
 
@@ -269,6 +329,13 @@ router.patch('/vendor/:id/stock', requireAuth, requireApprovedVendor, async (req
         status: 'PENDING',
       },
     });
+    await notifyAdminsProductChangeSubmitted({
+      changeId: change.id,
+      vendorId,
+      action: 'UPDATE',
+      productId: product.id,
+      productName: product.name,
+    });
     res.status(202).json({
       change: parseChange(change),
       product: parseImageUrls(product),
@@ -280,11 +347,45 @@ router.patch('/vendor/:id/stock', requireAuth, requireApprovedVendor, async (req
 });
 
 const parseChange = (change) => {
-  if (!change || typeof change.proposedImageUrls !== 'string') return change;
-  let imgs = [];
-  try { imgs = JSON.parse(change.proposedImageUrls); } catch { imgs = []; }
-  return { ...change, proposedImageUrls: imgs };
+  if (!change) return change;
+  const out = { ...change };
+  if (typeof change.proposedImageUrls === 'string') {
+    try { out.proposedImageUrls = JSON.parse(change.proposedImageUrls); }
+    catch { out.proposedImageUrls = []; }
+  }
+  if (typeof change.proposedVariants === 'string' && change.proposedVariants) {
+    try { out.proposedVariants = JSON.parse(change.proposedVariants); }
+    catch { out.proposedVariants = []; }
+  }
+  return out;
 };
+
+// "Customers also viewed" — products in the same category, excluding
+// the current product. Public, no auth. In-stock items sort before
+// out-of-stock; ties broken by recency. We do not fall back across
+// categories — when the rail is empty we return [] and the shopper
+// UI hides the section silently. This route is declared BEFORE
+// `/:id` so the literal "related" path doesn't get captured as an ID.
+router.get('/:id/related', async (req, res, next) => {
+  try {
+    const limit = Math.max(1, Math.min(20, Number(req.query.limit) || 10));
+    const target = await prisma.product.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, category: true, status: true },
+    });
+    if (!target) return res.status(404).json({ error: 'NOT_FOUND' });
+    const rows = await prisma.product.findMany({
+      where: { status: 'LIVE', category: target.category, NOT: { id: target.id } },
+      orderBy: [{ stock: 'desc' }, { createdAt: 'desc' }],
+      take: limit,
+      include: {
+        vendor: { select: { id: true, businessName: true } },
+        variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
+      },
+    });
+    res.json({ products: rows.map((p) => parseVariants(parseImageUrls(p))) });
+  } catch (err) { next(err); }
+});
 
 router.get('/:id', async (req, res, next) => {
   try {
@@ -310,21 +411,52 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
   try {
     const data = productUpsert.parse(req.body);
+    const { variants, extraCategories, ...rest } = data;
+    // Normalize extras once at submit time so the admin can read the
+    // proposal exactly as it will land after approval. Stored as a
+    // JSON string on the change row.
+    const normalizedExtras = normalizeExtraCategories(extraCategories);
     const change = await prisma.productChange.create({
       data: {
         vendorId: req.user.vendor.id,
         action: 'CREATE',
-        proposedName: data.name,
-        proposedDescription: data.description || '',
-        proposedPriceCents: data.priceCents,
-        proposedCategory: data.category,
-        proposedImageUrls: stringifyImageUrls(data).imageUrls,
-        proposedStock: data.stock ?? 0,
-        proposedStatus: data.status || 'LIVE',
+        proposedName: rest.name,
+        proposedDescription: rest.description || '',
+        proposedPriceCents: rest.priceCents,
+        // Empty string on the form = "no deal" → null on the change. The
+        // admin-approval apply step will set Product.compareAtPriceCents
+        // to null in that case, which keeps the storefront from rendering
+        // a strikethrough/percentage badge.
+        proposedCompareAtPriceCents: rest.compareAtPriceCents ?? null,
+        proposedCategory: rest.category,
+        proposedImageUrls: stringifyImageUrls(rest).imageUrls,
+        proposedStock: rest.stock ?? 0,
+        proposedStatus: rest.status || 'LIVE',
+        proposedVariants: Array.isArray(variants) && variants.length > 0
+          ? JSON.stringify(variants.map((v) => ({ color: v.color, size: v.size, stock: v.stock || 0 })))
+          : null,
+        variantsAction: Array.isArray(variants) && variants.length > 0 ? 'replace' : null,
+        // Placement flags for CREATE. We pass through the values
+        // directly (not the schema defaults) so the admin can see
+        // what the vendor submitted. Approval falls through to the
+        // schema defaults on a null value so vendors who don't care
+        // about placements don't have to fill this in.
+        proposedShowOnHome:       rest.showOnHome       ?? null,
+        proposedShowOnDeals:      rest.showOnDeals      ?? null,
+        proposedShowOnFlashDeals: rest.showOnFlashDeals ?? null,
+        proposedShowOnSearch:     rest.showOnSearch     ?? null,
+        proposedExtraCategories:  JSON.stringify(normalizedExtras),
         status: 'PENDING',
       },
     });
-    res.status(201).json({ change });
+    await notifyAdminsProductChangeSubmitted({
+      changeId: change.id,
+      vendorId: req.user.vendor.id,
+      action: 'CREATE',
+      productId: null,
+      productName: rest.name,
+    });
+    res.status(201).json({ change: parseChange(change) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
     next(err);
@@ -366,7 +498,7 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
       action: 'product.create',
       entityType: 'Product',
       entityId: product.id,
-      meta: { name: product.name, category: product.category, vendorId: product.vendorId },
+      meta: { name: product.name, category: product.category, vendorId: product.vendorId, variantCount: product.variants.length },
     });
     await notifyProductChange({ action: 'create', product });
     res.status(201).json({ product: parseExtraCategories(parseVariants(parseImageUrls(product))) });
@@ -380,12 +512,26 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
 // apply directly via the `if (isAdmin)` branch below.
 router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res, next) => {
   try {
-    const data = productUpsert.partial().parse(req.body);
+    const data = productUpsertPartial.parse(req.body);
     const product = await prisma.product.findUnique({ where: { id: req.params.id } });
     if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
     const isOwner = req.user.role === 'VENDOR' && product.vendorId === req.user.vendor?.id;
     const isAdmin = req.user.role === 'ADMIN';
     if (!isOwner && !isAdmin) return res.status(403).json({ error: 'FORBIDDEN' });
+
+    // Cross-field deal-price check. The partial validator only enforces
+    // compareAt > priceCents when BOTH are present in the body, so when
+    // the vendor sets just `compareAtPriceCents` we re-check against the
+    // live product here. Same rule as productChanges.js POST + approve.
+    if (data.compareAtPriceCents != null) {
+      const targetPrice = (data.priceCents != null) ? data.priceCents : product.priceCents;
+      if (data.compareAtPriceCents <= targetPrice) {
+        return res.status(400).json({
+          error: 'INVALID_INPUT',
+          issues: [{ path: ['compareAtPriceCents'], message: 'compareAtPriceCents must be greater than priceCents' }],
+        });
+      }
+    }
 
     // Admin updates apply immediately; vendor updates go through approval.
     if (isAdmin) {
@@ -420,7 +566,7 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         action: 'product.update',
         entityType: 'Product',
         entityId: updated.id,
-        meta: { name: updated.name, category: updated.category, vendorId: updated.vendorId },
+        meta: { name: updated.name, category: updated.category, vendorId: updated.vendorId, variantCount: updated.variants.length },
       });
       await notifyProductChange({ action: 'update', product: updated });
       return res.json({ product: parseExtraCategories(parseVariants(parseImageUrls(updated))) });
@@ -434,14 +580,45 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         proposedName: data.name ?? null,
         proposedDescription: data.description ?? null,
         proposedPriceCents: data.priceCents ?? null,
+        // Presence in the body is the signal: undefined = "don't touch
+        // the deal" (preserves the existing value on the product); a
+        // number = "apply this"; null = "remove the deal" (admin
+        // approval path will set Product.compareAtPriceCents to null).
+        // Route handler in productChanges.js re-validates compareAt >
+        // priceCents against the live product before applying.
+        proposedCompareAtPriceCents: data.compareAtPriceCents !== undefined ? data.compareAtPriceCents : null,
         proposedCategory: data.category ?? null,
         proposedImageUrls: data.imageUrls !== undefined ? JSON.stringify(data.imageUrls || []) : null,
         proposedStock: data.stock ?? null,
         proposedStatus: data.status ?? null,
+        proposedVariants: data.variants !== undefined ? JSON.stringify(data.variants || []) : null,
+        variantsAction: data.variants !== undefined ? 'replace' : null,
+        // Placement flags. null = "leave alone" (the standard
+        // proposed* convention on UPDATE). On admin approval the
+        // change-apply path only writes the Product column when the
+        // proposed value is non-null, so an empty placement section
+        // on the form is a true no-op.
+        proposedShowOnHome:       data.showOnHome       ?? null,
+        proposedShowOnDeals:      data.showOnDeals      ?? null,
+        proposedShowOnFlashDeals: data.showOnFlashDeals ?? null,
+        proposedShowOnSearch:     data.showOnSearch     ?? null,
+        // Extra categories: normalize then JSON-encode. The change
+        // record only carries a JSON snapshot; the approval path
+        // reconciles the join table.
+        proposedExtraCategories: data.extraCategories !== undefined
+          ? JSON.stringify(normalizeExtraCategories(data.extraCategories))
+          : null,
         status: 'PENDING',
       },
     });
-    res.status(202).json({ change });
+    await notifyAdminsProductChangeSubmitted({
+      changeId: change.id,
+      vendorId: req.user.vendor.id,
+      action: 'UPDATE',
+      productId: product.id,
+      productName: data.name || product.name,
+    });
+    res.status(202).json({ change: parseChange(change) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
     next(err);
@@ -483,11 +660,20 @@ router.delete('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res
         status: 'PENDING',
       },
     });
+    await notifyAdminsProductChangeSubmitted({
+      changeId: change.id,
+      vendorId: req.user.vendor.id,
+      action: 'DELETE',
+      productId: product.id,
+      productName: product.name,
+    });
     res.status(202).json({ change });
   } catch (err) { next(err); }
 });
 
 router.parseImageUrls = parseImageUrls;
 router.stringifyImageUrls = stringifyImageUrls;
+router.parseVariants = parseVariants;
+router.applyVariants = applyVariants;
 
 module.exports = router;

@@ -31,11 +31,20 @@ export default {
         success: '#10b981',
         error: '#ba1a1a',
         'error-container': '#ffdad6',
-        'dark-bg': '#0b1c30',
-        'dark-surface': '#15243f',
-        'dark-surface-high': '#1f3052',
-        'dark-on': '#eaf1ff',
-        'dark-on-variant': '#a3b1c9',
+        // Midnight Ocean tokens — kept in sync with the duration used
+        // by styles/index.css .dark rules. CSS uses literal hex; these
+        // tokens are informational / for @apply utilities that may
+        // touch them in legacy code.
+        'dark-bg': '#0a1024',
+        'dark-bg-2': '#0e1432',
+        'dark-surface': '#142454',
+        'dark-surface-high': '#1c2f5e',
+        'dark-modal': '#243d7a',
+        'dark-brand': '#7c9eff',
+        'dark-on': '#f4f7ff',
+        'dark-on-variant': '#b4c0d8',
+        'dark-on-tertiary': '#8b95b3',
+        'dark-on-muted': '#c8d4ff',
       },
       fontFamily: {
         sans: ['"Be Vietnam Pro"', 'system-ui', 'sans-serif'],

@@ -82,7 +82,7 @@ export default function Categories() {
         {error && (
           <div className="card p-4 bg-error/10 text-error text-sm flex items-center justify-between mb-3">
             <span>Could not load categories.</span>
-            <button onClick={refetch} className="text-primary font-semibold">Retry</button>
+            <button type="button" onClick={refetch} className="text-primary font-semibold">Retry</button>
           </div>
         )}
 
@@ -102,7 +102,7 @@ export default function Categories() {
               >
                 <div className={`p-4 ${c.textColor}`}>
                   <div className="font-bold">{c.name}</div>
-                  <div className="text-label-md opacity-70">
+                  <div className="text-label-md text-on-surface-variant">
                     {groups.find((g) => g.name === c.name)?.count || 0} items
                   </div>
                 </div>
@@ -142,7 +142,13 @@ export default function Categories() {
       <div className="card p-5 bg-gradient-to-br from-secondary to-yellow-400 text-on-secondary relative overflow-hidden">
         <div className="relative z-10 max-w-[70%]">
           <div className="chip bg-white/30 text-on-secondary border-0 mb-2">New Arrivals</div>
-          <h3 className="text-headline-md font-bold">Summer Collection 2026</h3>
+          {/* Text-on-secondary explicit override — this h3 sits on a
+              from-secondary (gold-yellow) gradient; the v0.3.20 global
+              h3 { color: #0034b9 } brand-blue rule would clash with
+              the yellow surface. The design token `text-on-secondary`
+              is #261a00 (dark brown) which is the WCAG-passing token
+              for on-yellow placements. */}
+          <h3 className="text-headline-md font-bold text-on-secondary">Summer Collection 2026</h3>
           <p className="text-label-md mt-1">Up to 40% off on selected items.</p>
           <Link to="/home" className="mt-3 inline-block bg-white text-on-secondary font-semibold px-4 py-2 rounded-full text-sm">Explore →</Link>
         </div>

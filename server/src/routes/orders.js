@@ -126,22 +126,46 @@ router.post('/', async (req, res, next) => {
     });
     if (!address) return res.status(400).json({ error: 'ADDRESS_INVALID' });
 
+    // Only the rows the shopper explicitly ticked flow into the order.
+    // Unselected rows stay in the cart for a future checkout pass —
+    // this is the Amazon-style "save these for later" behavior.
     const items = await prisma.cartItem.findMany({
-      where: { userId: req.user.id },
-      include: { product: true },
+      where: { userId: req.user.id, selectedForCheckout: true },
+      include: { product: true, variant: true },
     });
-    if (items.length === 0) return res.status(400).json({ error: 'CART_EMPTY' });
+    if (items.length === 0) {
+      // Distinguish "no items at all" from "items in cart but all
+      // unchecked" so the SPA can render a targeted hint instead of
+      // a generic "your cart is empty" — both are user-fixable.
+      const totalCount = await prisma.cartItem.count({ where: { userId: req.user.id } });
+      return res.status(400).json({
+        error: totalCount > 0 ? 'NO_SELECTION' : 'CART_EMPTY',
+        totalCount,
+      });
+    }
 
-    // Stock validation.
+    // Stock validation. For variant products, prefer the variant's
+    // own stock — the variant is the actual SKU we are holding back
+    // for this order. Falls back to Product.stock for legacy non-
+    // variant products. Without this guard a guest could select a
+    // color/size that's out of stock but whose sibling variants
+    // summed make the parent Product.stock look healthy, and the
+    // payment + stock-decrement transaction would either wrongly
+    // succeed or wrongly charge.
     for (const item of items) {
       if (item.product.status !== 'LIVE') {
         return res.status(400).json({ error: 'PRODUCT_NOT_AVAILABLE', productId: item.product.id });
       }
-      if (item.product.stock < item.quantity) {
+      const variantStock = item.variant && typeof item.variant.stock === 'number' ? item.variant.stock : null;
+      const stockForCheck = variantStock != null ? variantStock : item.product.stock;
+      if (stockForCheck < item.quantity) {
         return res.status(400).json({
           error: 'INSUFFICIENT_STOCK',
           productId: item.product.id,
-          available: item.product.stock,
+          // Echo the variant id when relevant so the UI can render
+          // "Size M is out of stock" instead of a generic error.
+          variantId: item.variantId || undefined,
+          available: stockForCheck,
           requested: item.quantity,
         });
       }
@@ -210,7 +234,12 @@ router.post('/', async (req, res, next) => {
         },
       });
 
-      await tx.cartItem.deleteMany({ where: { userId: req.user.id } });
+      // Wipe only the rows that became order items. Rows the shopper
+      // deliberately left unselected stay in the cart for a future
+      // checkout pass.
+      await tx.cartItem.deleteMany({
+        where: { userId: req.user.id, selectedForCheckout: true },
+      });
 
       // Record pending mobile-money transaction so the shopper can poll / be
       // notified when the customer approves the prompt.

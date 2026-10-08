@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import Icon from '../../components/Icon';
@@ -25,7 +25,15 @@ export default function Products() {
   if (q) params.set('q', q);
   if (statusFilter) params.set('status', statusFilter);
   const qs = params.toString();
-  const { data, error, loading, refetch } = useApi(`/api/products/vendor/mine${qs ? `?${qs}` : ''}`);
+  // Memoize the API path so the string identity is stable across
+  // renders — otherwise useApi's useCallback re-creates `run` every
+  // time and the wrapping useEffect re-fires in a tight loop, which
+  // trips React #321 "Maximum update depth exceeded".
+  const apiPath = useMemo(
+    () => `/api/products/vendor/mine${qs ? `?${qs}` : ''}`,
+    [qs]
+  );
+  const { data, error, loading, refetch } = useApi(apiPath);
   // Live sync — when an admin approves a vendor change, the product
   // transitions PENDING→LIVE for the partner's "my products" list.
   useProductLiveSync(refetch);

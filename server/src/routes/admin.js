@@ -282,6 +282,106 @@ const broadcastSchema = z.object({
   link: z.string().max(500).optional(),
 });
 
+// ---------------------------------------------------------------------------
+// Notify selected vendors that a product is live on the customer storefront.
+// Used by the admin "post-publish" success page so an admin can choose which
+// vendors to ping (the system's notifyProductChange already wrote a baseline
+// product_created/updated row, but the admin can re-send with a personal
+// message body). Vendor must be APPROVED to receive the message.
+// ---------------------------------------------------------------------------
+const notifyVendorSchema = z.object({
+  vendorUserIds: z.array(z.string().min(1)).min(1).max(500),
+  message: z.string().min(1).max(1000),
+});
+
+router.post('/products/:id/notify-vendors', async (req, res, next) => {
+  try {
+    const { vendorUserIds, message } = notifyVendorSchema.parse(req.body);
+    const product = await prisma.product.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, name: true, status: true, vendorId: true },
+    });
+    if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
+
+    // Only ping approved vendors with an attached vendor row. Blocking the
+    // not-yet-approved vendors stops the admin from spamming vendors whose
+    // stores aren't live yet.
+    const vendors = await prisma.user.findMany({
+      where: { id: { in: vendorUserIds }, role: 'VENDOR' },
+      select: { id: true, vendor: { select: { status: true } } },
+    });
+    const eligible = vendors
+      .filter((v) => v.vendor && v.vendor.status === 'APPROVED')
+      .map((v) => v.id);
+    const skipped = vendorUserIds.length - eligible.length;
+
+    if (eligible.length === 0) {
+      return res.status(400).json({ error: 'NO_ELIGIBLE_RECIPIENTS', skipped });
+    }
+
+    const meta = {
+      productId: product.id,
+      productName: product.name,
+      actorId: req.user.id,
+      kind: 'manual_notify',
+    };
+    const result = await notifyMany(eligible, {
+      kind: 'admin_broadcast',
+      title: `Heads up: ${product.name} is live`,
+      body: message,
+      link: `/products/${product.id}`,
+      meta,
+    });
+
+    await audit(req.user.id, {
+      action: 'product.notify_vendors',
+      entityType: 'Product',
+      entityId: product.id,
+      meta: {
+        productName: product.name,
+        recipientCount: eligible.length,
+        skipped,
+        messagePreview: message.slice(0, 80),
+      },
+    });
+
+    res.status(201).json({
+      ok: true,
+      sent: eligible.length,
+      skipped,
+      notificationIds: result.created,
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
+});
+
+// GET /api/admin/vendors — lightweight list for the "notify vendors"
+// multi-select on the post-publish page. Returns approved vendors only
+// (pending vendors can't act on a publish notification yet).
+router.get('/vendors', async (_req, res, next) => {
+  try {
+    const rows = await prisma.user.findMany({
+      where: { role: 'VENDOR', vendor: { status: 'APPROVED' } },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        vendor: { select: { id: true, businessName: true, status: true } },
+      },
+      orderBy: { vendor: { businessName: 'asc' } },
+    });
+    res.json({ vendors: rows.map((r) => ({
+      userId: r.id,
+      name: r.name,
+      email: r.email,
+      vendorId: r.vendor?.id,
+      businessName: r.vendor?.businessName || r.name,
+    })) });
+  } catch (err) { next(err); }
+});
+
 router.post('/broadcast', async (req, res, next) => {
   try {
     const data = broadcastSchema.parse(req.body);

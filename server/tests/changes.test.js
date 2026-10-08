@@ -93,6 +93,53 @@ describe('Product Changes API', { concurrency: 1 }, () => {
     assert.ok(!list.body.products.some((p) => p.name === 'Rejected Item'));
   });
 
+  it('vendor submission notifies every admin with a deep link to the pending queue', async () => {
+    // Two admins so we confirm the fan-out hits all admins, not just the
+    // first one. The seed is per-test, so this is a fresh DB.
+    const a1Tok = await seedAdmin();
+    const a2Tok = await seedAdmin();
+    const vTok = (await seedVendor()).token;
+
+    // Inbox baseline: each admin has whatever the helper left (none here).
+    const before1 = await request(app).get('/api/notifications?unreadOnly=true').set('Authorization', `Bearer ${a1Tok}`).expect(200);
+    const before2 = await request(app).get('/api/notifications?unreadOnly=true').set('Authorization', `Bearer ${a2Tok}`).expect(200);
+    const base1 = before1.body.unreadCount;
+    const base2 = before2.body.unreadCount;
+
+    // Vendor submits.
+    const createRes = await request(app)
+      .post('/api/product-changes')
+      .set('Authorization', `Bearer ${vTok}`)
+      .send({ action: 'CREATE', name: 'Notified Item', priceCents: 1500, category: 'Home', stock: 4 })
+      .expect(201);
+    const changeId = createRes.body.change.id;
+
+    // Both admins now have a fresh `product_change_submitted` row pointing
+    // at the change. Unread count is incremented.
+    const inbox1 = await request(app).get('/api/notifications?unreadOnly=true').set('Authorization', `Bearer ${a1Tok}`).expect(200);
+    const inbox2 = await request(app).get('/api/notifications?unreadOnly=true').set('Authorization', `Bearer ${a2Tok}`).expect(200);
+    assert.equal(inbox1.body.unreadCount, base1 + 1, 'admin 1 should have one new unread');
+    assert.equal(inbox2.body.unreadCount, base2 + 1, 'admin 2 should have one new unread');
+
+    const note1 = inbox1.body.notifications.find((n) => n.kind === 'product_change_submitted');
+    assert.ok(note1, 'admin 1 inbox has a product_change_submitted row');
+    assert.equal(note1.link, '/changes?status=PENDING', 'link targets the pre-filtered pending queue');
+    // `meta` is a JSON column — the inbox endpoint returns it as a string,
+    // so parse it before asserting. (Other inbox tests follow the same
+    // pattern, see orders-cancel-track.test.js.)
+    const note1Meta = JSON.parse(note1.meta || '{}');
+    assert.equal(note1Meta.changeId, changeId, 'meta carries the change id for deep linking');
+    assert.equal(note1Meta.action, 'CREATE');
+    assert.match(note1.title, /submitted a new product: Notified Item/);
+
+    // The other admin sees the same row.
+    const note2 = inbox2.body.notifications.find((n) => n.kind === 'product_change_submitted');
+    assert.ok(note2);
+    assert.equal(note2.link, '/changes?status=PENDING');
+    const note2Meta = JSON.parse(note2.meta || '{}');
+    assert.equal(note2Meta.changeId, changeId);
+  });
+
   it('vendor UPDATE change does not mutate the live product until approved', async () => {
     const aTok = await seedAdmin();
     const vendor = await seedVendor();

@@ -149,7 +149,19 @@ export default function ProductNew() {
       setErrors(fieldErrors);
       setErr('Please fix the highlighted fields before submitting.');
       const first = Object.keys(fieldErrors)[0];
-      document.getElementById(`pf-${first}`)?.focus?.();
+      if (first === 'variants') {
+        document.querySelector('[aria-labelledby="pf-variants-accordion"]')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const rowIdx = fieldErrors.variants.rows.findIndex(Boolean);
+        const input = rowIdx >= 0
+          ? document.querySelector(`input[aria-label="Variant ${rowIdx + 1} color"]`)
+          : null;
+        input?.focus?.();
+      } else {
+        const el = document.getElementById(`pf-${first}`);
+        el?.focus?.();
+        el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      }
       return;
     }
     setErrors({});

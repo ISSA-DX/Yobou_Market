@@ -56,14 +56,6 @@
         font-size: 22px;
         letter-spacing: 0.02em;
       }
-      #boot-splash .tag {
-        margin-top: 6px;
-        font-size: 12px;
-        font-weight: 500;
-        opacity: 0.75;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-      }
       /* React tells us it's mounted — hide the splash. */
       html[data-yobou-booted="true"] #boot-splash { display: none; }
 
@@ -88,6 +80,27 @@
       #boot-error h1 { margin: 0 0 8px; font-size: 22px; font-weight: 800; }
       #boot-error p { margin: 0; max-width: 320px; opacity: 0.85; font-size: 14px; line-height: 1.5; }
     </style>
+    <script>
+      /*
+        No-flash theme bootstrap. Runs synchronously before any module
+        script, so the `dark` class is already on <html> by the time the
+        stylesheet + React tree apply. Without this, users with a saved
+        dark theme see a single frame of light mode on every cold load.
+        Reads the localStorage key the shopper store uses; resolves
+        'system' to the OS preference via matchMedia.
+      */
+      (function () {
+        try {
+          var stored = localStorage.getItem('yobou:theme');
+          if (stored == null) return;
+          var dark = stored === 'dark'
+            || (stored === 'system'
+              && window.matchMedia
+              && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) { /* localStorage blocked — fall through, store reapplies on mount */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="boot-error" role="alert" aria-live="assertive">
@@ -118,7 +131,6 @@
         </svg>
       </div>
       <div class="word">Yobou</div>
-      <div class="tag">Market</div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>

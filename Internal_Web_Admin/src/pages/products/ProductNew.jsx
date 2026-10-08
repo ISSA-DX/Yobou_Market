@@ -11,14 +11,16 @@
 //   - Cancel-with-confirmation when the form is dirty (DirtyGuardModal).
 //   - Status select lets the admin save as DRAFT without leaving the
 //     page, separate from the prominent "Publish product" CTA.
-//   - After a successful save, the draft is cleared and we navigate
-//     back to /products.
+//   - After a successful save, instead of a blank redirect, we render
+//     ProductPublishedSuccess: a two-step confirmation with a deep link
+//     to the storefront and an optional "Notify partners" step.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '../../api';
 import Icon from '../../components/Icon';
 import ProductFormFields from '../../components/ProductFormFields';
 import ProductPreviewCard from '../../components/ProductPreviewCard';
+import ProductPublishedSuccess from '../../components/ProductPublishedSuccess';
 import DirtyGuardModal from '../../components/DirtyGuardModal';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useFormDraft } from '../../lib/useFormDraft';
@@ -102,6 +104,11 @@ export default function ProductNew() {
     if (!initialFormRef.current) return false;
     return JSON.stringify(form) !== JSON.stringify(initialFormRef.current);
   }, [form]);
+  // After a successful save we render the success page instead of the
+  // form. Stash the saved product so ProductPublishedSuccess can show
+  // the deep link + recipient picker without a refetch.
+  const [publishedProduct, setPublishedProduct] = useState(null);
+  const [publishedAction, setPublishedAction] = useState(null);
 
   // Seed form from server response (edit mode) and snapshot the
   // initial value so dirty-tracking has a stable baseline.
@@ -157,16 +164,31 @@ export default function ProductNew() {
     if (Object.keys(fieldErrors).length) {
       setErrors(fieldErrors);
       setErr('Please fix the highlighted fields before publishing.');
-      // Move focus to the first invalid field.
+      // Move focus to the first invalid field. For variants, scroll to
+      // the variants accordion and focus the first invalid row's color
+      // input — otherwise the user has no idea which row is broken. The
+      // VariantsAccordion also auto-expands itself when it sees errors.
       const first = Object.keys(fieldErrors)[0];
-      const el = document.getElementById(`pf-${first}`);
-      el?.focus?.();
+      if (first === 'variants') {
+        document.querySelector('[aria-labelledby="pf-variants-accordion"]')
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const rowIdx = fieldErrors.variants.rows.findIndex(Boolean);
+        const input = rowIdx >= 0
+          ? document.querySelector(`input[aria-label="Variant ${rowIdx + 1} color"]`)
+          : null;
+        input?.focus?.();
+      } else {
+        const el = document.getElementById(`pf-${first}`);
+        el?.focus?.();
+        el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      }
       return;
     }
     setErrors({});
     setBusy(true);
     setErr('');
     try {
+      let saved;
       if (isEdit) {
         await api(`/api/products/${id}`, { method: 'PATCH', body: normalized });
       } else {
@@ -174,7 +196,8 @@ export default function ProductNew() {
       }
       clearDraft();
       setSavedAt(new Date());
-      setTimeout(() => navigate('/products'), 600);
+      setPublishedProduct(saved);
+      setPublishedAction(isEdit ? 'update' : 'create');
     } catch (e) {
       setErr(e.data?.error || e.message || 'Could not save product.');
     } finally {
@@ -212,6 +235,13 @@ export default function ProductNew() {
 
   if (isEdit && productApi.error && !productApi.data) {
     return <RetryError message="Couldn't load product." onRetry={productApi.refetch} />;
+  }
+
+  // After a successful save we hide the form and render the success
+  // page. The user is in control: they can navigate away (top nav still
+  // works) or stay to notify partners.
+  if (publishedProduct) {
+    return <ProductPublishedSuccess product={publishedProduct} action={publishedAction} />;
   }
 
   return (

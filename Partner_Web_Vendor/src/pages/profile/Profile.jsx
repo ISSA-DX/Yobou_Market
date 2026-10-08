@@ -10,9 +10,22 @@ const SUGGESTED_CATEGORIES = [
   'Sports', 'Toys', 'Books', 'Health', 'Auto',
 ];
 
+// Three-way theme picker. Mirrors the shopper's ProfilePreferences and
+// the admin's Appearance page. The store's setTheme() handles the
+// localStorage class toggle + server PATCH in one call.
+const THEMES = [
+  { code: 'light', label: 'Light', icon: 'light_mode', desc: 'Always use the light palette.' },
+  { code: 'dark', label: 'Dark', icon: 'dark_mode', desc: 'Always use the dark palette.' },
+  { code: 'system', label: 'System default', icon: 'desktop_windows', desc: 'Follow your device setting.' },
+];
+
 export default function Profile() {
   const user = useStore((s) => s.user);
   const setUser = useStore((s) => s.setUser);
+  const theme = useStore((s) => s.theme);
+  const dark = useStore((s) => s.dark);
+  const setTheme = useStore((s) => s.setTheme);
+  const [themeSaving, setThemeSaving] = useState(false);
   const profileApi = useApi('/api/vendors/me');
 
   const [form, setForm] = useState({
@@ -249,6 +262,58 @@ export default function Profile() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Appearance / theme picker. Three-way selector — same as the
+          shopper + admin. setTheme handles the localStorage + class
+          toggle + (when signed in) the server PATCH in one call. */}
+      <div className="card p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <Icon name="palette" className="text-[22px] text-primary" />
+          <h2 className="font-bold">Appearance</h2>
+        </div>
+        <p className="text-label-md text-on-surface-variant">
+          Choose how the partner portal looks. Your choice syncs across devices.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {THEMES.map((t) => {
+            const active = theme === t.code;
+            return (
+              <button
+                key={t.code}
+                type="button"
+                onClick={async () => {
+                  if (t.code === theme || themeSaving) return;
+                  setThemeSaving(true);
+                  try {
+                    await setTheme(t.code, true);
+                  } catch (e) {
+                    toast.error(e?.data?.error || e?.message || 'Could not save theme.');
+                  } finally {
+                    setThemeSaving(false);
+                  }
+                }}
+                disabled={themeSaving}
+                aria-pressed={active}
+                className={`flex flex-col items-start gap-1.5 p-3 rounded-xl border text-left transition ${
+                  active
+                    ? 'border-primary bg-primary/5'
+                    : 'border-outline-variant/40 hover:bg-surface-low'
+                } ${themeSaving ? 'opacity-60' : ''}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon name={t.icon} className={`text-[20px] ${active ? 'text-primary' : 'text-on-surface-variant'}`} />
+                  <span className={`text-sm font-semibold ${active ? 'text-primary' : 'text-on-surface'}`}>{t.label}</span>
+                </div>
+                <div className="text-label-sm text-on-surface-variant">{t.desc}</div>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-label-sm text-on-surface-variant">
+          Current look: <span className="font-medium text-on-surface">{dark ? 'Dark' : 'Light'}</span>
+          {theme === 'system' && ' (following your device)'}
+        </p>
       </div>
 
       {/* Business */}

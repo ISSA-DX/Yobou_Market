@@ -11,12 +11,89 @@ const router = express.Router();
 const REFRESH_COOKIE = 'yobou_rt';
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Transfer a guest user's cart into a freshly-logged-in user's cart.
+// Keeps the (productId, variantId) row count minimal: existing identical
+// rows are incremented (capped at 99 to match cartAdd's validator) and
+// the guest rows are deleted. Called from /login when the request had
+// a guest refresh cookie. No-op when the cookie sub equals the new
+// user.id (the visitor re-logged-in as themselves, not as a new user).
+async function transferGuestCart(guestId, newId) {
+  if (!guestId || guestId === newId) return 0;
+  const items = await prisma.cartItem.findMany({ where: { userId: guestId } });
+  if (items.length === 0) return 0;
+  for (const item of items) {
+    const existing = await prisma.cartItem.findFirst({
+      where: {
+        userId: newId,
+        productId: item.productId,
+        variantId: item.variantId || null,
+      },
+    });
+    const mergedQty = Math.min(99, (existing?.quantity || 0) + item.quantity);
+    if (existing) {
+      await prisma.cartItem.update({
+        where: { id: existing.id },
+        data: {
+          quantity: mergedQty,
+          // The destination user's existing selection intent ALWAYS wins.
+          // If they had this row unchecked (saved-for-later), it stays
+          // unchecked even when the guest's copy was selected — we never
+          // silently flip a customer's saved-for-later decision because
+          // a guest with a different mind touched the same SKU. An
+          // earlier version used `existing.selectedForCheckout ||
+          // item.selectedForCheckout`, which had the opposite effect:
+          // any checked guest copy would force-check the destination's
+          // saved-for-later row. The merge-existing test in
+          // cart-selection.test.js guards against the regression.
+          selectedForCheckout: existing.selectedForCheckout,
+        },
+      });
+    } else {
+      await prisma.cartItem.create({
+        data: {
+          userId: newId,
+          productId: item.productId,
+          variantId: item.variantId || null,
+          quantity: Math.min(99, item.quantity),
+          // Carry over the guest's selection intent — if they
+          // deliberately unchecked the row before logging in, the
+          // destination cart row stays unchecked.
+          selectedForCheckout: item.selectedForCheckout,
+        },
+      });
+    }
+  }
+  await prisma.cartItem.deleteMany({ where: { userId: guestId } });
+  return items.length;
+}
+
 function setRefreshCookie(res, token) {
-  const crossOrigin = !!process.env.CORS_ORIGIN;
+  // Cross-site cookie policy. When the refresh cookie is issued, every
+  // subsequent XHR/fetch from a real client has to carry it back so
+  // /api/auth/refresh can mint a new access token before page-level
+  // requests 401. On the Android Capacitor WebView the document origin
+  // is `https://localhost/` while the API host is
+  // `https://yobou-server.onrender.com/` — a CROSS-SITE request from the
+  // browser's perspective. With `SameSite=Lax` the browser silently
+  // strips the refresh cookie on programmatic fetch() calls (Lax only
+  // permits top-level navigation GETs), so the refresh round-trip
+  // always returns `BAD_REFRESH` and the user is kicked back to the
+  // login screen mid-session. The Yobou fix: in production (or when an
+  // explicit CORS_ORIGIN is set) emit `SameSite=None; Secure` which is
+  // universally accepted for cross-site XHR/fetch. The HTTP-only +
+  // /api/auth path-scoped + 7-day TTL keeps the cookie's blast radius
+  // identical to the original `Lax` cookie — only the cross-site
+  // delivery rule changes.
+  const isProduction = process.env.NODE_ENV === 'production';
+  const crossOrigin = isProduction || !!process.env.CORS_ORIGIN;
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     sameSite: crossOrigin ? 'none' : 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    // `secure: true` is mandatory when `SameSite=None`. Production is
+    // HTTPS so this is satisfied automatically. In dev (HTTP localhost)
+    // we explicitly set secure: false so the cookie survives an http://
+    // origin during local testing.
+    secure: isProduction,
     maxAge: REFRESH_TTL_MS,
     path: '/api/auth',
   });
@@ -125,6 +202,21 @@ router.post('/login', async (req, res, next) => {
     const ok = await bcrypt.compare(data.password, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
 
+    // Merge any guest-cart sitting in the refresh cookie into this
+    // freshly-logged-in user. The visitor was browsing as a guest
+    // (POST /api/auth/guest) and added items; signing in should
+    // carry those items forward, not strand them on a now-orphan
+    // GuestUser row.
+    const priorToken = req.cookies?.[REFRESH_COOKIE];
+    if (priorToken) {
+      try {
+        const prior = verifyRefresh(priorToken);
+        if (prior?.sub && prior.sub !== user.id) {
+          await transferGuestCart(prior.sub, user.id);
+        }
+      } catch { /* invalid prior token — skip merge */ }
+    }
+
     const disabledError = checkAccountDisabled(user, res);
     if (disabledError) return disabledError;
 
@@ -135,6 +227,41 @@ router.post('/login', async (req, res, next) => {
     res.json({ accessToken: signAccess(user), user: publicUser(user) });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
+});
+
+// POST /api/auth/guest — mint a silent guest user so visitors can
+// browse, add-to-cart, and reach checkout without an account. We
+// auto-create a User row with role=CUSTOMER, a randomly-generated
+// email (`guest-<hex>@guest.local`), and an unusable password hash
+// (random bytes through bcrypt — bcrypt.compare against a wrong password
+// rejects). The refresh cookie is set so subsequent page loads stay
+// signed in to the same guest.
+//
+// Why a real User row (vs. a token-only session): the cart, orders,
+// and checkout endpoints all key off `req.user.id`. Creating a row
+// means zero frontend branching for the cart flow — guest add-to-cart
+// uses the same code path as a logged-in customer. The cost is empty
+// User rows in the DB; a 30-day cleanup cron for role=CUSTOMER users
+// with no orders is a Phase-2 follow-up.
+router.post('/guest', async (_req, res, next) => {
+  try {
+    const crypto = require('crypto');
+    const guestId = crypto.randomBytes(12).toString('hex');
+    const email = `guest-${guestId}@guest.local`;
+    const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
+    const user = await prisma.user.create({
+      data: { email, name: 'Guest', passwordHash, role: 'CUSTOMER' },
+      include: { vendor: true },
+    });
+    setRefreshCookie(res, signRefresh(user));
+    res.status(201).json({
+      accessToken: signAccess(user),
+      user: publicUser(user),
+      isGuest: true,
+    });
+  } catch (err) {
     next(err);
   }
 });

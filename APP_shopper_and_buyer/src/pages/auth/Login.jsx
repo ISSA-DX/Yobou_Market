@@ -1,17 +1,36 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useStore } from '../../store';
+import { toast } from '../../lib/toast';
 import Icon from '../../components/Icon';
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const login = useStore((s) => s.login);
+  const ensureGuestSession = useStore((s) => s.ensureGuestSession);
+  // Renamed from `user` -> `authedUser` so it doesn't shadow the
+  // `user` returned by `await login(...)` inside handleSubmit. Both
+  // names mean "User row from the API" but in different scopes; the
+  // old layout was confusing for readers.
+  const authedUser = useStore((s) => s.user);
+
+  // Already-signed-in users land on /login only via deep link, stale
+  // back-button, or a share-link. Bounce them straight to /home so
+  // they don't see a confusing login form when they're already
+  // authenticated.
+  useEffect(() => {
+    if (authedUser) navigate('/home', { replace: true });
+  }, [authedUser, navigate]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  // Tracks the in-flight POST /api/auth/guest from the "Continue
+  // without an account" button so a rapid tapper can't fire parallel
+  // mints. `busy` is the login-form spinner, intentionally separate.
+  const [guestBusy, setGuestBusy] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -32,12 +51,15 @@ export default function Login() {
   }
 
   return (
-    <div className="py-8">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-md bg-primary text-white flex items-center justify-center font-black">Y</div>
-          <span className="font-bold text-lg">Yobou Market</span>
-        </div>
+    <div className="py-6 auth-page">
+      {/* Header row used to carry a Y+ 'Yobou' wordmark above the
+          <h1>Welcome back</h1> below it — duplicate brand chrome.
+          The card itself establishes the brand via the welcome
+          message + form context; the wordmark row was pure
+          repetition. We now only render the Help affordance,
+          end-aligned, with reduced top padding to claw back
+          vertical real estate the wordmark was eating. */}
+      <div className="flex items-center justify-end mb-4">
         <Link to="/help" className="p-2 rounded-full hover:bg-surface-low" aria-label="Help">
           <Icon name="help" className="text-[22px] text-on-surface-variant" />
         </Link>
@@ -113,9 +135,78 @@ export default function Login() {
           </Link>
         </div>
 
-        <div className="mt-6 text-center text-sm text-on-surface-variant">
-          New to Yobou?{' '}
-          <Link to="/register" className="text-primary font-semibold">Sign up</Link>
+        {/* Promoted from a tiny inline text-link to a framed card
+            so a new visitor can't miss it. The Onboarding splash
+            also routes here — making the alternative clear on this
+            screen matters because the splash's "Create account"
+            button won't be discovered if a returning-typed visitor
+            hits Splash → Next × 2 → "Sign in" and never sees the
+            secondary CTA. Solid bg-primary-container (not /40
+            translucent) + a thicker outline border keeps it clearly
+            separated from the .card p-6 wrapper above this div,
+            which itself uses a low-opacity surface tint — a
+            translucent card inside a translucent card would wash
+            out and the new-user path would still look like
+            ambient text. The label is an <h2> for screen-reader
+            semantics (the parent already has an h1) so the
+            alternative-path heading is discoverable to a11y tooling. */}
+        <div className="mt-6 p-4 rounded-xl bg-primary-container border-2 border-primary/50">
+          {/* text-on-surface dropped — v0.3.20 h2 default = brand blue
+              so the 'New to Yobou?' framed-card section header picks
+              up the brand primary tint the rest of the page uses. */}
+          <h2 className="text-sm text-center font-semibold uppercase tracking-wide">New to Yobou?</h2>
+          <Link
+            to="/register"
+            className="mt-3 inline-flex w-full btn-primary py-3 justify-center font-semibold"
+          >
+            Create account
+            <Icon name="arrow_forward" className="text-[18px]" />
+          </Link>
+        </div>
+
+        {/* Escape hatch for the anonymous-browse path that Phase 1 made
+            possible. Tapping "Continue without an account" transparently
+            mints a silent guest-user via /api/auth/guest, so a feature-
+            browser who doesn't want to register can still add to cart,
+            select items, and start checkout. Keeps the new mandatory
+            gate UX honest: sign-in appears, but is not a hard wall.
+            Guards: guestBusy prevents the rapid-tap / parallel-mint
+            path, and a null/failure return from ensureGuestSession
+            surfaces a friendly error rather than silently doing
+            nothing (the early version was a tap-and-stare trap). */}
+        <div className="mt-3">
+          <button
+            type="button"
+            disabled={busy || guestBusy}
+            onClick={async () => {
+              setErr('');
+              setGuestBusy(true);
+              // ensureGuestSession's contract is "returns null on
+              // failure". The try/catch is defense-in-depth — a real
+              // network / OOM throw bubbles up here and lands in the
+              // same failure path. `void 0` instead of a comment-only
+              // empty catch keeps strict-ESLint configs quiet. The
+              // single `setGuestBusy(false)` below the try hoists
+              // the re-enable ABOVE the terminal actions so it
+              // always runs first — a cleaner mirror of `finally`
+              // semantics and avoids React 18's "setState on
+              // unmounted" warning on the fast-success branch
+              // (where Login unmounts the moment `/home` mounts).
+              let ensured = null;
+              try {
+                ensured = await ensureGuestSession();
+              } catch { void 0; }
+              setGuestBusy(false);
+              if (ensured) navigate('/home', { replace: true });
+              else {
+                setErr('Cannot start a guest session. Check your connection and try again.');
+                toast.error('Guest session failed.');
+              }
+            }}
+            className="w-full text-sm text-on-surface-variant hover:text-primary py-2 disabled:opacity-50"
+          >
+            {guestBusy ? '…' : 'Continue without an account →'}
+          </button>
         </div>
       </div>
     </div>

@@ -19,6 +19,11 @@ export function useApi(path, opts = {}) {
   const [loading, setLoading] = useState(!skip);
   const reqId = useRef(0);
 
+  // Pre-stringify body/headers so the useCallback cache is keyed off
+  // stable string values, not new object references each render.
+  const bodyStr = body === undefined ? '' : JSON.stringify(body);
+  const headersStr = headers === undefined ? '' : JSON.stringify(headers);
+
   const run = useCallback(async () => {
     const myReq = ++reqId.current;
     setLoading(true);
@@ -37,7 +42,7 @@ export function useApi(path, opts = {}) {
       if (reqId.current === myReq) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, JSON.stringify(body), JSON.stringify(headers), method, auth, skip, ...deps]);
+  }, [path, bodyStr, headersStr, method, auth, skip, ...deps]);
 
   useEffect(() => {
     if (skip) {
@@ -45,7 +50,11 @@ export function useApi(path, opts = {}) {
       return;
     }
     run();
-  }, [run, skip]);
+    // Track the same primitives that drive `run` (not `run` itself)
+    // so the effect doesn't re-fire on renders where the inputs
+    // didn't change but `run`'s identity did.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, bodyStr, headersStr, method, skip, auth, ...deps]);
 
   return { data, error, loading, refetch: run, setData };
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../../api';
+import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import CardForm from '../../components/CardForm';
 
@@ -9,12 +10,23 @@ export default function CheckoutCardNew() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const returnTo = params.get('return') || '/checkout/payment';
+  const ensureGuestSession = useStore((s) => s.ensureGuestSession);
   const [err, setErr] = useState('');
 
+  // Cold-pasted /checkout/card/new URLs must work for guests who
+  // never explicitly added to cart — without this mount-bootstrap,
+  // /api/orders would 401 and the form would fail before submission.
   useEffect(() => {
-    const addressId = sessionStorage.getItem('yobou:checkoutAddressId');
-    if (!addressId) navigate('/checkout/shipping', { replace: true });
-  }, [navigate]);
+    let cancelled = false;
+    (async () => {
+      await ensureGuestSession();
+      const addressId = sessionStorage.getItem('yobou:checkoutAddressId');
+      if (!cancelled && !addressId) navigate('/checkout/shipping', { replace: true });
+    })();
+    return () => { cancelled = true; };
+    // ensureGuestSession is stable from useStore; mount-only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleCard(card) {
     setErr('');
@@ -41,7 +53,7 @@ export default function CheckoutCardNew() {
   return (
     <div className="pt-4 space-y-5">
       <header className="flex items-center justify-between">
-        <button onClick={() => navigate(returnTo)} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
+        <button type="button" onClick={() => navigate(returnTo)} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
         <h1 className="font-bold text-lg">Secure checkout</h1>
         <span className="w-10" />
       </header>
@@ -67,6 +79,7 @@ function humanizeError(code) {
     case 'ADDRESS_INVALID': return 'Please select a shipping address.';
     case 'CART_EMPTY': return 'Your cart is empty.';
     case 'INSUFFICIENT_STOCK': return 'An item is out of stock.';
+    case 'NO_SELECTION': return 'Please select at least one item on the Cart page.';
     case 'INVALID_INPUT': return 'Please check your card details.';
     default: return 'Could not place order.';
   }

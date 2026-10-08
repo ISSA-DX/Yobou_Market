@@ -10,6 +10,7 @@
 // multi-currency.
 import Icon from './Icon';
 import { productImage } from '../lib/productImage';
+import { colorToHex } from '../lib/colorSwatch';
 
 const FALLBACK = `${import.meta.env.BASE_URL || '/'}seed-images/placeholder.svg`;
 

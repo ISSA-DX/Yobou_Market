@@ -8,6 +8,36 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet">
+    <style>
+      /* Default page background. The body has a more specific rule
+         inside the bundled stylesheet; this covers the brief moment
+         between <html> paint and the JS-loaded stylesheet. We set both
+         light and dark values so the no-flash script can flip the html
+         class without re-painting a white flash. */
+      html { background: #f8f9ff; }
+      html.dark { background: #0b1c30; }
+    </style>
+    <script>
+      /*
+        No-flash theme bootstrap. Runs synchronously before any module
+        script, so the `dark` class is already on <html> by the time the
+        stylesheet + React tree apply. Without this, users with a saved
+        dark theme see a single frame of light mode on every cold load.
+        Reads the localStorage key the admin store uses; resolves
+        'system' to the OS preference via matchMedia.
+      */
+      (function () {
+        try {
+          var stored = localStorage.getItem('yobou-admin:theme');
+          if (stored == null) return;
+          var dark = stored === 'dark'
+            || (stored === 'system'
+              && window.matchMedia
+              && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) { /* localStorage blocked — fall through, store reapplies on mount */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -21,7 +21,7 @@ export default function Modal({ open, onClose, title, children, footer }) {
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-outline-variant/30">
           <h2 className="font-bold text-lg">{title}</h2>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-surface-low" aria-label="Close">
+          <button type="button" onClick={onClose} className="p-1 rounded-md hover:bg-surface-low" aria-label="Close">
             <Icon name="close" />
           </button>
         </div>

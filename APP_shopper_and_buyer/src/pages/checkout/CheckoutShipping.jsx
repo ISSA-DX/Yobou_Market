@@ -1,18 +1,40 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../api';
+import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
+import { productImage } from '../../lib/productImage';
+import { formatPrice } from '../../lib/format';
 
 export default function CheckoutShipping() {
   const navigate = useNavigate();
+  const ensureGuestSession = useStore((s) => s.ensureGuestSession);
+  const currency = useStore((s) => s.user?.currency || 'USD');
   const { data, error, refetch } = useApi('/api/addresses');
+  const { data: cartData } = useApi('/api/cart');
   const addresses = data?.addresses || [];
   const [form, setForm] = useState({
     recipientName: '', street: '', city: '', state: '', postal: '', isDefault: true,
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+
+  // Cold-pasted checkout URLs must work for guests who haven't added
+  // anything to the cart yet — without this mount-bootstrap, /api/cart
+  // would 401 and the page would render RetryError instead of the form.
+  // ensureGuestSession is idempotent — if zustand already has a user
+  // (real customer or returning guest w/ refresh cookie) it's a no-op.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const ensured = await ensureGuestSession();
+      if (!cancelled && ensured) await refetch();
+    })();
+    return () => { cancelled = true; };
+    // refetch + ensureGuestSession are stable from useStore; mount-only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Pre-fill from default address once it loads
   useEffect(() => {
@@ -54,6 +76,12 @@ export default function CheckoutShipping() {
     }
   }
 
+  // Selected-subset preview. Show ONLY the items the shopper ticked on
+  // the Cart page — these are what will be ordered. Unselected rows
+  // stay in the cart for later. Helps set expectations: the user sees
+  // before they pay exactly what's heading into the order.
+  const selectedItems = (cartData?.items || []).filter((i) => i?.product && i.selectedForCheckout);
+
   if (error && !data) {
     return <RetryError message="Couldn't load your addresses." onRetry={refetch} />;
   }
@@ -61,7 +89,7 @@ export default function CheckoutShipping() {
   return (
     <div className="pt-4 space-y-5">
       <header className="flex items-center justify-between">
-        <button onClick={() => navigate(-1)} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
+        <button type="button" onClick={() => navigate('/cart')} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
         <h1 className="font-bold text-lg">Checkout</h1>
         <span className="w-10" />
       </header>
@@ -78,6 +106,46 @@ export default function CheckoutShipping() {
           </div>
         ))}
       </div>
+
+      {/* Selected-items preview card. Renders only when cart data
+          is loaded AND there's at least one selected row. If the user
+          somehow landed on this page with all items unselected the
+          cart page is the right next step, not this page. */}
+      {selectedItems.length > 0 && (
+        <details className="card p-3 group" open>
+          <summary className="flex items-center gap-2 cursor-pointer list-none">
+            <Icon name="shopping_bag" className="text-primary text-[20px]" />
+            <span className="font-semibold text-sm">
+              {selectedItems.length} {selectedItems.length === 1 ? 'item' : 'items'} heading your way
+            </span>
+            <span className="ml-auto group-open:rotate-180 transition-transform">
+              <Icon name="expand_more" className="text-[18px] text-on-surface-variant" />
+            </span>
+          </summary>
+          <div className="mt-2 space-y-2">
+            {selectedItems.slice(0, 4).map((it) => (
+              <div key={it.id} className="flex items-center gap-2 min-w-0">
+                <img
+                  src={productImage(it.product)}
+                  alt={it.product.name}
+                  loading="lazy"
+                  className="w-10 h-10 rounded object-cover bg-surface-low"
+                  onError={(e) => { e.currentTarget.src = '/seed-images/placeholder.svg'; }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium line-clamp-1">{it.product.name}</div>
+                  <div className="text-label-md text-on-surface-variant">Qty {it.quantity} · {formatPrice(it.product.priceCents * it.quantity, currency)}</div>
+                </div>
+              </div>
+            ))}
+            {selectedItems.length > 4 && (
+              <div className="text-label-md text-on-surface-variant text-center pt-1">
+                +{selectedItems.length - 4} more
+              </div>
+            )}
+          </div>
+        </details>
+      )}
 
       <h2 className="text-headline-md font-bold">Shipping address</h2>
 

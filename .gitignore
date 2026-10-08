@@ -12,9 +12,11 @@ build/
 # Built artifacts at the repo root — not source, rebuilt by CI
 yobou-market-release.apk
 yobou-market-debug.apk
+yobou-market.apk
 Yobou-Market-*.apk
 Yobou-Partner-*.apk
 emulator-screen*.png
+emulator-screenshots/
 
 # Design asset folders and screenshots — kept locally for reference,
 # not part of the deployed source. Anchored at repo root (/foo/) so

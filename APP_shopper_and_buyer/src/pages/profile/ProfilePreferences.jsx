@@ -114,10 +114,11 @@ export default function ProfilePreferences() {
     <div className="min-h-screen bg-surface">
       <header className="sticky top-0 z-10 bg-surface/95 backdrop-blur border-b border-outline-variant/30">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
-          <button onClick={() => navigate('/profile')} className="p-2 -ml-2 rounded-full hover:bg-surface-low">
+          <button type="button" onClick={() => navigate('/profile')} className="p-2 -ml-2 rounded-full hover:bg-surface-low">
             <Icon name="arrow_back" className="text-[22px]" />
           </button>
-          <h1 className="text-lg font-bold text-on-surface">Preferences</h1>
+          {/* text-on-surface dropped — v0.3.20 h1 default = brand blue. */}
+          <h1 className="text-lg font-bold">Preferences</h1>
           {isSaving && <span className="ml-auto text-label-sm text-on-surface-variant">Saving…</span>}
           {!isSaving && savedFields.size > 0 && (
             <span className="ml-auto text-label-sm text-green-600 flex items-center gap-1">
@@ -136,7 +137,8 @@ export default function ProfilePreferences() {
 
         {/* Appearance / Theme */}
         <section className="card p-4 md:p-5">
-          <h2 className="text-base font-semibold text-on-surface mb-4 flex items-center gap-2">
+          {/* text-on-surface dropped (v0.3.20 h2 default = brand blue). */}
+          <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
             <Icon name="palette" className="text-[20px] text-primary" /> Appearance
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -164,7 +166,8 @@ export default function ProfilePreferences() {
 
         {/* Region */}
         <section className="card p-4 md:p-5">
-          <h2 className="text-base font-semibold text-on-surface mb-4 flex items-center gap-2">
+          {/* text-on-surface dropped (v0.3.20 h2 default = brand blue). */}
+          <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
             <Icon name="language" className="text-[20px] text-primary" /> Region
           </h2>
 
@@ -212,7 +215,8 @@ export default function ProfilePreferences() {
 
         {/* Notifications */}
         <section className="card p-4 md:p-5">
-          <h2 className="text-base font-semibold text-on-surface mb-4 flex items-center gap-2">
+          {/* text-on-surface dropped (v0.3.20 h2 default = brand blue). */}
+          <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
             <Icon name="notifications" className="text-[20px] text-primary" /> Notifications
           </h2>
 
