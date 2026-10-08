@@ -131,7 +131,10 @@ app.use((req, res, next) => {
       });
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    // Capacitor WebViews can add cache directives to cross-origin requests
+    // when fetch() is called with cache: 'no-store'. Allow them on preflight
+    // so Android devices do not surface a misleading generic network error.
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
     res.setHeader('Access-Control-Max-Age', '86400');
     return res.status(204).end();
   }

@@ -147,7 +147,9 @@ export const useStore = create((set, get) => ({
   },
 
   async login(email, password) {
-    const data = await api('/api/auth/login', { method: 'POST', body: { email, password }, auth: false });
+    // Login is safe to retry when a phone briefly loses the API connection
+    // (for example while a free hosting instance is waking up).
+    const data = await api('/api/auth/login', { method: 'POST', body: { email, password }, auth: false, retryNetwork: true });
     if (!data?.accessToken || !data?.user) {
       const err = new Error(data?.error || 'LOGIN_FAILED');
       err.data = data;

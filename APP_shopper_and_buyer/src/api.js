@@ -105,14 +105,19 @@ export async function refreshAccessToken() {
   return refreshing;
 }
 
-const MAX_NETWORK_RETRIES = 2;
-const RETRY_BASE_MS = 300;
+const MAX_NETWORK_RETRIES = 3;
+const RETRY_BASE_MS = 500;
 
 function isIdempotent(method) {
   return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
 }
 
-export async function api(path, { method = 'GET', body, headers = {}, auth = true, retry = true, retryCount = 0 } = {}) {
+export async function api(path, { method = 'GET', body, headers = {}, auth = true, retry = true, retryCount = 0, retryNetwork = false } = {}) {
+  // A unique query parameter prevents Android WebView from replaying stale
+  // cached GET responses. POST/PUT/PATCH requests are already non-cacheable.
+  const noCacheSuffix = method === 'GET' || method === 'HEAD'
+    ? `${path.includes('?') ? '&' : '?'}_t=${Date.now()}`
+    : '';
   const opts = {
     method,
     credentials: 'include',
@@ -139,10 +144,10 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
     // suffix isn't appended — POST requests aren't cached by fetch.
     res = await fetch(`${BASE}${path}${noCacheSuffix}`, opts);
   } catch (networkErr) {
-    if (retry && isIdempotent(method) && retryCount < MAX_NETWORK_RETRIES) {
+    if (retry && (isIdempotent(method) || retryNetwork) && retryCount < MAX_NETWORK_RETRIES) {
       const delay = RETRY_BASE_MS * 2 ** retryCount;
       await new Promise((r) => setTimeout(r, delay));
-      return api(path, { method, body, headers, auth, retry, retryCount: retryCount + 1 });
+      return api(path, { method, body, headers, auth, retry, retryCount: retryCount + 1, retryNetwork });
     }
     const err = new Error(
       networkErr?.message || 'Network request failed'
