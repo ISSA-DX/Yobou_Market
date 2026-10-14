@@ -72,15 +72,19 @@ export default function Onboarding() {
         <button type="button" onClick={() => navigate('/login', { replace: true })} className="text-sm font-semibold">Skip intro</button>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center text-center px-8">
-        <div className="w-44 h-44 rounded-full bg-white/15 backdrop-blur flex items-center justify-center mb-10">
-          <Icon name={slide.icon} className="text-[88px]" fill />
+      {/* Keyed by slide so each slide replays its entrance animations. */}
+      <div key={i} className="flex-1 flex flex-col items-center justify-center text-center px-8">
+        <div className="reveal reveal-pop mb-10">
+          <div className="anim-float w-44 h-44 rounded-full bg-white/15 backdrop-blur flex items-center justify-center">
+            <Icon name={slide.icon} className="text-[88px]" fill />
+          </div>
         </div>
-        <h1 className="text-headline-lg font-bold">{slide.title}</h1>
-        <p className="mt-3 max-w-xs text-white/90">{slide.body}</p>
+        {/* text-white: the global h1 brand-blue would vanish on the gradient. */}
+        <h1 className="reveal reveal-blur text-headline-lg font-bold text-white" style={{ '--reveal-delay': '120ms' }}>{slide.title}</h1>
+        <p className="reveal reveal-fade-up mt-3 max-w-xs text-white/90" style={{ '--reveal-delay': '220ms' }}>{slide.body}</p>
 
         {/* Floating trust badges */}
-        <div className="mt-10 flex gap-2">
+        <div className="reveal-stagger stagger-pop mt-10 flex gap-2" style={{ '--stagger-step': '120ms' }}>
           {['Trusted Sellers', 'Fast Delivery'].map((label, idx) => (
             <div key={label} className="px-3 py-1.5 rounded-full bg-white/15 backdrop-blur text-label-md font-medium flex items-center gap-1">
               <Icon name={idx === 0 ? 'verified' : 'bolt'} className="text-[14px]" />

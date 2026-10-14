@@ -16,21 +16,23 @@ import Icon from './Icon';
 // missed the event for any reason.
 const countsRefreshBus = { current: null };
 function PendingBadges() {
-  const [counts, setCounts] = useState({ changes: 0, refunds: 0 });
+  const [counts, setCounts] = useState({ changes: 0, refunds: 0, payouts: 0 });
   const loadRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
     async function load() {
       try {
-        const [c, r] = await Promise.all([
+        const [c, r, p] = await Promise.all([
           api('/api/product-changes?status=PENDING'),
           api('/api/refunds?status=PENDING'),
+          api('/api/admin/payouts?status=REQUESTED'),
         ]);
         if (!alive) return;
         setCounts({
           changes: c.changes?.length || 0,
           refunds: r.refunds?.length || 0,
+          payouts: p.payouts?.length || 0,
         });
       } catch {
         // Non-admin (e.g. before login) won't have access — ignore.
@@ -55,17 +57,23 @@ function NavItem({ to, label, icon, badge }) {
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium ${
-          isActive ? 'bg-surface-high text-primary' : 'text-on-surface-variant hover:bg-surface-low'
+        `relative flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition ${
+          isActive
+            ? 'bg-primary/[0.07] text-primary font-semibold before:absolute before:-left-3 before:top-2 before:bottom-2 before:w-1 before:rounded-r-full before:bg-primary'
+            : 'text-on-surface-variant font-medium hover:bg-surface-low hover:text-on-surface'
         }`
       }
     >
-      <Icon name={icon} className="text-[20px]" />
-      <span className="flex-1">{label}</span>
-      {badge > 0 && (
-        <span className="px-2 py-0.5 rounded-full bg-secondary text-on-secondary text-label-sm font-bold">
-          {badge}
-        </span>
+      {({ isActive }) => (
+        <>
+          <Icon name={icon} fill={isActive} className="text-[20px]" />
+          <span className="flex-1">{label}</span>
+          {badge > 0 && (
+            <span className="min-w-[22px] px-1.5 py-0.5 rounded-full bg-primary text-white text-label-sm font-bold text-center tabular-nums">
+              {badge}
+            </span>
+          )}
+        </>
       )}
     </NavLink>
   );
@@ -78,6 +86,9 @@ const NAV_ITEMS = [
   { to: '/refunds', label: 'Refunds', icon: 'assignment_return', badgeKey: 'refunds' },
   { to: '/vendors', label: 'Vendors', icon: 'storefront' },
   { to: '/orders', label: 'Orders', icon: 'receipt_long' },
+  { to: '/deliveries', label: 'Deliveries', icon: 'two_wheeler' },
+  { to: '/finance', label: 'Finance', icon: 'account_balance', badgeKey: 'payouts' },
+  { to: '/promotions', label: 'Promotions', icon: 'sell' },
   { to: '/users', label: 'Users', icon: 'group' },
   { to: '/broadcast', label: 'Broadcast', icon: 'campaign' },
   { to: '/audit', label: 'Audit log', icon: 'fact_check' },
@@ -95,7 +106,7 @@ function NotificationBell() {
   // lag by up to 30 seconds.
   useNotificationStream((note) => {
     if (!note || !note.kind) return;
-    if (note.kind === 'product_change_submitted' || note.kind === 'refund_requested') {
+    if (['product_change_submitted', 'refund_requested', 'payout_requested'].includes(note.kind)) {
       countsRefreshBus.current?.();
     }
   });
@@ -186,7 +197,7 @@ export default function AdminShell() {
       {/* Sidebar (desktop) */}
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-outline-variant/30 p-4">
         <div className="flex items-center gap-2 mb-8">
-          <div className="w-9 h-9 rounded-lg bg-primary text-white flex items-center justify-center font-black">Y</div>
+          <div className="w-9 h-9 rounded-md bg-gradient-to-br from-primary-container to-primary text-white flex items-center justify-center font-black shadow-pop">Y</div>
           <div>
             <div className="font-bold text-on-surface">Yobou</div>
             <div className="text-label-sm text-on-surface-variant">Admin portal</div>
@@ -234,7 +245,7 @@ export default function AdminShell() {
         <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-outline-variant/30">
           <div className="flex items-center justify-between px-4 md:px-8 h-16">
             <div className="md:hidden flex items-center gap-2">
-              <div className="w-8 h-8 rounded-md bg-primary text-white flex items-center justify-center font-black">Y</div>
+              <div className="w-8 h-8 rounded-md bg-gradient-to-br from-primary-container to-primary text-white flex items-center justify-center font-black shadow-pop">Y</div>
               <div className="font-bold">Yobou <span className="text-on-surface-variant text-xs font-normal">/ Admin</span></div>
             </div>
             <div className="hidden md:flex items-center gap-2 text-on-surface-variant text-sm">

@@ -121,7 +121,7 @@ export default function Wishlist() {
       ) : (
         <>
           {saved.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+            <div className="reveal-stagger stagger-pop grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
               {saved.map((p) => (
                 <div key={p.id} className="relative">
                   <ProductCard product={p} onAdd={quickAdd} />
@@ -145,7 +145,7 @@ export default function Wishlist() {
               <p className="text-label-md text-on-surface-variant mb-3">
                 These items were removed by the vendor or hidden from the catalog. Remove them from your wishlist to keep things tidy.
               </p>
-              <ul className="card divide-y divide-outline-variant/20">
+              <ul className="reveal reveal-wipe card divide-y divide-outline-variant/20">
                 {unavailable.map((id) => (
                   <li key={id} className="flex items-center gap-3 p-3">
                     <div className="flex-1 min-w-0">

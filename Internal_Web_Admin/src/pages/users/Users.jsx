@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api';
 import Icon from '../../components/Icon';
 
-const ROLES = ['ADMIN', 'VENDOR', 'CUSTOMER'];
+const ROLES = ['ADMIN', 'VENDOR', 'CUSTOMER', 'DRIVER'];
 
 export default function Users() {
   const [users, setUsers] = useState([]);
@@ -61,6 +61,18 @@ export default function Users() {
       alert(e?.data?.error === 'CANNOT_DISABLE_ADMIN'
         ? 'Cannot disable another admin.'
         : `Could not ${action} user.`);
+    }
+  }
+
+  // Support: email the user a reset link and show it so it can be read out.
+  async function sendReset(u) {
+    if (!confirm(`Email a password-reset link to ${u.email}?`)) return;
+    try {
+      const r = await api(`/api/admin/users/${u.id}/password-reset`, { method: 'POST' });
+      try { await navigator.clipboard.writeText(r.url); } catch { /* clipboard blocked */ }
+      alert(`Reset link sent to ${u.email} (valid ${r.expiresInMinutes} min).\n\nThe link was also copied to your clipboard:\n${r.url}`);
+    } catch (e) {
+      alert(e?.data?.error === 'ACCOUNT_DISABLED' ? 'Re-enable the account first.' : 'Could not send the reset link.');
     }
   }
 
@@ -160,7 +172,12 @@ export default function Users() {
                 <td className="px-4 py-3 text-on-surface-variant text-label-sm">
                   {new Date(u.createdAt).toLocaleDateString()}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right whitespace-nowrap">
+                  {!u.disabledAt && !u.email.endsWith('@guest.local') && (
+                    <button onClick={() => sendReset(u)} className="text-primary font-semibold text-sm mr-3" title="Email a password-reset link">
+                      Reset password
+                    </button>
+                  )}
                   {u.disabledAt ? (
                     <button onClick={() => toggleDisabled(u)} className="text-primary font-semibold text-sm">Enable</button>
                   ) : (

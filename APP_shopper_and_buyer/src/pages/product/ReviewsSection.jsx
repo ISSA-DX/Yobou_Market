@@ -176,7 +176,7 @@ export default function ReviewsSection({ productId, onChanged }) {
               : 'No reviews match this filter.'}
         </div>
       ) : (
-        <ul id="review-list" className="space-y-3">
+        <ul id="review-list" className="reveal-stagger stagger-flip space-y-3">
           {reviews.map((r) => (
             <ReviewCard key={r.id} review={r} onDelete={async () => {
               if (!window.confirm('Delete this review?')) return;
@@ -222,7 +222,7 @@ export default function ReviewsSection({ productId, onChanged }) {
 
 function Histogram({ breakdown, total, active, onPick }) {
   return (
-    <div className="space-y-1.5 mb-2" aria-label="Rating breakdown">
+    <div className="reveal-stagger stagger-right space-y-1.5 mb-2" aria-label="Rating breakdown" style={{ "--stagger-step": "80ms" }}>
       {[5, 4, 3, 2, 1].map((n) => {
         const count = breakdown[n] || 0;
         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -239,7 +239,7 @@ function Histogram({ breakdown, total, active, onPick }) {
             <span className="w-6 text-label-md text-on-surface-variant shrink-0">{n}★</span>
             <div className="flex-1 h-2 bg-surface-low rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full ${isActive ? 'bg-primary' : 'bg-secondary'}`}
+                className={`bar-grow h-full rounded-full ${isActive ? 'bg-primary' : 'bg-secondary'}`}
                 style={{ width: `${pct}%` }}
               />
             </div>

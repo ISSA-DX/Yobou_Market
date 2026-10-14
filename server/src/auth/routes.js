@@ -5,8 +5,20 @@ const { prisma } = require('../prisma');
 const { signAccess, signRefresh, verifyRefresh } = require('./jwt');
 const { registerCustomer, login } = require('../lib/validators');
 const { requireAuth } = require('./middleware');
+const { rateLimit, loginGuard } = require('../lib/rateLimit');
+const { issueResetLink, consumeResetToken, issuedBeforePasswordChange } = require('../lib/passwordReset');
 
 const router = express.Router();
+
+// Current Terms of Service version (see server/public/terms.html).
+const TERMS_VERSION = '2026-10';
+
+// Brute-force / spam protection on the public endpoints.
+// Generous per IP: many phones share one carrier IP (CGNAT). Brute force on
+// a single account is stopped by loginGuard instead.
+const authLimiter = rateLimit({ name: 'auth', windowMs: 15 * 60 * 1000, max: 100 });
+const resetLimiter = rateLimit({ name: 'reset', windowMs: 60 * 60 * 1000, max: 10 });
+const guestLimiter = rateLimit({ name: 'guest', windowMs: 60 * 60 * 1000, max: 60 });
 
 const REFRESH_COOKIE = 'yobou_rt';
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -84,16 +96,20 @@ function setRefreshCookie(res, token) {
   // /api/auth path-scoped + 7-day TTL keeps the cookie's blast radius
   // identical to the original `Lax` cookie — only the cross-site
   // delivery rule changes.
+  //
+  // Browsers reject `SameSite=None` unless the cookie is also `Secure`
+  // (HTTPS). So the cross-site policy is only used in production (or a
+  // staging host on HTTPS that opts in with CROSS_SITE_COOKIES=1). Local
+  // development goes through the Vite proxy — same-site — where `Lax`
+  // over plain http is correct. (Previously any CORS_ORIGIN switched dev
+  // to `None` without `Secure`, which browsers silently dropped: every
+  // page refresh signed the user out.)
   const isProduction = process.env.NODE_ENV === 'production';
-  const crossOrigin = isProduction || !!process.env.CORS_ORIGIN;
+  const crossOrigin = isProduction || process.env.CROSS_SITE_COOKIES === '1';
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     sameSite: crossOrigin ? 'none' : 'lax',
-    // `secure: true` is mandatory when `SameSite=None`. Production is
-    // HTTPS so this is satisfied automatically. In dev (HTTP localhost)
-    // we explicitly set secure: false so the cookie survives an http://
-    // origin during local testing.
-    secure: isProduction,
+    secure: crossOrigin,
     maxAge: REFRESH_TTL_MS,
     path: '/api/auth',
   });
@@ -165,7 +181,7 @@ function checkAccountDisabled(user, res) {
   return null;
 }
 
-router.post('/register', async (req, res, next) => {
+router.post('/register', authLimiter, async (req, res, next) => {
   try {
     const raw = registerCustomer.parse(req.body);
     const data = { ...raw, email: normalizeEmail(raw.email) };
@@ -178,6 +194,9 @@ router.post('/register', async (req, res, next) => {
         name: data.name,
         passwordHash,
         role: 'CUSTOMER',
+        // Consent is recorded when the client sends it (current apps make
+        // the checkbox mandatory; older app versions don't send it).
+        ...(req.body?.acceptTerms === true ? { acceptedTermsAt: new Date(), termsVersion: TERMS_VERSION } : {}),
       },
       include: { vendor: true },
     });
@@ -190,17 +209,29 @@ router.post('/register', async (req, res, next) => {
   }
 });
 
-router.post('/login', async (req, res, next) => {
+router.post('/login', authLimiter, async (req, res, next) => {
   try {
     const raw = login.parse(req.body);
     const data = { ...raw, email: normalizeEmail(raw.email) };
+    const lockedFor = loginGuard.isLocked(data.email);
+    if (lockedFor) {
+      res.set('Retry-After', String(lockedFor));
+      return res.status(429).json({ error: 'TOO_MANY_ATTEMPTS', retryAfterSec: lockedFor });
+    }
     const user = await prisma.user.findUnique({
       where: { email: data.email },
       include: { vendor: true },
     });
-    if (!user) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+    if (!user) {
+      loginGuard.fail(data.email);
+      return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+    }
     const ok = await bcrypt.compare(data.password, user.passwordHash);
-    if (!ok) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+    if (!ok) {
+      loginGuard.fail(data.email);
+      return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+    }
+    loginGuard.succeed(data.email);
 
     // Merge any guest-cart sitting in the refresh cookie into this
     // freshly-logged-in user. The visitor was browsing as a guest
@@ -245,7 +276,7 @@ router.post('/login', async (req, res, next) => {
 // uses the same code path as a logged-in customer. The cost is empty
 // User rows in the DB; a 30-day cleanup cron for role=CUSTOMER users
 // with no orders is a Phase-2 follow-up.
-router.post('/guest', async (_req, res, next) => {
+router.post('/guest', guestLimiter, async (_req, res, next) => {
   try {
     const crypto = require('crypto');
     const guestId = crypto.randomBytes(12).toString('hex');
@@ -276,6 +307,11 @@ router.post('/refresh', async (req, res) => {
       include: { vendor: true },
     });
     if (!user) return res.status(401).json({ error: 'USER_GONE' });
+    // A password change/reset signs out every older session.
+    if (issuedBeforePasswordChange(user, payload.iat)) {
+      res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
+      return res.status(401).json({ error: 'SESSION_REVOKED' });
+    }
 
     const disabledError = checkAccountDisabled(user, res);
     if (disabledError) return disabledError;
@@ -350,13 +386,50 @@ router.post('/change-password', requireAuth, async (req, res, next) => {
       return res.status(400).json({ error: 'PASSWORD_UNCHANGED' });
     }
     const passwordHash = await bcrypt.hash(data.newPassword, 12);
-    await prisma.user.update({
+    const updated = await prisma.user.update({
       where: { id: req.user.id },
-      data: { passwordHash },
+      // Revokes sessions on other devices; this one gets fresh tokens below.
+      data: { passwordHash, passwordChangedAt: new Date() },
+      include: { vendor: true },
     });
+    setRefreshCookie(res, signRefresh(updated));
+    res.json({ ok: true, accessToken: signAccess(updated) });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Forgot / reset password. The response never reveals whether an email is
+// registered. Links go to the app matching the account's role.
+// ---------------------------------------------------------------------------
+router.post('/forgot-password', resetLimiter, async (req, res, next) => {
+  try {
+    const { email } = z.object({ email: z.string().trim().email().max(200) }).parse(req.body || {});
+    const user = await prisma.user.findUnique({ where: { email: normalizeEmail(email) } });
+    if (user && !user.disabledAt && !/@guest\.local$/i.test(user.email)) {
+      await issueResetLink(user);
+    }
     res.json({ ok: true });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
+});
+
+router.post('/reset-password', resetLimiter, async (req, res, next) => {
+  try {
+    const { token, password } = z.object({
+      token: z.string().min(10).max(200),
+      password: z.string().min(8).max(128),
+    }).parse(req.body || {});
+    const user = await consumeResetToken(token, password);
+    loginGuard.succeed(user.email); // lift any lockout
+    res.json({ ok: true, email: user.email, role: user.role });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    if (err.message === 'RESET_TOKEN_INVALID') return res.status(400).json({ error: 'RESET_TOKEN_INVALID' });
     next(err);
   }
 });

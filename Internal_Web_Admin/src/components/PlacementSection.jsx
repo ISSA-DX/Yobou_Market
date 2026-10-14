@@ -3,11 +3,12 @@
 // ProductFormFields below the description field.
 //
 // Two pieces:
-//   1. Four boolean toggles — Home, Deals, Flash deals, Search — that
-//      gate whether the product shows up on the corresponding shopper
-//      surface. Defaults match the Product schema (home/deals/search ON,
-//      flash OFF), so a freshly published product appears everywhere by
-//      default.
+//   1. Six boolean toggles — Home, Deals, Flash deals, Recent deals,
+//      New arrivals, Search — that gate whether the product shows up on
+//      the corresponding shopper surface. Defaults match the Product
+//      schema (home/deals/new arrivals/search ON, flash/recent deals
+//      OFF), so a freshly published product appears everywhere by
+//      default except the curated rails.
 //   2. A multi-select chip picker for extra categories — additional
 //      pins beyond the primary `category`. Free-text; the server
 //      normalizes (trim / dedupe / cap 10 / cap 80 chars per name) and
@@ -126,6 +127,22 @@ export default function PlacementSection({ form, update, errors = {} }) {
           checked={Boolean(form.showOnFlashDeals)}
           onChange={(v) => update('showOnFlashDeals', v)}
           error={errors.showOnFlashDeals}
+        />
+        <Toggle
+          id="pf-show-on-recent-deals"
+          label="Recent deals"
+          helper="Feature in the Home “Recent deals” rail, newest first. Best with a deal price (compare-at) set. Off by default."
+          checked={Boolean(form.showOnRecentDeals)}
+          onChange={(v) => update('showOnRecentDeals', v)}
+          error={errors.showOnRecentDeals}
+        />
+        <Toggle
+          id="pf-show-on-new-arrivals"
+          label="New arrivals"
+          helper="Show in the Home “New arrivals” rail, newest first. On by default for new products."
+          checked={Boolean(form.showOnNewArrivals)}
+          onChange={(v) => update('showOnNewArrivals', v)}
+          error={errors.showOnNewArrivals}
         />
         <Toggle
           id="pf-show-on-search"

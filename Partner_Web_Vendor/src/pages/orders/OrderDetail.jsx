@@ -1,8 +1,10 @@
+import StatusBadge from '../../components/StatusBadge';
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../../api';
 import Icon from '../../components/Icon';
 import Modal from '../../components/Modal';
+import LiveTracking from '../../components/LiveTracking';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useStore } from '../../store';
 import { formatPrice } from '../../lib/format';
@@ -50,9 +52,12 @@ export default function OrderDetail() {
   }
   if (!order) return null;
 
-  const canShip = order.status === 'PAID' || order.status === 'PROCESSING';
+  // Orders dispatched to a Yobou courier are shipped/delivered by the
+  // courier app; the vendor just prepares the items for pickup.
+  const courier = Boolean(order.delivery && order.delivery.status !== 'FAILED');
+  const canShip = !courier && (order.status === 'PAID' || order.status === 'PROCESSING');
   const canCancel = order.status === 'PAID' || order.status === 'PROCESSING';
-  const canDeliver = order.status === 'SHIPPED';
+  const canDeliver = !courier && order.status === 'SHIPPED';
 
   async function submitShip() {
     if (!carrier || !trackingNumber) {
@@ -123,9 +128,11 @@ export default function OrderDetail() {
               Placed {new Date(order.createdAt).toLocaleString()}
             </p>
           </div>
-          <span className={`chip ${STATUS_STYLES[order.status] || ''}`}>{order.status}</span>
+          <StatusBadge status={order.status} className="text-label-md px-3 py-1" />
         </div>
       </div>
+
+      {order.delivery && <LiveTracking orderId={order.id} title="Courier pickup" />}
 
       {err && (
         <div className="card p-4 bg-error/10 text-error text-sm flex items-start gap-2">
@@ -255,17 +262,12 @@ export default function OrderDetail() {
 
           {/* Totals */}
           <div className="card p-5 space-y-2">
-            <h2 className="font-bold">Totals</h2>
-            <div className="flex justify-between text-sm">
-              <span className="text-on-surface-variant">Subtotal</span>
-              <span>{formatPrice(order.subtotalCents || order.totalCents, currency)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-on-surface-variant">Shipping</span>
-              <span>{formatPrice(order.shippingCents || 0, currency)}</span>
-            </div>
+            <h2 className="font-bold">Your share</h2>
+            <p className="text-label-md text-on-surface-variant">
+              Only your store&apos;s items are shown. Items from other stores in the same order stay private.
+            </p>
             <div className="flex justify-between font-bold pt-2 border-t border-outline-variant/30">
-              <span>Total</span>
+              <span>Your items total</span>
               <span>{formatPrice(order.totalCents, currency)}</span>
             </div>
           </div>

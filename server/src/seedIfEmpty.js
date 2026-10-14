@@ -22,6 +22,7 @@ const prisma = new PrismaClient();
 // stays in lockstep with the public /api/categories/backfill endpoint.
 const categoriesRouter = require('./routes/categories');
 const backfillCategories = categoriesRouter.backfillCategories;
+const { backfillLedger } = require('./lib/ledger');
 
 (async () => {
   try {
@@ -40,6 +41,9 @@ const backfillCategories = categoriesRouter.backfillCategories;
     if (created.length > 0) {
       console.log(`[seed] backfill created ${created.length} categories`);
     }
+    // Credit store balances for orders delivered before the ledger existed — idempotent.
+    const credited = await backfillLedger(prisma);
+    if (credited > 0) console.log(`[seed] ledger backfill credited ${credited} orders`);
   } catch (err) {
     console.error('[seed] failed:', err.message);
   } finally {

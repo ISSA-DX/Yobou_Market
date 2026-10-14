@@ -67,6 +67,8 @@ const productUpsert = z.object({
   showOnDeals: z.boolean().default(true),
   showOnFlashDeals: z.boolean().default(false),
   showOnSearch: z.boolean().default(true),
+  showOnRecentDeals: z.boolean().default(false),
+  showOnNewArrivals: z.boolean().default(true),
   // Additional category pin targets (in addition to the primary
   // `category` string). Free-text, max 10 entries, each trimmed +
   // deduped + capped at 80 chars to match `category`. Server-side
@@ -123,6 +125,8 @@ const orderCreate = z.object({
       cvv: z.string().min(3).max(4),
     })
     .optional(),
+  // Optional promo code (see lib/coupons.js).
+  couponCode: z.string().trim().max(40).optional(),
 }).refine(
   (data) => data.paymentMethod !== 'CARD' || (data.card && data.card.number && data.card.cvv),
   { message: 'Card details are required for card payments', path: ['card'] }
@@ -183,6 +187,8 @@ const productChangeCreate = z.object({
   showOnDeals: z.boolean().optional(),
   showOnFlashDeals: z.boolean().optional(),
   showOnSearch: z.boolean().optional(),
+  showOnRecentDeals: z.boolean().optional(),
+  showOnNewArrivals: z.boolean().optional(),
   // Additional category pin targets. Server-side normalized on apply.
   extraCategories: z.array(z.string()).max(10).optional(),
 }).refine(
@@ -312,6 +318,8 @@ const productListQuery = z.object({
   showOnDeals: queryBool.optional(),
   showOnFlashDeals: queryBool.optional(),
   showOnSearch: queryBool.optional(),
+  showOnRecentDeals: queryBool.optional(),
+  showOnNewArrivals: queryBool.optional(),
 }).refine(
   (d) => d.minPrice == null || d.maxPrice == null || d.minPrice <= d.maxPrice,
   { message: 'minPrice must be <= maxPrice', path: ['minPrice'] }

@@ -95,7 +95,7 @@ export default function Profile() {
         {/* Avatar */}
         <div className="text-center">
           <div className="relative inline-block">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-primary-container text-white flex items-center justify-center text-headline-lg font-bold shadow-float">
+            <div className="reveal reveal-pop w-24 h-24 rounded-full bg-gradient-to-br from-primary to-primary-container text-white flex items-center justify-center text-headline-lg font-bold shadow-float">
               {(form.name || user?.name || 'U').slice(0, 2).toUpperCase()}
             </div>
             <button
@@ -115,7 +115,7 @@ export default function Profile() {
         </div>
 
         {/* Editable profile card */}
-        <div className="card p-4 sm:p-5">
+        <div className="reveal reveal-fade-up card p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-title-lg font-semibold">Personal info</h3>
             {!editing && (
@@ -177,7 +177,7 @@ export default function Profile() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="reveal-stagger stagger-zoom grid grid-cols-2 gap-3" style={{ "--stagger-step": "100ms" }}>
           <Link to="/orders" className="card p-4 text-center hover:shadow-float transition">
             <Icon name="receipt_long" className="text-primary text-[24px] mx-auto" />
             <div className="mt-1 text-headline-md font-bold">{orders.length}</div>
@@ -192,7 +192,7 @@ export default function Profile() {
 
         {/* Default address */}
         {defaultAddr && (
-          <div className="card p-4">
+          <div className="reveal reveal-slide-right card p-4">
             <div className="flex items-center gap-2 text-label-md text-on-surface-variant">
               <Icon name="home" className="text-[16px]" /> Default address
             </div>
@@ -207,7 +207,7 @@ export default function Profile() {
 
         {/* Sections */}
         {SECTIONS.map((sec) => (
-          <div key={sec.title} className="card overflow-hidden">
+          <div key={sec.title} className="reveal reveal-flip card overflow-hidden">
             <div className="px-4 pt-3 pb-1 text-label-md text-on-surface-variant uppercase tracking-wide">{sec.title}</div>
             <ul>
               {sec.items.map((it, idx) => (

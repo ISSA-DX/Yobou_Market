@@ -5,6 +5,7 @@ const { prisma } = require('../prisma');
 const { vendorRegister, adminVendorCreate, vendorSelfUpdate } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
 const { notify, audit } = require('../lib/notifications');
+const { rateLimit } = require('../lib/rateLimit');
 
 const router = express.Router();
 
@@ -21,8 +22,10 @@ function parseVendor(vendor) {
   }
 }
 
+const registerLimiter = rateLimit({ name: 'vendor-register', windowMs: 60 * 60 * 1000, max: 10 });
+
 // Public — anyone can apply to become a vendor.
-router.post('/register', async (req, res, next) => {
+router.post('/register', registerLimiter, async (req, res, next) => {
   try {
     const raw = vendorRegister.parse(req.body);
     const data = { ...raw, email: normalizeEmail(raw.email) };
@@ -35,6 +38,8 @@ router.post('/register', async (req, res, next) => {
         name: data.name,
         passwordHash,
         role: 'VENDOR',
+        // Seller terms consent (the partner app makes the checkbox mandatory).
+        ...(req.body?.acceptTerms === true ? { acceptedTermsAt: new Date(), termsVersion: '2026-10' } : {}),
         vendor: {
           create: {
             businessName: data.businessName,

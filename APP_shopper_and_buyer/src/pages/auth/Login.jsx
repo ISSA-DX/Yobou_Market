@@ -51,23 +51,11 @@ export default function Login() {
   }
 
   return (
-    <div className="py-6 auth-page">
-      {/* Header row used to carry a Y+ 'Yobou' wordmark above the
-          <h1>Welcome back</h1> below it — duplicate brand chrome.
-          The card itself establishes the brand via the welcome
-          message + form context; the wordmark row was pure
-          repetition. We now only render the Help affordance,
-          end-aligned, with reduced top padding to claw back
-          vertical real estate the wordmark was eating. */}
-      <div className="flex items-center justify-end mb-4">
-        <Link to="/help" className="p-2 rounded-full hover:bg-surface-low" aria-label="Help">
-          <Icon name="help" className="text-[22px] text-on-surface-variant" />
-        </Link>
-      </div>
-
-      <div className="card p-6">
-        <h1 className="text-headline-lg font-bold">Welcome back</h1>
-        <p className="mt-1 text-on-surface-variant">Sign in to continue shopping.</p>
+    <div className="pt-2 pb-6 auth-page">
+      {/* Brand + help live in TransactionLayout's header. */}
+      <div className="reveal-stagger stagger-up card p-6 sm:p-8" style={{ "--stagger-step": "70ms" }}>
+        <h1 className="page-title">Welcome back</h1>
+        <p className="page-subtitle">Sign in to track orders, save favourites and check out faster.</p>
 
         {/* Role switcher removed — this is the customer app. Vendors sign in
             via the standalone Yobou Partner app. */}
@@ -114,7 +102,7 @@ export default function Login() {
           </button>
 
           <div className="text-center">
-            <Link to="#" className="text-sm text-primary font-medium">Forgot password?</Link>
+            <Link to="/forgot-password" className="text-sm text-primary font-medium">Forgot password?</Link>
           </div>
         </form>
 
@@ -150,14 +138,14 @@ export default function Login() {
             ambient text. The label is an <h2> for screen-reader
             semantics (the parent already has an h1) so the
             alternative-path heading is discoverable to a11y tooling. */}
-        <div className="mt-6 p-4 rounded-xl bg-primary-container border-2 border-primary/50">
-          {/* text-on-surface dropped — v0.3.20 h2 default = brand blue
-              so the 'New to Yobou?' framed-card section header picks
-              up the brand primary tint the rest of the page uses. */}
-          <h2 className="text-sm text-center font-semibold uppercase tracking-wide">New to Yobou?</h2>
+        {/* New-customer path: a clearly separated panel with a
+            readable heading (the old white-on-blue label was invisible). */}
+        <div className="mt-6 p-4 rounded-lg bg-primary/[0.05] border border-primary/15">
+          <h2 className="text-sm font-bold text-on-surface">New to Yobou?</h2>
+          <p className="text-label-md text-on-surface-variant mt-0.5">Create a free account in under a minute.</p>
           <Link
             to="/register"
-            className="mt-3 inline-flex w-full btn-primary py-3 justify-center font-semibold"
+            className="mt-3 w-full btn-secondary py-3 text-primary border-primary/30"
           >
             Create account
             <Icon name="arrow_forward" className="text-[18px]" />
@@ -224,6 +212,9 @@ function humanizeError(e) {
   }
   if (code === 'NETWORK_ERROR') return msg || 'Cannot reach the server. Check your internet connection.';
   if (code === 'INVALID_CREDENTIALS') return 'Email or password is incorrect.';
+  if (code === 'TOO_MANY_ATTEMPTS') return 'Too many wrong passwords. Wait 15 minutes or reset your password.';
+  if (code === 'RATE_LIMITED') return 'Too many attempts. Please wait a few minutes and try again.';
+  if (code === 'ACCOUNT_DISABLED') return 'This account is disabled. Contact Yobou support.';
   if (code === 'VENDOR_PENDING') return 'Your vendor account is awaiting admin approval.';
   if (code === 'VENDOR_REJECTED') return 'Your vendor application was rejected. Contact support.';
   if (code === 'EMAIL_TAKEN') return 'An account with that email already exists.';

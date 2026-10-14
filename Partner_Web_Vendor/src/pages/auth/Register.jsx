@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { api } from '../../api';
 import Icon from '../../components/Icon';
 import { toast } from '../../lib/toast';
+import { termsUrl, privacyUrl } from '../../lib/legal';
 
 const KNOWN_CATEGORIES = [
   'Electronics', 'Phones', 'Computers', 'Fashion', 'Shoes', 'Beauty', 'Home', 'Kitchen',
@@ -38,6 +39,7 @@ export default function Register() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
   function update(k, v) { setForm((f) => ({ ...f, [k]: v })); }
 
@@ -62,9 +64,13 @@ export default function Register() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!acceptTerms) {
+      setErr('Please accept the Terms of Service (seller section) to apply.');
+      return;
+    }
     setErr(''); setBusy(true);
     try {
-      await api('/api/vendors/register', { method: 'POST', body: form, auth: false });
+      await api('/api/vendors/register', { method: 'POST', body: { ...form, acceptTerms: true }, auth: false });
       setSubmitted(true);
       toast.success('Application submitted! Sign in once approved.');
       setTimeout(() => navigate('/login'), 1500);
@@ -103,7 +109,7 @@ export default function Register() {
     <div className="min-h-screen bg-surface py-8 px-4">
       <div className="w-full max-w-xl mx-auto">
         <div className="flex items-center gap-2 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center font-black text-lg">Y</div>
+          <div className="w-10 h-10 rounded-md bg-gradient-to-br from-primary-container to-primary text-white flex items-center justify-center font-black shadow-pop text-lg">Y</div>
           <div>
             <div className="font-bold text-xl">Yobou Partner</div>
             <div className="text-label-md text-on-surface-variant">Apply to sell on Yobou</div>
@@ -221,9 +227,19 @@ export default function Register() {
               </div>
             </div>
 
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-1" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
+              <span>
+                I agree to the{' '}
+                <a href={`${termsUrl}#sellers`} target="_blank" rel="noopener noreferrer" className="text-primary font-semibold">Terms of Service</a>
+                {' '}(including Yobou&apos;s commission and payout rules) and the{' '}
+                <a href={privacyUrl} target="_blank" rel="noopener noreferrer" className="text-primary font-semibold">Privacy Policy</a>.
+              </span>
+            </label>
+
             {err && <div className="text-error text-sm">{err}</div>}
 
-            <button type="submit" disabled={busy} className="btn-primary w-full py-3 disabled:opacity-60">
+            <button type="submit" disabled={busy || !acceptTerms} className="btn-primary w-full py-3 disabled:opacity-60">
               {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
               Submit application
             </button>
@@ -243,6 +259,7 @@ function humanizeError(code) {
   switch (code) {
     case 'EMAIL_TAKEN': return 'An account with that email already exists.';
     case 'INVALID_INPUT': return 'Please check your details and try again.';
+    case 'RATE_LIMITED': return 'Too many applications from this network. Please try again later.';
     default: return 'Something went wrong. Try again.';
   }
 }

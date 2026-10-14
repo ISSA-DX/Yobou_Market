@@ -16,7 +16,8 @@ const { z } = require('zod');
 const { prisma } = require('../prisma');
 const { requireAuth, requireRole } = require('../auth/middleware');
 const { parseImageUrls } = require('./products');
-const { notifyMany, audit } = require('../lib/notifications');
+const { notifyMany, notifyProductChange, audit } = require('../lib/notifications');
+const { issueResetLink } = require('../lib/passwordReset');
 
 const router = express.Router();
 
@@ -25,19 +26,36 @@ router.use(requireAuth, requireRole('ADMIN'));
 // ---------------------------------------------------------------------------
 // Products (kept from the original admin surface)
 // ---------------------------------------------------------------------------
+// Shared filter for the products table, export, and "select all matching".
+//   ?q=        name/description/category contains
+//   ?status=   LIVE | DRAFT | HIDDEN
+//   ?vendor=   vendor id, or "direct" for Yobou Direct (vendorId = null)
+//   ?category= exact category name
+//   ?stock=    "out" (0) | "low" (1–5)
+function productWhere(query) {
+  const where = {};
+  const q = query.q ? String(query.q).trim() : '';
+  if (q) {
+    where.OR = [
+      { name: { contains: q } },
+      { description: { contains: q } },
+      { category: { contains: q } },
+      { id: { contains: q } },
+    ];
+  }
+  if (['LIVE', 'DRAFT', 'HIDDEN'].includes(String(query.status))) where.status = String(query.status);
+  if (query.vendor === 'direct') where.vendorId = null;
+  else if (query.vendor) where.vendorId = String(query.vendor);
+  if (query.category) where.category = String(query.category);
+  if (query.stock === 'out') where.stock = 0;
+  else if (query.stock === 'low') where.stock = { gte: 1, lte: 5 };
+  return where;
+}
+
 router.get('/products', async (req, res, next) => {
   try {
-    const q = req.query.q ? String(req.query.q).trim() : '';
-    const where = {};
-    if (q) {
-      where.OR = [
-        { name: { contains: q } },
-        { description: { contains: q } },
-        { category: { contains: q } },
-      ];
-    }
     const products = await prisma.product.findMany({
-      where,
+      where: productWhere(req.query),
       orderBy: { createdAt: 'desc' },
       include: {
         vendor: { select: { id: true, businessName: true } },
@@ -45,15 +63,243 @@ router.get('/products', async (req, res, next) => {
           where: { status: 'PENDING' },
           select: { id: true, action: true },
         },
+        _count: { select: { variants: true, orderItems: true } },
       },
     });
     res.json({
-      products: products.map((p) => ({
+      products: products.map(({ _count, ...p }) => ({
         ...parseImageUrls(p),
         pendingChanges: p.changes || [],
+        variantCount: _count.variants,
+        orderCount: _count.orderItems,
       })),
     });
   } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// Products — bulk operations (the admin's "database" toolbox).
+// Vendors never reach these: everything here is ADMIN-only and applies
+// immediately, whereas vendor edits go through the ProductChange queue.
+// ---------------------------------------------------------------------------
+const productBulk = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('setStatus'), ids: z.array(z.string()).min(1).max(1000), value: z.enum(['LIVE', 'DRAFT', 'HIDDEN']) }),
+  // value = vendor id, or null to move the products to Yobou Direct.
+  z.object({ action: z.literal('assignVendor'), ids: z.array(z.string()).min(1).max(1000), value: z.string().nullable() }),
+  z.object({ action: z.literal('setCategory'), ids: z.array(z.string()).min(1).max(1000), value: z.string().trim().min(1).max(80) }),
+  // Percentage change applied to priceCents, e.g. -10 = 10% off, 5 = +5%.
+  z.object({ action: z.literal('adjustPrice'), ids: z.array(z.string()).min(1).max(1000), value: z.number().min(-90).max(500) }),
+  // Only applies to products without variants (variant stock is per row).
+  z.object({ action: z.literal('setStock'), ids: z.array(z.string()).min(1).max(1000), value: z.number().int().nonnegative() }),
+  // Products that appear in past orders are HIDDEN instead of deleted.
+  z.object({ action: z.literal('delete'), ids: z.array(z.string()).min(1).max(1000) }),
+  // Turn a storefront placement (Home section) on or off for many products.
+  z.object({
+    action: z.literal('setPlacement'),
+    ids: z.array(z.string()).min(1).max(1000),
+    value: z.object({
+      flag: z.enum(['showOnHome', 'showOnDeals', 'showOnFlashDeals', 'showOnRecentDeals', 'showOnNewArrivals', 'showOnSearch']),
+      on: z.boolean(),
+    }),
+  }),
+]);
+
+router.post('/products/bulk', async (req, res, next) => {
+  try {
+    const data = productBulk.parse(req.body);
+    const products = await prisma.product.findMany({
+      where: { id: { in: data.ids } },
+      include: { _count: { select: { variants: true, orderItems: true } } },
+    });
+    const result = { updated: 0, deleted: 0, hidden: 0, skipped: [] };
+
+    if (data.action === 'assignVendor' && data.value) {
+      const vendor = await prisma.vendor.findUnique({ where: { id: data.value } });
+      if (!vendor) return res.status(400).json({ error: 'VENDOR_NOT_FOUND' });
+      if (vendor.status !== 'APPROVED') return res.status(400).json({ error: 'VENDOR_NOT_APPROVED' });
+    }
+
+    const touched = [];
+    await prisma.$transaction(async (tx) => {
+      for (const p of products) {
+        const { _count, ...product } = p;
+        if (data.action === 'delete') {
+          if (_count.orderItems > 0) {
+            touched.push({ action: 'update', product: await tx.product.update({ where: { id: p.id }, data: { status: 'HIDDEN' } }) });
+            result.hidden += 1;
+          } else {
+            await tx.product.delete({ where: { id: p.id } });
+            touched.push({ action: 'delete', product });
+            result.deleted += 1;
+          }
+          continue;
+        }
+        let update;
+        if (data.action === 'setStatus') update = { status: data.value };
+        else if (data.action === 'assignVendor') update = { vendorId: data.value };
+        else if (data.action === 'setCategory') update = { category: data.value };
+        else if (data.action === 'setPlacement') update = { [data.value.flag]: data.value.on };
+        else if (data.action === 'setStock') {
+          if (_count.variants > 0) { result.skipped.push({ id: p.id, reason: 'HAS_VARIANTS' }); continue; }
+          update = { stock: data.value };
+        } else if (data.action === 'adjustPrice') {
+          const priceCents = Math.max(0, Math.round(p.priceCents * (1 + data.value / 100)));
+          update = { priceCents };
+          // Keep the deal invariant (compareAt > price) — drop stale deals.
+          if (p.compareAtPriceCents != null && p.compareAtPriceCents <= priceCents) update.compareAtPriceCents = null;
+        }
+        touched.push({ action: 'update', product: await tx.product.update({ where: { id: p.id }, data: update }) });
+        result.updated += 1;
+      }
+    });
+
+    const missing = data.ids.filter((id) => !products.some((p) => p.id === id));
+    for (const id of missing) result.skipped.push({ id, reason: 'NOT_FOUND' });
+
+    await audit(req.user.id, {
+      action: 'product.bulk',
+      entityType: 'Product',
+      entityId: null,
+      meta: { op: data.action, value: data.value ?? null, count: data.ids.length, ...result, skipped: result.skipped.length },
+    });
+    for (const t of touched) await notifyProductChange(t);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Products — CSV export / import. Columns mirror the Product table so the
+// admin can round-trip the catalogue through a spreadsheet.
+// ---------------------------------------------------------------------------
+const CSV_COLUMNS = ['id', 'name', 'description', 'category', 'priceCents', 'compareAtPriceCents', 'stock', 'status', 'vendorId', 'vendorName', 'imageUrls'];
+
+function csvCell(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+router.get('/products/export', async (req, res, next) => {
+  try {
+    const rows = await prisma.product.findMany({
+      where: productWhere(req.query),
+      orderBy: { createdAt: 'desc' },
+      include: { vendor: { select: { businessName: true } } },
+    });
+    const lines = [CSV_COLUMNS.join(',')];
+    for (const p of rows) {
+      const images = parseImageUrls(p).imageUrls || [];
+      lines.push([
+        p.id, p.name, p.description, p.category, p.priceCents, p.compareAtPriceCents, p.stock, p.status,
+        p.vendorId, p.vendor?.businessName || 'Yobou Direct', images.join('|'),
+      ].map(csvCell).join(','));
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="yobou-products-${stamp}.csv"`);
+    res.send(`\uFEFF${lines.join('\r\n')}\r\n`);
+  } catch (err) { next(err); }
+});
+
+// Rows arrive already parsed from CSV by the admin client (strings or
+// numbers). A row with an existing `id` updates that product (only the
+// columns present are written); a row without `id` creates a new one.
+const intLike = z.preprocess((v) => (v === '' || v === null || v === undefined ? undefined : Number(v)), z.number().int().nonnegative().optional());
+const importRow = z.object({
+  id: z.string().trim().optional().transform((v) => v || undefined),
+  name: z.string().trim().min(1).max(200).optional(),
+  description: z.string().max(2000).optional(),
+  category: z.string().trim().min(1).max(80).optional(),
+  priceCents: intLike,
+  compareAtPriceCents: z.preprocess((v) => (v === '' || v === undefined ? null : v === null ? null : Number(v)), z.number().int().nonnegative().nullable()).optional(),
+  stock: intLike,
+  status: z.preprocess((v) => (v === '' ? undefined : typeof v === 'string' ? v.trim().toUpperCase() : v), z.enum(['LIVE', 'DRAFT', 'HIDDEN']).optional()),
+  vendorId: z.string().trim().optional(),
+  imageUrls: z.string().optional(),
+});
+const productImport = z.object({ rows: z.array(z.record(z.any())).min(1).max(1000) });
+
+router.post('/products/import', async (req, res, next) => {
+  try {
+    const { rows } = productImport.parse(req.body);
+    const vendors = await prisma.vendor.findMany({ where: { status: 'APPROVED' }, select: { id: true } });
+    const approvedVendorIds = new Set(vendors.map((v) => v.id));
+    const result = { created: 0, updated: 0, errors: [] };
+
+    for (let idx = 0; idx < rows.length; idx++) {
+      const line = idx + 2; // header is line 1 in the spreadsheet
+      const parsed = importRow.safeParse(rows[idx]);
+      if (!parsed.success) {
+        result.errors.push({ line, message: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') });
+        continue;
+      }
+      const r = parsed.data;
+      const data = {};
+      for (const k of ['name', 'description', 'category', 'priceCents', 'stock', 'status']) {
+        if (r[k] !== undefined) data[k] = r[k];
+      }
+      if ('compareAtPriceCents' in rows[idx]) data.compareAtPriceCents = r.compareAtPriceCents ?? null;
+      if (r.imageUrls !== undefined) {
+        data.imageUrls = JSON.stringify(r.imageUrls.split('|').map((u) => u.trim()).filter(Boolean));
+      }
+      if (r.vendorId !== undefined) {
+        if (r.vendorId === '' || r.vendorId.toLowerCase() === 'direct') data.vendorId = null;
+        else if (!approvedVendorIds.has(r.vendorId)) {
+          result.errors.push({ line, message: `vendorId ${r.vendorId} is not an approved vendor` });
+          continue;
+        } else data.vendorId = r.vendorId;
+      }
+
+      try {
+        if (r.id) {
+          const existing = await prisma.product.findUnique({
+            where: { id: r.id },
+            include: { _count: { select: { variants: true } } },
+          });
+          if (!existing) { result.errors.push({ line, message: `No product with id ${r.id}` }); continue; }
+          // Variant stock is managed per row in the product editor.
+          if (existing._count.variants > 0) delete data.stock;
+          const price = data.priceCents ?? existing.priceCents;
+          const compareAt = 'compareAtPriceCents' in data ? data.compareAtPriceCents : existing.compareAtPriceCents;
+          if (compareAt != null && compareAt <= price) {
+            result.errors.push({ line, message: 'compareAtPriceCents must be greater than priceCents' });
+            continue;
+          }
+          const updated = await prisma.product.update({ where: { id: r.id }, data });
+          await notifyProductChange({ action: 'update', product: updated });
+          result.updated += 1;
+        } else {
+          if (!data.name || !data.category || data.priceCents === undefined) {
+            result.errors.push({ line, message: 'New products need name, category and priceCents' });
+            continue;
+          }
+          if (data.compareAtPriceCents != null && data.compareAtPriceCents <= data.priceCents) {
+            result.errors.push({ line, message: 'compareAtPriceCents must be greater than priceCents' });
+            continue;
+          }
+          const created = await prisma.product.create({ data: { description: '', ...data } });
+          await notifyProductChange({ action: 'create', product: created });
+          result.created += 1;
+        }
+      } catch (e) {
+        result.errors.push({ line, message: e.message?.split('\n').pop() || 'Write failed' });
+      }
+    }
+
+    await audit(req.user.id, {
+      action: 'product.import',
+      entityType: 'Product',
+      entityId: null,
+      meta: { rows: rows.length, created: result.created, updated: result.updated, errors: result.errors.length },
+    });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -121,6 +367,7 @@ router.get('/orders/:id', async (req, res, next) => {
         timeline: { orderBy: { at: 'asc' } },
         address: true,
         refunds: { orderBy: { createdAt: 'desc' } },
+        delivery: { include: { driver: { select: { id: true, name: true, phone: true } } } },
       },
     });
     if (!order) return res.status(404).json({ error: 'NOT_FOUND' });
@@ -196,7 +443,7 @@ router.get('/users', async (req, res, next) => {
 });
 
 const adminUserEdit = z.object({
-  role: z.enum(['ADMIN', 'VENDOR', 'CUSTOMER']).optional(),
+  role: z.enum(['ADMIN', 'VENDOR', 'CUSTOMER', 'DRIVER']).optional(),
   disabled: z.boolean().optional(),
 });
 
@@ -239,6 +486,19 @@ router.patch('/users/:id', async (req, res, next) => {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
     next(err);
   }
+});
+
+// Support: email the user a password-reset link and hand the same link to
+// the admin (for when the customer is on the phone and email is slow).
+router.post('/users/:id/password-reset', async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!user) return res.status(404).json({ error: 'NOT_FOUND' });
+    if (user.disabledAt) return res.status(400).json({ error: 'ACCOUNT_DISABLED' });
+    const link = await issueResetLink(user);
+    await audit(req.user.id, { action: 'user.password_reset', entityType: 'user', entityId: user.id, meta: { email: user.email } });
+    res.json(link);
+  } catch (err) { next(err); }
 });
 
 // ---------------------------------------------------------------------------

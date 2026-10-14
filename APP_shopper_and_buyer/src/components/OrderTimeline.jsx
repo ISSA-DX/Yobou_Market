@@ -15,7 +15,7 @@ export default function OrderTimeline({ currentStatus, events = [] }) {
   const cancelled = currentStatus === 'CANCELLED';
 
   return (
-    <ol className="space-y-3">
+    <ol className="reveal-stagger stagger-down space-y-3" style={{ "--stagger-step": "90ms" }}>
       {STEPS.map((step, i) => {
         const done = reached.has(step.key) && !cancelled;
         const active = currentStatus === step.key && !cancelled;

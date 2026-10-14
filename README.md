@@ -59,6 +59,7 @@ Open <http://localhost:5173>.
 | Admin    | `admin@yobou.test`     | `Admin123!` | Full admin access                |
 | Vendor   | `vendor1@yobou.test`   | `Vendor123!`| Approved; can list products       |
 | Vendor   | `vendor2@yobou.test`   | `Vendor123!`| **Pending approval**             |
+| Courier  | `driver@yobou.test`    | `Driver123!`| Signs in to the Partner app → `/courier` |
 | Customer | `shopper@yobou.test`   | `Shopper123!` | Pre-loaded cart + 2 sample orders |
 
 ---
@@ -154,6 +155,23 @@ POST   /api/addresses                # auth
 
 GET    /api/admin/kpis               # admin
 GET    /api/admin/revenue-by-day     # admin
+
+GET    /api/admin/products           # admin: ?q=&status=&vendor=<id>|direct&stock=low|out
+POST   /api/admin/products/bulk      # admin: setStatus | assignVendor | setCategory | adjustPrice | setStock | delete
+GET    /api/admin/products/export    # admin: CSV of the filtered catalogue
+POST   /api/admin/products/import    # admin: { rows } — id ⇒ update, no id ⇒ create
+GET    /api/products/vendor/:id      # vendor: one OWN product (404 for other stores)
+
+GET    /api/admin/drivers            # admin: couriers + workload
+POST   /api/admin/drivers            # admin: create courier account
+GET    /api/admin/deliveries         # admin: ?status=&driverId=
+GET    /api/admin/deliveries/queue   # admin: orders waiting for a courier
+POST   /api/admin/orders/:id/assign-driver   # admin: { driverId }
+
+GET    /api/driver/deliveries        # courier: ?scope=active|done (own jobs only)
+POST   /api/driver/deliveries/:id/pickup
+POST   /api/driver/deliveries/:id/deliver    # { recipientName?, proofNote?, codCollectedCents? }
+POST   /api/driver/deliveries/:id/fail       # { reason }
 ```
 
 ---
@@ -168,6 +186,85 @@ PLACED ──pay ok──> PAID ──vendor/admin──> PROCESSING ──vendo
 ```
 
 Every transition writes a `TimelineEvent` row. The customer-facing **Track Order** page reads those rows and renders the `OrderTimeline` component.
+
+### Last-mile delivery (Yobou couriers)
+
+Orders can also be delivered by Yobou's own couriers (`User.role = DRIVER`, `Delivery` table):
+
+```
+admin assigns courier ──> ASSIGNED ──courier "picked up"──> PICKED_UP ──"delivered"──> DELIVERED
+   (order → PROCESSING)                (order → SHIPPED)       │        (order → DELIVERED; COD marked paid)
+                                                               └─"couldn't deliver"──> FAILED ──> back in the admin dispatch queue
+```
+
+- **Admin** → *Deliveries*: dispatch queue, live jobs, courier accounts (create / disable). Also assignable from an order's detail page.
+- **Courier** → signs in to the Partner app and lands on `/courier`: drop-off address + Maps link, what to pick up from which store, cash to collect.
+- Once a courier is assigned, vendors can no longer ship/deliver that order themselves (`409 COURIER_MANAGED`).
+
+**Live GPS tracking** (`server/src/lib/tracking.js`, maps via Leaflet + OpenStreetMap, no API key). The courier goes *on duty* in the courier screen, which shares the phone's GPS (`POST /api/driver/location`); every fix is pushed live over SSE (`event: courier`) to the audiences allowed to see it:
+
+| Platform | What it tracks |
+| --- | --- |
+| Admin → Deliveries → **Live map** | Every on-duty courier, their jobs, "signal lost" after 2 min; order page shows full route replay + proof-of-delivery point |
+| Partner (vendor) order page | The courier heading to the store **until pickup** — then only status/timestamps (customer address stays private) |
+| Shopper Track Order | The courier **from pickup to the door**, route since pickup, call button |
+| Courier app | Duty switch, own position, delivery GPS saved as proof of delivery |
+
+`GET /api/orders/:id/tracking` returns the role-shaped view; `GET /api/admin/fleet` feeds the fleet map; `POST /api/driver/duty` toggles sharing.
+
+### Delivery code & courier rating
+
+Each courier job gets a 4-digit **delivery code**, shown only to the customer (Track Order + an inbox message at pickup). The courier must enter it to complete the delivery (`INVALID_DELIVERY_CODE` otherwise). After delivery the customer can rate the courier once (`POST /api/orders/:id/rate-courier`); admins see each courier's average.
+
+## Marketplace finance
+
+`server/src/lib/ledger.js` keeps an append-only ledger per store:
+
+| Event | Ledger entry |
+| --- | --- |
+| Order delivered | `EARNING` + (store's items − commission) — commission is per store (`Vendor.commissionBps`, default 10%) |
+| Refund approved | `REFUND` − the store's share of the refund, commission reversed |
+| Payout requested | `PAYOUT` − amount (reserved) → admin marks **paid** (with transfer reference) or **rejected** (`ADJUSTMENT` returns the funds) |
+
+- **Partner → Payouts**: available balance, pending (paid, not yet delivered), lifetime sales/commission, statement, payout requests (min $10).
+- **Admin → Finance**: commission earned, Yobou Direct sales, owed to stores, payouts to approve, per-store commission rate.
+- **Admin → Deliveries → Couriers**: COD cash each courier still holds → **Settle** (the amount received must match).
+- Orders delivered before the ledger existed are credited automatically on boot (idempotent backfill).
+
+## Accounts & security
+
+- **Rate limits** on sign-in, sign-up, password reset and promo-code checks (`server/src/lib/rateLimit.js`), plus a **per-account lockout** after 5 wrong passwords in 15 minutes (`429 TOO_MANY_ATTEMPTS`).
+- **Forgot password** in all three apps (`/forgot-password` → email → `/reset-password?token=…`). Tokens are random, stored hashed, single-use, valid 30 minutes; the link opens the app matching the account's role. Admins can also send a reset link from **Users → Reset password** (handy for phone support).
+- **Password change/reset signs out every other session** (`User.passwordChangedAt`).
+- **Terms of Service** at `/terms.html` (served by the API, next to `/privacy.html`); sign-up in the shopper and partner apps requires accepting them and the server records `acceptedTermsAt` + `termsVersion`.
+- Production builds of the admin app no longer show demo credentials.
+
+## Promo codes
+
+Admin → **Promotions**: percentage (optionally capped) or fixed-amount codes with minimum basket, start/end dates, total and per-customer limits. Customers apply a code on the checkout payment step; the server re-validates it when the order is placed and claims the use atomically. Cancelling an order gives the use back. Discounts are funded by Yobou — store earnings are computed on full item prices.
+
+## Email
+
+`server/src/lib/mailer.js` sends the password-reset email and an order confirmation with the receipt. Set `SMTP_URL` and `MAIL_FROM` (see `.env.example`); without them emails are printed to the server log.
+
+## Launch checklist
+
+Before opening to the public:
+
+1. **Database — must do.** On Render's free plan the SQLite file lives in `/tmp` and is **wiped on every deploy/restart**. Provision PostgreSQL (Render, Neon, Supabase…), set `DATABASE_URL`, and switch `provider = "postgresql"` in `server/prisma/schema.prisma` (see [Switching to Postgres](#switching-to-postgres)). Product image uploads need persistent storage too (a Render disk or S3-compatible bucket).
+2. **Email:** set `SMTP_URL` and `MAIL_FROM` on the server, and `SHOPPER_URL` / `PARTNER_URL` / `ADMIN_URL` if the apps move off GitHub Pages.
+3. **Secrets:** long random `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET`; change or delete the demo accounts (`*@yobou.test`).
+4. **Payments:** card/PayPal are still simulated — wire `paymentSimulator.js` to a real provider (Stripe, or a local mobile-money aggregator) before taking real money.
+5. **Legal:** have `terms.html` and `privacy.html` reviewed for your country, and fill in company details.
+6. **Apps:** rebuild and publish the Android APKs so phones get the new screens (courier GPS needs the updated Partner APK).
+
+## Roles & data access
+
+| Capability | Admin | Vendor (partner) | Courier |
+| --- | --- | --- | --- |
+| Products | All stores; create/edit/delete apply immediately; bulk status / price % / stock / category / move-to-store / delete; CSV export & import | **Own store only**; every create/edit/delete is a change request the admin approves | — |
+| Orders | All orders, cancel, ship, assign courier | Orders containing their products — **only their own line items and share** are returned | Only their assigned deliveries |
+| Users, vendors, couriers, categories, refunds, audit log | Full control | Own profile | — |
 
 ---
 

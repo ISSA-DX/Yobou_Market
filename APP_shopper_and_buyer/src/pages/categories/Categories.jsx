@@ -77,7 +77,7 @@ export default function Categories() {
       </div>
 
       <div>
-        <h1 className="text-headline-lg font-bold mb-3">Browse by category</h1>
+        <h1 className="reveal reveal-fade-down text-headline-lg font-bold mb-3">Browse by category</h1>
 
         {error && (
           <div className="card p-4 bg-error/10 text-error text-sm flex items-center justify-between mb-3">
@@ -93,7 +93,7 @@ export default function Categories() {
         )}
 
         {!loading && (
-          <div className="grid grid-cols-3 grid-rows-2 gap-3 h-72">
+          <div className="reveal-stagger stagger-zoom grid grid-cols-3 grid-rows-2 gap-3 h-72" style={{ "--stagger-step": "110ms" }}>
             {filteredBento.map((c, i) => (
               <Link
                 key={c.name}
@@ -119,7 +119,7 @@ export default function Categories() {
 
         <div className="mt-4">
           <h3 className="text-title-lg font-semibold mb-3">All categories</h3>
-          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-3">
+          <div className="reveal-stagger stagger-pop grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-3" style={{ "--stagger-step": "35ms" }}>
             {filteredAll.map((c) => (
               <Link
                 key={c.name}
@@ -139,7 +139,7 @@ export default function Categories() {
         </div>
       </div>
 
-      <div className="card p-5 bg-gradient-to-br from-secondary to-yellow-400 text-on-secondary relative overflow-hidden">
+      <div className="reveal reveal-tilt anim-shine card p-5 bg-gradient-to-br from-secondary to-yellow-400 text-on-secondary relative overflow-hidden">
         <div className="relative z-10 max-w-[70%]">
           <div className="chip bg-white/30 text-on-secondary border-0 mb-2">New Arrivals</div>
           {/* Text-on-secondary explicit override — this h3 sits on a

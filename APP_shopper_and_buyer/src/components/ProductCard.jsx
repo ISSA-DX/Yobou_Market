@@ -4,11 +4,16 @@ import Icon from './Icon';
 import { useStore } from '../store';
 import { productImage } from '../lib/productImage';
 import { formatPrice } from '../lib/format';
+import { replayAnimation } from '../lib/motion';
+
+const FREE_DELIVERY_CENTS = 5000;
+const LOW_STOCK = 5;
 
 /**
- * Product card used in grids and horizontal lists.
- * - `onAdd` is required for the Add to Cart button to do anything.
- * - Clicking the image/title navigates to product details.
+ * Product card used in grids, rails and lists.
+ * - `onAdd` is required for the add-to-cart button to do anything.
+ * - Tapping the image/title opens product details.
+ * - `layout="horizontal"` renders a list row (image left).
  */
 export default function ProductCard({ product, onAdd, layout = 'grid' }) {
   const wishlist = useStore((s) => s.wishlist);
@@ -18,37 +23,25 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
   const cover = productImage(product);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
-  // Defensive: a missing .stock throws a TypeError on the related-
-  // products rail that crashes the parent PDP render. Coerce to 0
-  // so the "Out of stock" overlay still appears correctly.
+  // Defensive: a missing .stock must not crash the related-products rail.
   const productStock = typeof product?.stock === 'number' ? product.stock : 0;
   const outOfStock = productStock === 0;
+  const lowStock = !outOfStock && productStock <= LOW_STOCK;
   const price = formatPrice(product.priceCents, currency);
   const hasDeal = typeof product.compareAtPriceCents === 'number'
     && product.compareAtPriceCents > product.priceCents;
-  const listPrice = hasDeal
-    ? formatPrice(product.compareAtPriceCents, currency)
-    : null;
+  const listPrice = hasDeal ? formatPrice(product.compareAtPriceCents, currency) : null;
   const dealPercent = hasDeal
     ? Math.round(((product.compareAtPriceCents - product.priceCents) / product.compareAtPriceCents) * 100)
     : 0;
-  // Real ratings live on the product when the catalog exposes them. Until
-  // the backend ships a real rating pipeline, we render an honest
-  // "No reviews yet" chip rather than fake stars derived from stock.
-  // This avoids misleading shoppers about product quality.
+  // Only real ratings are shown — never stars invented from other data.
   const hasRealRating = typeof product.rating === 'number' && product.rating > 0;
   const reviewCount = typeof product.reviewCount === 'number' ? product.reviewCount : 0;
+  const freeDelivery = product.priceCents >= FREE_DELIVERY_CENTS;
 
   async function handleAdd(e) {
     e.preventDefault();
-    if (outOfStock || adding) return;
-    // v0.3.16: no longer redirect to /cart on the second click. The
-    // "Added" state below is a visual confirmation only — the user
-    // navigates to the cart explicitly via the cart icon in the
-    // bottom nav. This is the Temu/Amazon pattern: keep the shopper
-    // on the browsing surface so they can continue shopping
-    // uninterrupted.
-    if (added) return;
+    if (outOfStock || adding || added) return;
     if (!onAdd) {
       // eslint-disable-next-line no-console
       console.warn('ProductCard rendered without onAdd; add-to-cart is disabled.');
@@ -56,20 +49,14 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
     }
     setAdding(true);
     try {
-      // Make sure we have an authenticated session — guests get a
-      // server-side user created on first add so the rest of the
-      // cart flow doesn't need to branch on auth state. The previous
-      // behavior of redirecting to /login on 401 is intentionally
-      // removed: the user's spec is "guest can add to cart and buy
-      // now without an account".
+      // Guests get a server-side session on first add, so the cart flow
+      // never has to branch on auth state.
       await useStore.getState().ensureGuestSession();
       await onAdd(product);
       setAdded(true);
-      setTimeout(() => setAdded(false), 3e3);
-    } catch (e) {
-      // Non-auth errors are surfaced by the consumer (toast/error state).
-      // There is no longer a 401 → /login branch: ensureGuestSession
-      // either succeeded (cart write proceeds) or failed (toast).
+      setTimeout(() => setAdded(false), 2500);
+    } catch {
+      // Errors are surfaced by the consumer (toast).
     } finally {
       setAdding(false);
     }
@@ -77,17 +64,38 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
 
   const isHorizontal = layout === 'horizontal';
 
+  const addButton = (
+    <button
+      type="button"
+      onClick={handleAdd}
+      disabled={outOfStock || adding || !onAdd}
+      aria-label={added ? 'Added to cart' : `Add ${product.name} to cart`}
+      className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition active:scale-90 ${
+        added
+          ? 'bg-emerald-500 text-white'
+          : outOfStock || !onAdd
+            ? 'bg-surface-high text-on-surface-variant cursor-not-allowed'
+            : 'bg-primary text-white shadow-pop hover:brightness-110'
+      }`}
+    >
+      <Icon
+        name={adding ? 'progress_activity' : added ? 'check' : outOfStock ? 'block' : 'add_shopping_cart'}
+        className={`text-[20px] ${adding ? 'animate-spin' : ''}`}
+      />
+    </button>
+  );
+
   return (
     <div
-      className={`group bg-white rounded-lg border border-outline-variant/20 shadow-card hover:shadow-float transition overflow-hidden flex ${
-        isHorizontal ? 'flex-row gap-4 p-3' : 'flex-col'
+      className={`group relative bg-white rounded-lg border border-outline-variant/50 shadow-card hover:shadow-float transition duration-200 overflow-hidden flex ${
+        isHorizontal ? 'flex-row gap-3 p-2.5' : 'flex-col'
       }`}
     >
       {/* Image */}
       <Link
         to={`/product/${product.id}`}
         className={`relative bg-surface-low overflow-hidden shrink-0 ${
-          isHorizontal ? 'w-32 h-32 sm:w-40 sm:h-40 rounded-md' : 'aspect-square'
+          isHorizontal ? 'w-28 h-28 sm:w-36 sm:h-36 rounded-md' : 'aspect-square'
         }`}
       >
         <img
@@ -95,31 +103,28 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
           alt={product.name}
           loading="lazy"
           onError={(e) => { e.currentTarget.src = '/seed-images/placeholder.svg'; }}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500"
         />
         {outOfStock && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <span className="px-3 py-1 bg-white text-on-surface text-xs font-semibold rounded-full">
-              Out of stock
-            </span>
+          <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center">
+            <span className="px-3 py-1 bg-on-surface text-white text-label-md font-bold rounded-full">Sold out</span>
           </div>
         )}
-        {product.status === 'LIVE' && !outOfStock && (
-          <span className="absolute top-2 left-2 px-2 py-0.5 bg-secondary text-on-secondary text-[10px] font-bold rounded uppercase tracking-wide">
-            In Stock
+        {hasDeal && !outOfStock && (
+          <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded-md bg-sale text-white text-label-sm font-black shadow-card">
+            -{dealPercent}%
           </span>
         )}
         <button
           type="button"
-          aria-label={saved ? 'Remove from wishlist' : 'Save for later'}
+          aria-label={saved ? 'Remove from wishlist' : 'Save to wishlist'}
           onClick={(e) => {
             e.preventDefault();
+            if (!saved) replayAnimation(e.currentTarget, 'anim-heart');
             toggleWishlist(product.id);
           }}
-          className={`absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition ${
-            saved
-              ? 'bg-white text-error'
-              : 'bg-white/90 text-on-surface-variant opacity-100 sm:opacity-0 sm:group-hover:opacity-100'
+          className={`absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center shadow-card transition active:scale-90 ${
+            saved ? 'bg-white text-sale' : 'bg-white/90 text-on-surface-variant hover:text-sale'
           }`}
         >
           <Icon name="favorite" fill={saved} className="text-[18px]" />
@@ -127,95 +132,37 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
       </Link>
 
       {/* Content */}
-      <div className={`flex flex-col flex-1 min-w-0 ${isHorizontal ? '' : 'p-3'}`}>
+      <div className={`flex flex-col flex-1 min-w-0 ${isHorizontal ? 'py-0.5' : 'p-3'}`}>
         <Link to={`/product/${product.id}`} className="block">
-          <div className="text-label-md text-on-surface-variant uppercase tracking-wide line-clamp-1">
-            {product.category}
-          </div>
-          <h3 className="mt-0.5 text-sm sm:text-base font-medium text-on-surface line-clamp-2 leading-snug group-hover:text-primary transition-colors">
+          <h3 className="text-sm font-medium text-on-surface line-clamp-2 leading-snug min-h-[2.5rem] group-hover:text-primary transition-colors">
             {product.name}
           </h3>
         </Link>
 
-        <div className="mt-1.5 flex items-center gap-1.5 min-h-[20px]">
+        <div className="mt-1 flex items-center gap-1 min-h-[18px] text-label-md">
           {hasRealRating ? (
             <>
-              <div className="flex items-center">
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <Icon
-                    key={s}
-                    name="star"
-                    fill={s <= Math.round(product.rating)}
-                    className={`text-[14px] ${s <= Math.round(product.rating) ? 'text-secondary' : 'text-surface-high'}`}
-                  />
-                ))}
-              </div>
-              <span className="text-label-md text-on-surface-variant">{product.rating.toFixed(1)}{reviewCount > 0 ? ` (${reviewCount})` : ''}</span>
+              <Icon name="star" fill className="text-[15px] text-secondary" />
+              <span className="font-bold text-on-surface">{product.rating.toFixed(1)}</span>
+              {reviewCount > 0 && <span className="text-on-surface-variant">({reviewCount})</span>}
             </>
           ) : (
-            <span className="text-label-md text-on-surface-variant/70 italic">No reviews yet</span>
+            <span className="text-on-surface-variant">{product.vendor?.businessName || product.category}</span>
           )}
         </div>
 
-        <div className="mt-2">
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-lg sm:text-xl font-bold text-on-surface leading-none">{price}</span>
-            {hasDeal && (
-              <>
-                <span className="text-xs sm:text-sm text-on-surface-variant line-through leading-none">
-                  {listPrice}
-                </span>
-                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-tertiary-container/40 text-tertiary text-[10px] sm:text-xs font-bold leading-none">
-                  -{dealPercent}%
-                </span>
-              </>
-            )}
+        <div className="mt-auto pt-2 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex items-baseline gap-1.5 flex-wrap">
+            <span className={`text-[17px] font-extrabold leading-none tracking-tight ${hasDeal ? 'text-sale' : 'text-on-surface'}`}>{price}</span>
+            {hasDeal && <span className="text-label-md text-on-surface-variant line-through leading-none">{listPrice}</span>}
           </div>
-          <div className="mt-1 text-label-md text-tertiary flex items-center gap-1">
-            <Icon name="local_shipping" className="text-[14px]" />
-            {product.priceCents >= 5000
-              ? 'FREE delivery'
-              : `Delivery ${formatPrice(499, currency)}`}
-          </div>
+          {addButton}
         </div>
-
-        <div className={`mt-auto ${isHorizontal ? 'mt-3' : 'mt-3'}`}>
-          <button
-            type="button"
-            onClick={handleAdd}
-            disabled={outOfStock || adding || !onAdd}
-            className={`w-full py-2.5 rounded-full text-sm font-semibold transition flex items-center justify-center ${
-              added
-                ? 'bg-green-50 border border-green-500 text-green-700 hover:bg-green-100'
-                : outOfStock
-                ? 'bg-surface-low text-on-surface-variant cursor-not-allowed'
-                : !onAdd
-                ? 'bg-surface-low text-on-surface-variant cursor-not-allowed'
-                : 'bg-primary text-white hover:bg-primary/90 shadow-sm'
-            }`}
-          >
-            {adding ? (
-              <span className="inline-flex items-center gap-1.5">
-                <Icon name="progress_activity" className="text-[18px] animate-spin" />
-                Adding…
-              </span>
-            ) : added ? (
-              <span className="inline-flex items-center gap-1.5">
-                <Icon name="check" className="text-[18px]" />
-                Added
-              </span>
-            ) : outOfStock ? (
-              <span className="inline-flex items-center gap-1.5">
-                <Icon name="block" className="text-[18px]" />
-                Out of stock
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5">
-                <Icon name="add_shopping_cart" className="text-[18px]" />
-                Add to Cart
-              </span>
-            )}
-          </button>
+        <div className={`mt-1.5 text-label-sm font-semibold flex items-center gap-1 whitespace-nowrap ${lowStock ? 'text-amber-600' : freeDelivery ? 'text-tertiary' : 'text-on-surface-variant'}`}>
+          <Icon name={lowStock ? 'local_fire_department' : 'local_shipping'} className="text-[14px]" />
+          {lowStock
+            ? `Only ${productStock} left`
+            : freeDelivery ? 'Free delivery' : `${formatPrice(499, currency)} delivery`}
         </div>
       </div>
     </div>
@@ -224,13 +171,15 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
 
 export function ProductCardSkeleton() {
   return (
-    <div className="bg-white rounded-lg border border-outline-variant/20 shadow-card overflow-hidden flex flex-col">
-      <div className="aspect-square bg-surface-low animate-pulse" />
+    <div className="bg-white rounded-lg border border-outline-variant/50 shadow-card overflow-hidden flex flex-col">
+      <div className="aspect-square skeleton rounded-none" />
       <div className="p-3 space-y-2">
-        <div className="h-3 bg-surface-low rounded animate-pulse w-2/3" />
-        <div className="h-4 bg-surface-low rounded animate-pulse w-3/4" />
-        <div className="h-5 bg-surface-low rounded animate-pulse w-1/2" />
-        <div className="h-9 bg-surface-low rounded-full animate-pulse" />
+        <div className="h-3.5 skeleton w-5/6" />
+        <div className="h-3.5 skeleton w-2/3" />
+        <div className="flex items-end justify-between pt-2">
+          <div className="h-5 skeleton w-1/3" />
+          <div className="w-10 h-10 skeleton rounded-full" />
+        </div>
       </div>
     </div>
   );

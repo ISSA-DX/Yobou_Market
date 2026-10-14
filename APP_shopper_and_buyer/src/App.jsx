@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useStore } from './store';
+import { useScrollReveal } from './lib/motion';
 
 // Layouts — kept eager because they wrap nearly every route and the shell
 // needs to render synchronously on first paint to avoid a layout shift
@@ -39,6 +40,8 @@ const Wishlist = lazy(() => import('./pages/wishlist/Wishlist.jsx'));
 const Notifications = lazy(() => import('./pages/Notifications.jsx'));
 const GooglePicker = lazy(() => import('./pages/auth/GooglePicker.jsx'));
 const AppleConfirm = lazy(() => import('./pages/auth/AppleConfirm.jsx'));
+const ForgotPassword = lazy(() => import('./pages/auth/PasswordReset.jsx').then((m) => ({ default: m.ForgotPassword })));
+const ResetPassword = lazy(() => import('./pages/auth/PasswordReset.jsx').then((m) => ({ default: m.ResetPassword })));
 
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import ToastHost from './components/ToastHost.jsx';
@@ -57,6 +60,8 @@ function RouteFallback() {
 function Boot() {
   const boot = useStore((s) => s.boot);
   useEffect(() => { boot(); }, [boot]);
+  // Scroll-triggered section animations (styles/motion.css).
+  useScrollReveal();
   return null;
 }
 
@@ -94,6 +99,8 @@ export default function App() {
           <Route path="/logout" element={<TransactionLayout><Logout /></TransactionLayout>} />
           <Route path="/auth/google" element={<TransactionLayout><GooglePicker /></TransactionLayout>} />
           <Route path="/auth/apple" element={<TransactionLayout><AppleConfirm /></TransactionLayout>} />
+          <Route path="/forgot-password" element={<TransactionLayout><ForgotPassword /></TransactionLayout>} />
+          <Route path="/reset-password" element={<TransactionLayout><ResetPassword /></TransactionLayout>} />
 
           {/* Public / customer pages */}
           <Route path="/search" element={<Search />} />

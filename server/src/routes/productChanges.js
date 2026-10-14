@@ -119,6 +119,8 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
         proposedShowOnDeals:      data.showOnDeals      ?? null,
         proposedShowOnFlashDeals: data.showOnFlashDeals ?? null,
         proposedShowOnSearch:     data.showOnSearch     ?? null,
+        proposedShowOnRecentDeals: data.showOnRecentDeals ?? null,
+        proposedShowOnNewArrivals: data.showOnNewArrivals ?? null,
         // Extra categories: JSON snapshot of the normalized list (trim,
         // drop empties, dedupe, cap 10, cap 80 chars each). The approve
         // path reconciles the CategoryExtra join table from this string.
@@ -245,6 +247,8 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
             showOnDeals:      change.proposedShowOnDeals      ?? true,
             showOnFlashDeals: change.proposedShowOnFlashDeals ?? false,
             showOnSearch:     change.proposedShowOnSearch     ?? true,
+            showOnRecentDeals: change.proposedShowOnRecentDeals ?? false,
+            showOnNewArrivals: change.proposedShowOnNewArrivals ?? true,
           },
         });
         if (Array.isArray(proposedVariants) && proposedVariants.length > 0) {
@@ -328,6 +332,8 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
         if (change.proposedShowOnDeals      !== null) data.showOnDeals      = change.proposedShowOnDeals;
         if (change.proposedShowOnFlashDeals !== null) data.showOnFlashDeals = change.proposedShowOnFlashDeals;
         if (change.proposedShowOnSearch     !== null) data.showOnSearch     = change.proposedShowOnSearch;
+        if (change.proposedShowOnRecentDeals !== null) data.showOnRecentDeals = change.proposedShowOnRecentDeals;
+        if (change.proposedShowOnNewArrivals !== null) data.showOnNewArrivals = change.proposedShowOnNewArrivals;
         await tx.product.update({ where: { id: change.productId }, data });
         if (Array.isArray(proposedVariants)) {
           await applyVariants(tx, change.productId, proposedVariants);

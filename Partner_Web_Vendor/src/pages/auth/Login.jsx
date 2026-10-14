@@ -18,11 +18,16 @@ export default function Login() {
     setErr(''); setBusy(true);
     try {
       const user = await login(email, password);
+      // Yobou couriers share this app and land on their delivery list.
+      if (user.role === 'DRIVER') {
+        navigate('/courier', { replace: true });
+        return;
+      }
       // Route based on vendor status. PENDING vendors land on the
       // "awaiting approval" page; APPROVED vendors go to the dashboard.
       if (user.role !== 'VENDOR') {
         await useStore.getState().logout();
-        setErr('This portal is for partners (vendors) only.');
+        setErr('This portal is for partners (vendors) and Yobou couriers only.');
         return;
       }
       if (user.vendor?.status === 'PENDING') {
@@ -47,7 +52,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-surface p-6">
       <div className="w-full max-w-md">
         <div className="flex items-center gap-2 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center font-black text-lg">Y</div>
+          <div className="w-10 h-10 rounded-md bg-gradient-to-br from-primary-container to-primary text-white flex items-center justify-center font-black shadow-pop text-lg">Y</div>
           <div>
             <div className="font-bold text-xl">Yobou Partner</div>
             <div className="text-label-md text-on-surface-variant">Vendor portal</div>
@@ -56,7 +61,7 @@ export default function Login() {
 
         <div className="card p-6">
           <h1 className="text-headline-lg font-bold">Sign in</h1>
-          <p className="mt-1 text-on-surface-variant text-sm">Manage your products, orders, and analytics.</p>
+          <p className="mt-1 text-on-surface-variant text-sm">Manage your products, orders, and analytics — or your deliveries if you&apos;re a Yobou courier.</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <div>
@@ -104,6 +109,9 @@ export default function Login() {
               {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
               Sign in
             </button>
+            <div className="text-center">
+              <Link to="/forgot-password" className="text-sm text-primary font-medium">Forgot password?</Link>
+            </div>
           </form>
 
           <div className="mt-6 text-center text-sm text-on-surface-variant">
@@ -124,6 +132,8 @@ function humanizeError(e) {
   }
   if (code === 'NETWORK_ERROR') return msg || 'Cannot reach the server. Check your internet connection.';
   if (code === 'INVALID_CREDENTIALS') return 'Email or password is incorrect.';
+  if (code === 'TOO_MANY_ATTEMPTS') return 'Too many wrong passwords. Wait 15 minutes or reset your password.';
+  if (code === 'RATE_LIMITED') return 'Too many attempts. Please wait a few minutes and try again.';
   if (code === 'VENDOR_PENDING') return 'Your application is under review. We will email you once approved.';
   if (code === 'VENDOR_REJECTED') return 'Your vendor application was not accepted. Contact the Yobou team.';
   if (code === 'VENDOR_SUSPENDED') return 'Your vendor account is suspended. Contact the Yobou team.';

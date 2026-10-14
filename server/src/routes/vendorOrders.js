@@ -17,6 +17,9 @@ const { prisma } = require('../prisma');
 const { requireAuth, requireApprovedVendor } = require('../auth/middleware');
 const { orderShip, orderCancel } = require('../lib/validators');
 const { notifyOrderAudience, audit } = require('../lib/notifications');
+const { scopeOrderToVendor } = require('../lib/vendorScope');
+const { recordEarnings } = require('../lib/ledger');
+const { releaseCoupon } = require('../lib/coupons');
 
 const TERMINAL_STATUSES = ['DELIVERED', 'CANCELLED', 'REFUNDED'];
 // Vendors may only cancel orders that haven't shipped yet. Once an order
@@ -29,6 +32,18 @@ router.use(requireAuth, requireApprovedVendor);
 function parseImages(p) {
   if (!p || typeof p.imageUrls !== 'string') return p;
   try { return { ...p, imageUrls: JSON.parse(p.imageUrls) }; } catch { return { ...p, imageUrls: [] }; }
+}
+
+function vendorView(order, vendorId) {
+  const scoped = scopeOrderToVendor(order, vendorId);
+  return { ...scoped, items: scoped.items.map((i) => ({ ...i, product: parseImages(i.product) })) };
+}
+
+// Orders dispatched to a Yobou courier are completed by the courier app,
+// not by the vendor.
+async function courierManaged(orderId) {
+  const d = await prisma.delivery.findUnique({ where: { orderId }, select: { status: true } });
+  return Boolean(d && d.status !== 'FAILED');
 }
 
 router.get('/mine', async (req, res, next) => {
@@ -75,10 +90,7 @@ router.get('/mine', async (req, res, next) => {
       prisma.order.count({ where }),
     ]);
     res.json({
-      orders: rows.map((o) => ({
-        ...o,
-        items: o.items.map((i) => ({ ...i, product: parseImages(i.product) })),
-      })),
+      orders: rows.map((o) => vendorView(o, vendorId)),
       total, limit, offset,
     });
   } catch (err) { next(err); }
@@ -100,6 +112,9 @@ router.post('/:id/ship', async (req, res, next) => {
     }
     if (order.status !== 'PROCESSING' && order.status !== 'PAID') {
       return res.status(400).json({ error: 'NOT_READY_TO_SHIP', currentStatus: order.status });
+    }
+    if (await courierManaged(order.id)) {
+      return res.status(409).json({ error: 'COURIER_MANAGED' });
     }
 
     const estimatedDelivery = data.estimatedDelivery ? new Date(data.estimatedDelivery) : null;
@@ -134,7 +149,7 @@ router.post('/:id/ship', async (req, res, next) => {
     }).catch((err) => console.error('[notifyOrderAudience]', err));
 
     res.json({
-      order: { ...updated, items: updated.items.map((i) => ({ ...i, product: parseImages(i.product) })) },
+      order: vendorView(updated, vendorId),
     });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
@@ -158,9 +173,12 @@ router.post('/:id/deliver', async (req, res, next) => {
     if (order.status !== 'SHIPPED') {
       return res.status(400).json({ error: 'NOT_SHIPPED', currentStatus: order.status });
     }
+    if (await courierManaged(order.id)) {
+      return res.status(409).json({ error: 'COURIER_MANAGED' });
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
-      return tx.order.update({
+      const result = await tx.order.update({
         where: { id: order.id },
         data: {
           status: 'DELIVERED',
@@ -174,6 +192,8 @@ router.post('/:id/deliver', async (req, res, next) => {
         },
         include: { items: { include: { product: true } }, timeline: { orderBy: { at: 'asc' } } },
       });
+      await recordEarnings(tx, order.id);
+      return result;
     });
 
     notifyOrderAudience(updated, {
@@ -185,7 +205,7 @@ router.post('/:id/deliver', async (req, res, next) => {
     }).catch((err) => console.error('[notifyOrderAudience]', err));
 
     res.json({
-      order: { ...updated, items: updated.items.map((i) => ({ ...i, product: parseImages(i.product) })) },
+      order: vendorView(updated, vendorId),
     });
   } catch (err) { next(err); }
 });
@@ -228,6 +248,7 @@ router.post('/:id/cancel', async (req, res, next) => {
           });
         }
       }
+      await releaseCoupon(tx, order.id);
       const orderUpdate = await tx.order.update({
         where: { id: order.id },
         data: {
@@ -270,7 +291,7 @@ router.post('/:id/cancel', async (req, res, next) => {
     });
 
     res.json({
-      order: { ...updated, items: updated.items.map((i) => ({ ...i, product: parseImages(i.product) })) },
+      order: vendorView(updated, vendorId),
     });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });

@@ -16,6 +16,10 @@ import VendorNew from './pages/vendors/VendorNew';
 import Orders from './pages/orders/Orders';
 import OrderDetail from './pages/orders/OrderDetail';
 import Changes from './pages/changes/Changes';
+import Deliveries from './pages/deliveries/Deliveries';
+import Finance from './pages/finance/Finance';
+import Promotions from './pages/promotions/Promotions';
+import { ForgotPassword, ResetPassword } from './pages/auth/PasswordReset';
 import Refunds from './pages/refunds/Refunds';
 import Users from './pages/users/Users';
 import Broadcast from './pages/broadcast/Broadcast';
@@ -51,6 +55,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/logout" element={<Logout />} />
+        <Route path="/forgot-password" element={<div className="min-h-screen flex items-center justify-center bg-surface p-6"><ForgotPassword /></div>} />
+        <Route path="/reset-password" element={<div className="min-h-screen flex items-center justify-center bg-surface p-6"><ResetPassword /></div>} />
         <Route element={<RequireAuth><AdminShell /></RequireAuth>}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
@@ -61,7 +67,10 @@ export default function App() {
           <Route path="/vendors/new" element={<ErrorBoundary><VendorNew /></ErrorBoundary>} />
           <Route path="/orders" element={<ErrorBoundary><Orders /></ErrorBoundary>} />
           <Route path="/orders/:id/track" element={<ErrorBoundary><OrderDetail /></ErrorBoundary>} />
-          <Route path="/changes" element={<ErrorBoundary><Changes /></ErrorBoundary>} />
+          <Route path="/deliveries" element={<ErrorBoundary><Deliveries /></ErrorBoundary>} />
+          <Route path="/finance" element={<ErrorBoundary><Finance /></ErrorBoundary>} />
+          <Route path="/promotions" element={<ErrorBoundary><Promotions /></ErrorBoundary>} />
+          <Route path="/changes"element={<ErrorBoundary><Changes /></ErrorBoundary>} />
           <Route path="/refunds" element={<ErrorBoundary><Refunds /></ErrorBoundary>} />
           <Route path="/users" element={<ErrorBoundary><Users /></ErrorBoundary>} />
           <Route path="/broadcast" element={<ErrorBoundary><Broadcast /></ErrorBoundary>} />

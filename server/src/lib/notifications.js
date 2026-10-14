@@ -186,6 +186,19 @@ function pushToAdmins(row) {
 }
 
 /**
+ * Live-only SSE frame under a custom event name (no inbox row). Used for
+ * high-frequency signals like courier GPS positions (`event: courier`).
+ * Pass userId = null to target every connected admin instead.
+ */
+function pushEvent(userId, event, data) {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const targets = userId ? liveClientsFor(userId) : liveAdmins();
+  for (const res of targets) {
+    try { res.write(payload); } catch { /* drop */ }
+  }
+}
+
+/**
  * Notify every relevant party for an order change.
  *
  * Audience:
@@ -373,6 +386,8 @@ async function notifyProductChange({ action, product, title, body, link, tx }) {
     showOnDeals:      product.showOnDeals      != null ? product.showOnDeals      : true,
     showOnFlashDeals: product.showOnFlashDeals != null ? product.showOnFlashDeals : false,
     showOnSearch:     product.showOnSearch     != null ? product.showOnSearch     : true,
+    showOnRecentDeals: product.showOnRecentDeals != null ? product.showOnRecentDeals : false,
+    showOnNewArrivals: product.showOnNewArrivals != null ? product.showOnNewArrivals : true,
   };
   pushCatalog('catalog', { event: kind, ...catalogPayload });
 
@@ -479,6 +494,7 @@ module.exports = {
   notifyMany,
   pushToUser,
   pushToAdmins,
+  pushEvent,
   pushCatalog,
   pushPublic,
   notifyOrderAudience,

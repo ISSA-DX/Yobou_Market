@@ -120,7 +120,10 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
   // networkErr catch surfaces as the misleading "Could not reach
   // the server" message. The fetch option + URL suffix alone are
   // sufficient cache-busting; the explicit headers are pure risk.
-  const noCacheSuffix = method === 'GET' && !body ? `?_t=${Date.now()}` : '';
+  // Use '&' when the path already has a query string — appending a second
+  // '?' corrupted the last parameter (e.g. ?category=Fashion?_t=… made the
+  // server see category "Fashion?_t=…" and return nothing).
+  const noCacheSuffix = method === 'GET' && !body ? `${path.includes('?') ? '&' : '?'}_t=${Date.now()}` : '';
   const opts = {
     method,
     credentials: 'include',
@@ -230,7 +233,7 @@ export async function apiForm(path, { method = 'POST', body, auth = true, retry 
 
   let res;
   try {
-    res = await fetch(`${BASE}${path}?_t=${Date.now()}`, opts);
+    res = await fetch(`${BASE}${path}${path.includes('?') ? '&' : '?'}_t=${Date.now()}`, opts);
   } catch (networkErr) {
     const err = new Error(networkErr?.message || 'Network request failed');
     err.code = 'NETWORK_ERROR';

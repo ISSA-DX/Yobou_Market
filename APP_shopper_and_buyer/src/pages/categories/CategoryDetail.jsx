@@ -146,10 +146,10 @@ export default function CategoryDetail() {
           </header>
 
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg">
+            <div className="reveal reveal-pop w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg">
               <Icon name={meta.icon} className="text-[36px]" />
             </div>
-            <div>
+            <div className="reveal reveal-slide-right" style={{ "--reveal-delay": "120ms" }}>
               {/* Text-white explicit override — this h1 sits on a
                   per-category gradient (from-blue-500 to-indigo-600,
                   from-pink-500 to-rose-500, etc.). The v0.3.20 global
@@ -164,7 +164,7 @@ export default function CategoryDetail() {
             </div>
           </div>
         </div>
-        <Icon name={meta.icon} className="absolute -right-4 -bottom-8 text-[160px] opacity-15" />
+        <Icon name={meta.icon} className="anim-float absolute -right-4 -bottom-8 text-[160px] opacity-15" />
       </div>
 
       <div className="px-4 space-y-4">
@@ -250,7 +250,7 @@ export default function CategoryDetail() {
             )}
 
             {filtered.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+              <div className="reveal-stagger stagger-up grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                 {filtered.map((p) => <ProductCard key={p.id} product={p} onAdd={quickAdd} />)}
               </div>
             )}

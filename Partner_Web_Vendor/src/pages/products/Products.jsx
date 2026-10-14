@@ -1,3 +1,4 @@
+import StatusBadge from '../../components/StatusBadge';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
@@ -187,7 +188,7 @@ export default function Products() {
                   </button>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`chip ${STATUS_STYLES[p.status] || STATUS_STYLES.HIDDEN}`}>{p.status}</span>
+                  <StatusBadge status={p.status} />
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">

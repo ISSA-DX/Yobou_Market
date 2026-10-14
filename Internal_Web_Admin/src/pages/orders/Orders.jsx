@@ -1,3 +1,4 @@
+import StatusBadge from '../../components/StatusBadge';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
@@ -142,7 +143,7 @@ export default function Orders() {
                 <td className="px-4 py-3">{o.items.length}</td>
                 <td className="px-4 py-3 font-semibold">${(o.totalCents/100).toFixed(2)}</td>
                 <td className="px-4 py-3 text-on-surface-variant">{o.paymentMethod}</td>
-                <td className="px-4 py-3"><StatusPill status={o.status} /></td>
+                <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
                 <td className="px-4 py-3 text-on-surface-variant text-label-sm">
                   {o.trackingNumber ? `${o.carrier || ''} ${o.trackingNumber}`.trim() : '—'}
                 </td>

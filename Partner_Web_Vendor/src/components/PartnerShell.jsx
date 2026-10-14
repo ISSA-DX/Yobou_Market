@@ -84,13 +84,19 @@ function NavItem({ to, label, icon, end }) {
       to={to}
       end={end}
       className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium ${
-          isActive ? 'bg-surface-high text-primary' : 'text-on-surface-variant hover:bg-surface-low'
+        `relative flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition ${
+          isActive
+            ? 'bg-primary/[0.07] text-primary font-semibold before:absolute before:-left-3 before:top-2 before:bottom-2 before:w-1 before:rounded-r-full before:bg-primary'
+            : 'text-on-surface-variant font-medium hover:bg-surface-low hover:text-on-surface'
         }`
       }
     >
-      <Icon name={icon} className="text-[20px]" />
-      <span className="flex-1">{label}</span>
+      {({ isActive }) => (
+        <>
+          <Icon name={icon} fill={isActive} className="text-[20px]" />
+          <span className="flex-1">{label}</span>
+        </>
+      )}
     </NavLink>
   );
 }
@@ -101,6 +107,7 @@ const NAV_ITEMS = [
   { to: '/orders', label: 'Orders', icon: 'receipt_long' },
   { to: '/changes', label: 'Changes', icon: 'pending_actions' },
   { to: '/analytics', label: 'Analytics', icon: 'monitoring' },
+  { to: '/payouts', label: 'Payouts', icon: 'account_balance_wallet' },
   { to: '/notifications', label: 'Inbox', icon: 'inbox' },
   { to: '/profile', label: 'Profile', icon: 'account_circle' },
 ];
@@ -130,7 +137,7 @@ export default function PartnerShell() {
       {/* Sidebar (desktop) */}
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-outline-variant/30 p-4">
         <div className="flex items-center gap-2 mb-8">
-          <div className="w-9 h-9 rounded-lg bg-primary text-white flex items-center justify-center font-black">Y</div>
+          <div className="w-9 h-9 rounded-md bg-gradient-to-br from-primary-container to-primary text-white flex items-center justify-center font-black shadow-pop">Y</div>
           <div>
             <div className="font-bold text-on-surface">Yobou Partner</div>
             <div className="text-label-sm text-on-surface-variant">
@@ -167,7 +174,7 @@ export default function PartnerShell() {
         <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-outline-variant/30">
           <div className="flex items-center justify-between px-4 md:px-8 h-16">
             <div className="md:hidden flex items-center gap-2">
-              <div className="w-8 h-8 rounded-md bg-primary text-white flex items-center justify-center font-black">Y</div>
+              <div className="w-8 h-8 rounded-md bg-gradient-to-br from-primary-container to-primary text-white flex items-center justify-center font-black shadow-pop">Y</div>
               <div className="font-bold">Yobou <span className="text-on-surface-variant text-xs font-normal">/ Partner</span></div>
             </div>
             <div className="hidden md:flex items-center gap-2 text-on-surface-variant text-sm">

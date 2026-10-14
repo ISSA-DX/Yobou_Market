@@ -5,6 +5,9 @@ import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import CardForm from '../../components/CardForm';
 
+// Promo code remembered by CheckoutPayment (same key).
+const PROMO_KEY = 'yobou:checkoutCoupon';
+
 export default function CheckoutCardNew() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -36,14 +39,17 @@ export default function CheckoutCardNew() {
         navigate('/checkout/shipping');
         return;
       }
+      // Promo code chosen on the payment step (validated again server-side).
+      const couponCode = sessionStorage.getItem(PROMO_KEY) || undefined;
       const { order, payment } = await api('/api/orders', {
         method: 'POST',
-        body: { addressId, paymentMethod: 'CARD', card },
+        body: { addressId, paymentMethod: 'CARD', card, couponCode },
       });
       if (!payment.ok) {
         setErr(payment.reason === 'DECLINED' ? 'Card declined. Try again.' : 'Payment failed.');
         return;
       }
+      sessionStorage.removeItem(PROMO_KEY);
       navigate(`/checkout/success/${order.id}`);
     } catch (e) {
       setErr(humanizeError(e.data?.error));
@@ -58,14 +64,14 @@ export default function CheckoutCardNew() {
         <span className="w-10" />
       </header>
 
-      <div className="card p-4 bg-gradient-to-r from-primary/5 to-primary-container/5 flex items-center gap-3">
+      <div className="reveal reveal-zoom card p-4 bg-gradient-to-r from-primary/5 to-primary-container/5 flex items-center gap-3">
         <Icon name="lock" className="text-primary" />
         <p className="text-sm text-on-surface-variant">Your card details are encrypted and never stored on our servers.</p>
       </div>
 
       {err && <div className="text-error text-sm">{err}</div>}
 
-      <CardForm onSubmit={handleCard} submitLabel="Pay securely" />
+      <div className="reveal reveal-fade-up" style={{ "--reveal-delay": "120ms" }}><CardForm onSubmit={handleCard} submitLabel="Pay securely" /></div>
 
       <div className="text-center text-label-md text-on-surface-variant flex items-center justify-center gap-3">
         <Icon name="verified" className="text-[16px]" /> 256-bit SSL · PCI-DSS Level 1
@@ -81,6 +87,12 @@ function humanizeError(code) {
     case 'INSUFFICIENT_STOCK': return 'An item is out of stock.';
     case 'NO_SELECTION': return 'Please select at least one item on the Cart page.';
     case 'INVALID_INPUT': return 'Please check your card details.';
+    case 'COUPON_USED_UP':
+    case 'COUPON_EXPIRED':
+    case 'COUPON_INACTIVE':
+    case 'COUPON_ALREADY_USED':
+    case 'COUPON_MIN_SUBTOTAL':
+      return 'Your promo code can no longer be applied. Go back and remove it.';
     default: return 'Could not place order.';
   }
 }

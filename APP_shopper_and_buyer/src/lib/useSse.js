@@ -14,6 +14,7 @@ import { getAccessToken, onAuthChange } from '../api';
 
 const notificationSubscribers = new Set();
 const catalogSubscribers = new Set();
+const courierSubscribers = new Set();
 let eventSource = null;
 let reconnectTimer = null;
 
@@ -55,6 +56,10 @@ function connect() {
   // on Home, Categories, CategoryDetail, Search, ProductDetails.
   es.addEventListener('catalog', (ev) => {
     try { dispatch(catalogSubscribers, JSON.parse(ev.data)); } catch { /* malformed frame */ }
+  });
+  // Live courier GPS while the shopper's order is out for delivery.
+  es.addEventListener('courier', (ev) => {
+    try { dispatch(courierSubscribers, JSON.parse(ev.data)); } catch { /* malformed frame */ }
   });
   es.addEventListener('hello', () => { /* connection confirmed */ });
   es.onerror = () => {
@@ -112,6 +117,23 @@ export function useCatalogStream(onCatalog) {
     if (!eventSource && getAccessToken()) connect();
     return () => {
       catalogSubscribers.delete(wrapper);
+    };
+  }, []);
+}
+
+export function useCourierStream(onCourier) {
+  ensureAuthListener();
+  const ref = useRef(onCourier);
+  ref.current = onCourier;
+
+  useEffect(() => {
+    const wrapper = (frame) => {
+      try { ref.current?.(frame); } catch { /* ignore */ }
+    };
+    courierSubscribers.add(wrapper);
+    if (!eventSource && getAccessToken()) connect();
+    return () => {
+      courierSubscribers.delete(wrapper);
     };
   }, []);
 }

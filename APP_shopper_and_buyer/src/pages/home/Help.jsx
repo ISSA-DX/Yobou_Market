@@ -16,7 +16,7 @@ export default function Help() {
         <h1 className="text-headline-md font-bold flex-1">Help &amp; Support</h1>
       </header>
 
-      <div className="card p-5 bg-gradient-to-br from-primary to-primary-container text-white">
+      <div className="reveal reveal-zoom anim-shine relative overflow-hidden card p-5 bg-gradient-to-br from-primary to-primary-container text-white">
         <h2 className="font-bold text-headline-md">Need help?</h2>
         <p className="mt-1 opacity-90">Our support team is available 24/7 to assist you.</p>
         <div className="mt-4 flex gap-3">
@@ -25,7 +25,7 @@ export default function Help() {
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="reveal-stagger stagger-up space-y-3">
         {FAQS.map((f, i) => (
           <div key={i} className="card p-4">
             <div className="font-semibold">{f.q}</div>

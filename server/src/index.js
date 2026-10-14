@@ -24,6 +24,10 @@ const paymentsRoutes = require('./routes/payments');
 const categoriesRoutes = require('./routes/categories');
 const eventsRoutes = require('./routes/events');
 const reviewsRoutes = require('./routes/reviews');
+const deliveriesRoutes = require('./routes/deliveries');
+const driverRoutes = require('./routes/driver');
+const financeRoutes = require('./routes/finance');
+const couponsRoutes = require('./routes/coupons');
 
 const app = express();
 
@@ -236,6 +240,11 @@ app.use('/api/orders/vendor', vendorOrdersRoutes);
 app.use('/api/vendor', vendorAnalyticsRoutes);
 app.use('/api/vendors', vendorsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/admin', deliveriesRoutes);
+app.use('/api/admin', financeRoutes.adminRouter);
+app.use('/api/vendor', financeRoutes.vendorRouter);
+app.use('/api/coupons', couponsRoutes);
+app.use('/api/driver', driverRoutes);
 app.use('/api/refunds', refundsRoutes);
 app.use('/api/addresses', addressesRoutes);
 app.use('/api/payments', paymentsRoutes);

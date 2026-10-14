@@ -16,8 +16,13 @@ model User {
   email                  String          @unique
   passwordHash           String
   name                   String
-  role                   String // 'ADMIN' | 'VENDOR' | 'CUSTOMER'
+  role                   String // 'ADMIN' | 'VENDOR' | 'CUSTOMER' | 'DRIVER'
+  // Contact number — required in practice for DRIVER accounts so the
+  // admin and the customer can reach the courier; optional for others.
+  phone                  String?
   vendor                 Vendor?
+  deliveries             Delivery[]      @relation("DriverDeliveries")
+  driverLocation         DriverLocation?
   addresses              Address[]
   paymentMethods         PaymentMethod[]
   orders                 Order[]
@@ -41,6 +46,15 @@ model User {
   // Soft disable: when set, auth middleware blocks login/refresh.
   disabledAt DateTime?
 
+  // Sessions issued before this instant are rejected (set on password
+  // change / reset so a stolen session dies with the old password).
+  passwordChangedAt DateTime?
+  // Terms of Service acceptance (recorded at sign-up). See /terms.html.
+  acceptedTermsAt   DateTime?
+  termsVersion      String?
+  passwordResets    PasswordResetToken[]
+  couponRedemptions CouponRedemption[]
+
   // Last activity timestamp used by the SSE connection housekeeper.
   lastSeenAt DateTime?
 
@@ -61,9 +75,52 @@ model Vendor {
   bannerUrl    String?
   status       String          @default("PENDING") // PENDING | APPROVED | REJECTED
   approvedAt   DateTime?
+  // Yobou's commission on this store's sales, in basis points (1000 = 10%).
+  commissionBps Int            @default(1000)
   products     Product[]
   changes      ProductChange[]
+  ledger       VendorLedger[]
+  payouts      Payout[]
   createdAt    DateTime        @default(now())
+}
+
+// Money owed to a store. The balance is SUM(amountCents) — entries are
+// append-only (corrections are new ADJUSTMENT rows). See lib/ledger.js.
+//   EARNING     +net  when an order with the store's items is delivered
+//   REFUND      -net  when that order is refunded (commission reversed)
+//   PAYOUT      -amt  when the store requests a payout (funds reserved)
+//   ADJUSTMENT  ±amt  e.g. a rejected payout returns the reserved funds
+model VendorLedger {
+  id              String   @id @default(cuid())
+  vendorId        String
+  vendor          Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  kind            String // EARNING | REFUND | PAYOUT | ADJUSTMENT
+  orderId         String?
+  payoutId        String?
+  grossCents      Int      @default(0) // items total before commission
+  commissionCents Int      @default(0)
+  amountCents     Int // signed effect on the balance
+  note            String?
+  createdAt       DateTime @default(now())
+
+  @@unique([vendorId, orderId, kind]) // one EARNING / REFUND per order per store
+  @@index([vendorId, createdAt])
+}
+
+model Payout {
+  id          String    @id @default(cuid())
+  vendorId    String
+  vendor      Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  amountCents Int
+  status      String    @default("REQUESTED") // REQUESTED | PAID | REJECTED
+  method      String? // e.g. "Bank transfer", "Orange Money"
+  reference   String? // bank / mobile-money transaction reference set by admin
+  adminNote   String?
+  requestedAt DateTime  @default(now())
+  reviewedAt  DateTime?
+
+  @@index([vendorId, status])
+  @@index([status])
 }
 
 model Product {
@@ -102,10 +159,16 @@ model Product {
   //   - showOnFlashDeals: Home Flash deals rail. New curated surface.
   //   - showOnSearch: surfaces that match buyer search queries
   //     (APP_shopper_and_buyer /api/products?q= and the partner app).
+  //   - showOnRecentDeals: Home "Recent deals" rail — curated, newest
+  //     first (OFF by default, like Flash).
+  //   - showOnNewArrivals: Home "New arrivals" rail — newest first
+  //     (ON by default: a new product is a new arrival).
   showOnHome        Boolean         @default(true)
   showOnDeals       Boolean         @default(true)
   showOnFlashDeals  Boolean         @default(false)
   showOnSearch      Boolean         @default(true)
+  showOnRecentDeals Boolean         @default(false)
+  showOnNewArrivals Boolean         @default(true)
   createdAt   DateTime         @default(now())
   orderItems  OrderItem[]
   cartItems   CartItem[]
@@ -271,11 +334,137 @@ model Order {
   cancelReason String?
   cancelledBy  String? // userId of the admin who initiated
 
+  // Promo code applied at checkout. The discount is funded by Yobou:
+  // store earnings are still computed on full item prices.
+  discountCents Int     @default(0)
+  couponCode    String?
+  redemption    CouponRedemption?
+
   items     OrderItem[]
   timeline  TimelineEvent[]
   refunds   Refund[]
+  delivery  Delivery?
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
+}
+
+// Last-mile delivery job handled by a Yobou courier (User.role=DRIVER).
+// One row per order; re-assigning a courier updates the same row.
+// Lifecycle (see server/src/routes/driver.js):
+//   ASSIGNED ──pickup──> PICKED_UP ──deliver──> DELIVERED
+//                            └──fail──> FAILED ──admin re-assign──> ASSIGNED
+// Order.status follows along: pickup → SHIPPED, deliver → DELIVERED.
+model Delivery {
+  id                String    @id @default(cuid())
+  orderId           String    @unique
+  order             Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  driverId          String?
+  driver            User?     @relation("DriverDeliveries", fields: [driverId], references: [id], onDelete: SetNull)
+  status            String    @default("ASSIGNED") // ASSIGNED | PICKED_UP | DELIVERED | FAILED
+  // Cash the courier must collect at the door (COD orders only, else 0).
+  codAmountCents    Int       @default(0)
+  codCollectedCents Int?
+  recipientName     String?
+  proofNote         String?
+  failReason        String?
+  attempts          Int       @default(0)
+  assignedAt        DateTime  @default(now())
+  pickedUpAt        DateTime?
+  deliveredAt       DateTime?
+  // Where the courier was when they confirmed delivery (proof of delivery).
+  deliveredLat      Float?
+  deliveredLng      Float?
+  // 4-digit code shown to the customer; the courier must enter it to
+  // complete the delivery (proves the hand-over to the right person).
+  deliveryCode      String?
+  // Customer's rating of the courier after delivery.
+  rating            Int? // 1..5
+  ratingComment     String?
+  ratedAt           DateTime?
+  // COD cash reconciliation: when the courier handed the collected cash
+  // over to Yobou (set by an admin).
+  cashSettledAt     DateTime?
+  cashSettledById   String?
+  pings             DeliveryPing[]
+  updatedAt         DateTime  @updatedAt
+
+  @@index([driverId, status])
+  @@index([status])
+}
+
+// Latest GPS fix for each courier, shared from the courier app while
+// they are on duty. One row per courier, overwritten on every fix.
+model DriverLocation {
+  driverId  String   @id
+  driver    User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  onDuty    Boolean  @default(false)
+  lat       Float?
+  lng       Float?
+  accuracy  Float? // metres
+  heading   Float? // degrees from north
+  speed     Float? // m/s
+  updatedAt DateTime @updatedAt
+}
+
+// Breadcrumb trail for one delivery — sampled from the courier's GPS
+// while the job is active, so admins can replay the route and the
+// customer can see the path since pickup.
+model DeliveryPing {
+  id         String   @id @default(cuid())
+  deliveryId String
+  delivery   Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  lat        Float
+  lng        Float
+  at         DateTime @default(now())
+
+  @@index([deliveryId, at])
+}
+
+// One-time password reset link. Only the SHA-256 of the token is stored,
+// so a database leak cannot be turned into account takeovers.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Promo code. kind PERCENT: value = 1..100 (%); FIXED: value = cents off.
+model Coupon {
+  id               String             @id @default(cuid())
+  code             String             @unique // stored upper-case
+  description      String?
+  kind             String // PERCENT | FIXED
+  value            Int
+  minSubtotalCents Int                @default(0)
+  maxDiscountCents Int? // cap for PERCENT codes
+  startsAt         DateTime?
+  endsAt           DateTime?
+  maxUses          Int? // total redemptions allowed (null = unlimited)
+  perUserLimit     Int                @default(1)
+  usedCount        Int                @default(0)
+  isActive         Boolean            @default(true)
+  createdAt        DateTime           @default(now())
+  redemptions      CouponRedemption[]
+}
+
+model CouponRedemption {
+  id            String   @id @default(cuid())
+  couponId      String
+  coupon        Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId       String   @unique
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  discountCents Int
+  createdAt     DateTime @default(now())
+
+  @@index([couponId, userId])
 }
 
 model OrderItem {
@@ -340,6 +529,8 @@ model ProductChange {
   proposedShowOnDeals      Boolean?
   proposedShowOnFlashDeals Boolean?
   proposedShowOnSearch     Boolean?
+  proposedShowOnRecentDeals Boolean?
+  proposedShowOnNewArrivals Boolean?
   // JSON-encoded string[] of extra category names. Mirrors the
   // existing proposedImageUrls / proposedVariants pattern. On
   // approval the route handler deletes-and-recreates the

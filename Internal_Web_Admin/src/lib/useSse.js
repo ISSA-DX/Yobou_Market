@@ -24,6 +24,7 @@ import { getAccessToken, onAuthChange } from '../api';
 
 const notificationSubscribers = new Set();
 const catalogSubscribers = new Set();
+const courierSubscribers = new Set();
 let eventSource = null;
 let reconnectTimer = null;
 
@@ -71,6 +72,12 @@ function connect() {
   es.addEventListener('catalog', (ev) => {
     try {
       dispatch(catalogSubscribers, JSON.parse(ev.data));
+    } catch { /* malformed frame */ }
+  });
+  // Live courier GPS for the fleet map (no DB row) — see server/src/lib/tracking.js.
+  es.addEventListener('courier', (ev) => {
+    try {
+      dispatch(courierSubscribers, JSON.parse(ev.data));
     } catch { /* malformed frame */ }
   });
   es.addEventListener('hello', () => {
@@ -136,6 +143,23 @@ export function useCatalogStream(onCatalog) {
     if (!eventSource && getAccessToken()) connect();
     return () => {
       catalogSubscribers.delete(wrapper);
+    };
+  }, []);
+}
+
+export function useCourierStream(onCourier) {
+  ensureAuthListener();
+  const ref = useRef(onCourier);
+  ref.current = onCourier;
+
+  useEffect(() => {
+    const wrapper = (frame) => {
+      try { ref.current?.(frame); } catch { /* ignore */ }
+    };
+    courierSubscribers.add(wrapper);
+    if (!eventSource && getAccessToken()) connect();
+    return () => {
+      courierSubscribers.delete(wrapper);
     };
   }, []);
 }

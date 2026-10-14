@@ -1,5 +1,6 @@
 const { verifyAccess } = require('./jwt');
 const { prisma } = require('../prisma');
+const { issuedBeforePasswordChange } = require('../lib/passwordReset');
 
 async function loadUser(req) {
   let token = null;
@@ -18,6 +19,8 @@ async function loadUser(req) {
     // re-enable. The check is also re-applied in auth/routes.js for
     // login + refresh so disabled users cannot mint new sessions.
     if (user && user.disabledAt) return null;
+    // Access tokens minted before a password change are revoked too.
+    if (user && issuedBeforePasswordChange(user, payload.iat)) return null;
     return user;
   } catch (err) {
     // Treat JWT verification failures as unauthenticated; propagate everything else.
@@ -94,7 +97,9 @@ async function requireAuthSse(req, res, next) {
       where: { id: payload.sub },
       include: { vendor: true },
     });
-    if (!user || user.disabledAt) return res.status(401).json({ error: 'UNAUTHENTICATED' });
+    if (!user || user.disabledAt || issuedBeforePasswordChange(user, payload.iat)) {
+      return res.status(401).json({ error: 'UNAUTHENTICATED' });
+    }
     req.user = user;
     next();
   } catch (err) {

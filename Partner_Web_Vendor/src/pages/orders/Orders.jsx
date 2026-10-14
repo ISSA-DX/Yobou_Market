@@ -1,3 +1,4 @@
+import StatusBadge from '../../components/StatusBadge';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from '../../components/Icon';
@@ -141,7 +142,7 @@ export default function Orders() {
                 <td className="px-4 py-3 font-semibold">{formatPrice(o.totalCents, currency)}</td>
                 <td className="px-4 py-3 text-on-surface-variant">{o.paymentMethod}</td>
                 <td className="px-4 py-3">
-                  <span className={`chip ${STATUS_STYLES[o.status] || ''}`}>{o.status}</span>
+                  <StatusBadge status={o.status} />
                 </td>
                 <td className="px-4 py-3 text-on-surface-variant text-label-md">
                   {o.carrier ? `${o.carrier} · ${o.trackingNumber}` : '—'}

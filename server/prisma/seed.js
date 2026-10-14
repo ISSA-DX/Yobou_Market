@@ -10,6 +10,7 @@ const USERS = [
   { email: 'admin@yobou.test', name: 'Yobou Admin', password: 'Admin123!', role: 'ADMIN' },
   { email: 'shopper@yobou.test', name: 'Demo Shopper', password: 'Shopper123!', role: 'CUSTOMER' },
   { email: 'vendor1@yobou.test', name: 'Acme Goods', password: 'Vendor123!', role: 'VENDOR', vendor: { businessName: 'Acme Goods', phone: '+1-555-0101', status: 'APPROVED' } },
+  { email: 'driver@yobou.test', name: 'Demo Courier', password: 'Driver123!', role: 'DRIVER', phone: '+1-555-0199' },
   { email: 'vendor2@yobou.test', name: 'Pending Partner', password: 'Vendor123!', role: 'VENDOR', vendor: { businessName: 'Pending Partner Co', phone: '+1-555-0102', status: 'PENDING' } },
 ];
 
@@ -62,6 +63,14 @@ async function main() {
   await prisma.notification.deleteMany();
   await prisma.sseConnection.deleteMany();
   await prisma.adminAuditLog.deleteMany();
+  await prisma.couponRedemption.deleteMany();
+  await prisma.coupon.deleteMany();
+  await prisma.passwordResetToken.deleteMany();
+  await prisma.vendorLedger.deleteMany();
+  await prisma.payout.deleteMany();
+  await prisma.deliveryPing.deleteMany();
+  await prisma.delivery.deleteMany();
+  await prisma.driverLocation.deleteMany();
   await prisma.timelineEvent.deleteMany();
   await prisma.refund.deleteMany();
   await prisma.orderItem.deleteMany();
@@ -82,6 +91,7 @@ async function main() {
         name: u.name,
         passwordHash,
         role: u.role,
+        phone: u.phone || null,
         vendor: u.vendor
           ? { create: { ...u.vendor, approvedAt: u.vendor.status === 'APPROVED' ? new Date() : null } }
           : undefined,
@@ -215,6 +225,7 @@ async function main() {
   console.log('  admin   admin@yobou.test     / Admin123!');
   console.log('  vendor  vendor1@yobou.test   / Vendor123!   (approved)');
   console.log('  vendor  vendor2@yobou.test   / Vendor123!   (pending)');
+  console.log('  courier driver@yobou.test    / Driver123!   (Partner app → /courier)');
   console.log('  buyer   shopper@yobou.test   / Shopper123!');
   console.log('Seed also includes 1 PENDING product change and 1 PENDING refund for demo of admin queues.');
 }

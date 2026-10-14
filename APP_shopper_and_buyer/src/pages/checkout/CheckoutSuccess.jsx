@@ -28,12 +28,12 @@ export default function CheckoutSuccess() {
     <div className="pt-6 text-center">
       <header className="flex items-center justify-between mb-8">
         <button type="button" onClick={() => navigate('/home')} className="p-2 -ml-2"><Icon name="close" className="text-[24px]" /></button>
-        <div className="w-9 h-9 rounded-md bg-primary text-white flex items-center justify-center font-black">Y</div>
+        <div className="w-9 h-9 rounded-md bg-gradient-to-br from-primary-container to-primary text-white flex items-center justify-center font-black shadow-pop">Y</div>
         <span className="w-10" />
       </header>
 
       {/* Animated check */}
-      <div className="relative mx-auto w-32 h-32">
+      <div className="reveal reveal-pop relative mx-auto w-32 h-32" style={{ "--reveal-dur": "0.8s" }}>
         <div className="absolute inset-0 rounded-full bg-tertiary-container/20 animate-ping" />
         <div className="absolute inset-2 rounded-full bg-tertiary-container/30 flex items-center justify-center">
           <div className="w-20 h-20 rounded-full bg-tertiary flex items-center justify-center shadow-float">
@@ -42,10 +42,10 @@ export default function CheckoutSuccess() {
         </div>
       </div>
 
-      <h1 className="mt-8 text-headline-lg font-bold">Thank you!</h1>
-      <p className="mt-2 text-on-surface-variant">Your order has been placed successfully.</p>
+      <h1 className="reveal reveal-fade-up mt-8 text-headline-lg font-bold" style={{ "--reveal-delay": "250ms" }}>Thank you!</h1>
+      <p className="reveal reveal-fade-up mt-2 text-on-surface-variant" style={{ "--reveal-delay": "350ms" }}>Your order has been placed successfully.</p>
 
-      <div className="mt-6 grid grid-cols-2 gap-3 text-left">
+      <div className="reveal-stagger stagger-zoom mt-6 grid grid-cols-2 gap-3 text-left" style={{ "--stagger-step": "120ms" }}>
         <div className="card p-4">
           <div className="text-label-md text-on-surface-variant">Order ID</div>
           <div className="font-bold mt-1">#{(order.id || '').slice(-8).toUpperCase()}</div>
@@ -75,7 +75,7 @@ export default function CheckoutSuccess() {
         )}
       </div>
 
-      <div className="mt-6 space-y-3">
+      <div className="reveal-stagger stagger-up mt-6 space-y-3">
         <Link to={`/orders/${order.id}/track`} className="btn-primary w-full py-3">
           <Icon name="local_shipping" /> Track Order
         </Link>
@@ -88,7 +88,7 @@ export default function CheckoutSuccess() {
             <Icon name="recommend" className="text-[20px] text-primary" />
             You might also like
           </h3>
-          <div className="flex gap-4 overflow-x-auto no-scrollbar -mx-4 px-4 pb-2">
+          <div className="reveal-stagger stagger-left flex gap-4 overflow-x-auto no-scrollbar -mx-4 px-4 pb-2">
             {recommended.map((p) => (
               <RecommendedCard key={p.id} product={p} currency={currency} refreshCart={refreshCart} />
             ))}

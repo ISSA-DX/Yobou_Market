@@ -26,6 +26,15 @@ const Changes = lazy(() => import('./pages/changes/Changes'));
 const Analytics = lazy(() => import('./pages/analytics/Analytics'));
 const Profile = lazy(() => import('./pages/profile/Profile'));
 const Notifications = lazy(() => import('./pages/notifications/Notifications'));
+const Courier = lazy(() => import('./pages/courier/Courier'));
+const Payouts = lazy(() => import('./pages/payouts/Payouts'));
+const ForgotPassword = lazy(() => import('./pages/auth/PasswordReset').then((m) => ({ default: m.ForgotPassword })));
+const ResetPassword = lazy(() => import('./pages/auth/PasswordReset').then((m) => ({ default: m.ResetPassword })));
+
+// Centered full-screen frame for the public auth screens.
+function AuthPage({ children }) {
+  return <div className="min-h-screen flex items-center justify-center bg-surface p-6">{children}</div>;
+}
 
 // Route-level fallback for React.Suspense — shown briefly while a lazy
 // chunk downloads.
@@ -43,14 +52,17 @@ function Boot() {
   return null;
 }
 
-function RequireAuth({ children }) {
+function RequireAuth({ children, role = 'VENDOR' }) {
   const user = useStore((s) => s.user);
   const bootDone = useStore((s) => s.bootDone);
   const logout = useStore((s) => s.logout);
   const location = useLocation();
   if (!bootDone) return <Spinner />;
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
-  if (user.role !== 'VENDOR') {
+  // Couriers and vendors share the app; send each to their own area.
+  if (user.role === 'DRIVER' && role !== 'DRIVER') return <Navigate to="/courier" replace />;
+  if (user.role === 'VENDOR' && role !== 'VENDOR') return <Navigate to="/dashboard" replace />;
+  if (user.role !== role) {
     logout();
     return <Navigate to="/login" replace />;
   }
@@ -83,7 +95,10 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/logout" element={<Logout />} />
-          <Route path="/onboarding-pending" element={<RequireAuth><OnboardingPending /></RequireAuth>} />
+          <Route path="/forgot-password" element={<AuthPage><ForgotPassword /></AuthPage>} />
+          <Route path="/reset-password" element={<AuthPage><ResetPassword /></AuthPage>} />
+          <Route path="/courier" element={<RequireAuth role="DRIVER"><Courier /></RequireAuth>} />
+          <Route path="/onboarding-pending"element={<RequireAuth><OnboardingPending /></RequireAuth>} />
           <Route element={<RequireAuth><RequireApprovedVendor><PartnerShell /></RequireApprovedVendor></RequireAuth>}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
@@ -94,6 +109,7 @@ export default function App() {
             <Route path="/orders/:id/track" element={<OrderDetail />} />
             <Route path="/changes" element={<Changes />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/payouts" element={<Payouts />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/notifications" element={<Notifications />} />
           </Route>

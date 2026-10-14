@@ -4,7 +4,13 @@ const { prisma } = require('../prisma');
 const { orderCreate, orderStatus, orderCancel, orderShip } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
 const { pay } = require('../lib/paymentSimulator');
-const { notifyOrderAudience, audit } = require('../lib/notifications');
+const { notify, notifyOrderAudience, audit } = require('../lib/notifications');
+const { scopeOrderToVendor } = require('../lib/vendorScope');
+const { trackingFor } = require('../lib/tracking');
+const { recordEarnings } = require('../lib/ledger');
+const { evaluateCoupon, redeemCoupon, releaseCoupon, CouponError } = require('../lib/coupons');
+const { sendMail, orderConfirmationEmail } = require('../lib/mailer');
+const { appUrl } = require('../lib/appUrls');
 
 const router = express.Router();
 
@@ -33,6 +39,11 @@ function parseOrder(order) {
     ...order,
     items: order.items.map((i) => ({ ...i, product: parseProductImages(i.product) })),
   };
+}
+
+async function courierManaged(orderId) {
+  const d = await prisma.delivery.findUnique({ where: { orderId }, select: { status: true } });
+  return Boolean(d && d.status !== 'FAILED');
 }
 
 function shippingFromSubtotal(subtotal) {
@@ -68,6 +79,7 @@ router.get('/:id', async (req, res, next) => {
         timeline: { orderBy: { at: 'asc' } },
         user: { select: { id: true, name: true, email: true } },
         address: true,
+        delivery: { include: { driver: { select: { name: true, phone: true } } } },
       },
     });
     if (!order) return res.status(404).json({ error: 'NOT_FOUND' });
@@ -77,8 +89,63 @@ router.get('/:id', async (req, res, next) => {
       req.user.role === 'VENDOR' &&
       order.items.some((i) => i.product.vendorId === req.user.vendor?.id);
     if (!isOwner && !isAdmin && !isVendor) return res.status(403).json({ error: 'FORBIDDEN' });
+    // Vendors only see their own line items, never other stores' products.
+    if (!isOwner && !isAdmin) {
+      return res.json({ order: parseOrder(scopeOrderToVendor(order, req.user.vendor.id)) });
+    }
     res.json({ order: parseOrder(order) });
   } catch (err) { next(err); }
+});
+
+// Courier tracking for one order, shaped for the caller's role — see
+// lib/tracking.js for what each audience can see. `tracking` is null when
+// the order isn't handled by a Yobou courier.
+router.get('/:id/tracking', async (req, res, next) => {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.id },
+      select: { userId: true, items: { select: { product: { select: { vendorId: true } } } } },
+    });
+    if (!order) return res.status(404).json({ error: 'NOT_FOUND' });
+    let audience = null;
+    if (req.user.role === 'ADMIN') audience = 'admin';
+    else if (order.userId === req.user.id) audience = 'customer';
+    else if (req.user.role === 'VENDOR' && order.items.some((i) => i.product.vendorId === req.user.vendor?.id)) audience = 'vendor';
+    if (!audience) return res.status(403).json({ error: 'FORBIDDEN' });
+    res.json({ tracking: await trackingFor(req.params.id, audience) });
+  } catch (err) { next(err); }
+});
+
+// Customer rates the Yobou courier once the order is delivered.
+const courierRating = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().trim().max(500).optional(),
+});
+
+router.post('/:id/rate-courier', async (req, res, next) => {
+  try {
+    const data = courierRating.parse(req.body || {});
+    const order = await prisma.order.findUnique({ where: { id: req.params.id }, include: { delivery: true } });
+    if (!order || order.userId !== req.user.id) return res.status(404).json({ error: 'NOT_FOUND' });
+    if (!order.delivery || order.delivery.status !== 'DELIVERED') return res.status(409).json({ error: 'NOT_DELIVERED' });
+    if (order.delivery.rating) return res.status(409).json({ error: 'ALREADY_RATED' });
+    const delivery = await prisma.delivery.update({
+      where: { id: order.delivery.id },
+      data: { rating: data.rating, ratingComment: data.comment || null, ratedAt: new Date() },
+    });
+    if (delivery.driverId) {
+      await notify(delivery.driverId, {
+        kind: 'courier_rated',
+        title: `You got ${data.rating}★`,
+        body: data.comment ? `“${data.comment.slice(0, 120)}”` : `Order #${order.id.slice(-6).toUpperCase()} was rated.`,
+        link: '/courier',
+      });
+    }
+    res.json({ rating: { stars: delivery.rating, comment: delivery.ratingComment, at: delivery.ratedAt } });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    next(err);
+  }
 });
 
 router.post('/', async (req, res, next) => {
@@ -138,7 +205,18 @@ router.post('/', async (req, res, next) => {
 
     const subtotalCents = items.reduce((s, i) => s + i.product.priceCents * i.quantity, 0);
     const shippingCents = shippingFromSubtotal(subtotalCents);
-    const totalCents = subtotalCents + shippingCents;
+    // Promo code: validated before charging so a bad code never takes money.
+    let promo = null;
+    if (data.couponCode) {
+      try {
+        promo = await evaluateCoupon(prisma, { code: data.couponCode, userId: req.user.id, subtotalCents });
+      } catch (e) {
+        if (e instanceof CouponError) return res.status(400).json({ error: e.code, ...e.extra });
+        throw e;
+      }
+    }
+    const discountCents = promo ? promo.discountCents : 0;
+    const totalCents = subtotalCents - discountCents + shippingCents;
 
     const result = await pay({
       method: data.paymentMethod,
@@ -167,6 +245,8 @@ router.post('/', async (req, res, next) => {
           addressId: data.addressId,
           subtotalCents,
           shippingCents,
+          discountCents,
+          couponCode: promo ? promo.coupon.code : null,
           totalCents,
           paymentMethod: data.paymentMethod,
           paymentTxnId: result.txnId,
@@ -204,8 +284,22 @@ router.post('/', async (req, res, next) => {
         where: { userId: req.user.id, selectedForCheckout: true },
       });
 
+      if (promo) {
+        await redeemCoupon(tx, { coupon: promo.coupon, userId: req.user.id, orderId: created.id, discountCents });
+      }
+
       return created;
     });
+
+    // Email receipt (guest accounts are skipped by the mailer).
+    sendMail({
+      to: req.user.email,
+      ...orderConfirmationEmail({
+        name: req.user.name,
+        order,
+        url: appUrl('shopper', `orders/${order.id}/track`),
+      }),
+    }).catch(() => {});
 
     // Notify vendors of the new order (customer notification is in-app;
     // we send a 'order_placed' notification to each vendor for the new
@@ -221,6 +315,8 @@ router.post('/', async (req, res, next) => {
     res.status(201).json({ order: parseOrder(order), payment: result });
   } catch (err) {
     if (err instanceof z.ZodError) return res.status(400).json({ error: 'INVALID_INPUT', issues: err.issues });
+    // Last use of a code claimed by someone else between preview and commit.
+    if (err instanceof CouponError) return res.status(400).json({ error: err.code });
     next(err);
   }
 });
@@ -277,6 +373,8 @@ router.patch('/:id/status', requireRole('ADMIN', 'VENDOR'), async (req, res, nex
       }
       const ownsAny = order.items.some((i) => i.product.vendorId === req.user.vendor.id);
       if (!ownsAny) return res.status(403).json({ error: 'FORBIDDEN' });
+      // Orders handed to a Yobou courier are progressed by the courier app.
+      if (await courierManaged(order.id)) return res.status(409).json({ error: 'COURIER_MANAGED' });
       const allowedBaseStatuses =
         order.paymentMethod === 'COD'
           ? ['PLACED', 'PAID', 'PROCESSING', 'SHIPPED']
@@ -318,6 +416,7 @@ router.patch('/:id/status', requireRole('ADMIN', 'VENDOR'), async (req, res, nex
           data: { shippedAt: new Date() },
         });
       }
+      if (data.status === 'DELIVERED') await recordEarnings(tx, result.id);
       await notifyOrderAudience(result, {
         kind: 'order_status',
         title: statusTitle(data.status),
@@ -368,6 +467,7 @@ router.post('/:id/cancel', requireAuth, requireRole('ADMIN'), async (req, res, n
           });
         }
       }
+      await releaseCoupon(tx, order.id);
       const orderUpdate = await tx.order.update({
         where: { id: order.id },
         data: {
@@ -436,6 +536,8 @@ router.post('/:id/ship', requireRole('ADMIN', 'VENDOR'), async (req, res, next) 
       }
       const ownsAny = order.items.some((i) => i.product.vendorId === req.user.vendor.id);
       if (!ownsAny) return res.status(403).json({ error: 'FORBIDDEN' });
+      // Orders handed to a Yobou courier are progressed by the courier app.
+      if (await courierManaged(order.id)) return res.status(409).json({ error: 'COURIER_MANAGED' });
     }
 
     const estimatedDelivery = data.estimatedDelivery ? new Date(data.estimatedDelivery) : null;
@@ -511,6 +613,8 @@ router.post('/:id/deliver', requireRole('ADMIN', 'VENDOR'), async (req, res, nex
       }
       const ownsAny = order.items.some((i) => i.product.vendorId === req.user.vendor.id);
       if (!ownsAny) return res.status(403).json({ error: 'FORBIDDEN' });
+      // Orders handed to a Yobou courier are progressed by the courier app.
+      if (await courierManaged(order.id)) return res.status(409).json({ error: 'COURIER_MANAGED' });
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -528,6 +632,7 @@ router.post('/:id/deliver', requireRole('ADMIN', 'VENDOR'), async (req, res, nex
         },
         include: { items: { include: { product: { include: { vendor: true } } } }, timeline: { orderBy: { at: 'asc' } } },
       });
+      await recordEarnings(tx, result.id);
       await notifyOrderAudience(result, {
         kind: 'order_status',
         title: 'Order delivered',

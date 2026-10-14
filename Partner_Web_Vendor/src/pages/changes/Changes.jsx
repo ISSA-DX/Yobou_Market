@@ -1,3 +1,4 @@
+import StatusBadge from '../../components/StatusBadge';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from '../../components/Icon';
@@ -101,7 +102,7 @@ export default function Changes() {
                   <Icon name={ACTION_ICON[c.action] || 'edit'} className="text-[18px] text-on-surface-variant" />
                   <span className="font-semibold">{c.action}</span>
                   {p.name && <span className="text-on-surface-variant">· {p.name}</span>}
-                  <span className={`chip ${STATUS_STYLES[c.status] || ''}`}>{c.status}</span>
+                  <StatusBadge status={c.status} />
                 </div>
                 {c.adminNote && (
                   <div className="mt-2 p-2 rounded-md bg-surface-low text-sm">

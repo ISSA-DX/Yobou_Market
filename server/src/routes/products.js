@@ -249,6 +249,8 @@ router.get('/', async (req, res, next) => {
     if (parsed.showOnDeals != null) where.showOnDeals = parsed.showOnDeals;
     if (parsed.showOnFlashDeals != null) where.showOnFlashDeals = parsed.showOnFlashDeals;
     if (parsed.showOnSearch != null) where.showOnSearch = parsed.showOnSearch;
+    if (parsed.showOnRecentDeals != null) where.showOnRecentDeals = parsed.showOnRecentDeals;
+    if (parsed.showOnNewArrivals != null) where.showOnNewArrivals = parsed.showOnNewArrivals;
 
     // Resolved page size: explicit pageSize wins, legacy `limit`
     // follows (kept for callers like Home.jsx that don't pass a
@@ -359,6 +361,23 @@ router.get('/vendor/mine', requireAuth, requireApprovedVendor, async (req, res, 
       },
     });
     res.json({ products: products.map((p) => parseVariants(parseImageUrls(p))) });
+  } catch (err) { next(err); }
+});
+
+// Vendor-only: read one of the vendor's OWN products (any status) for the
+// partner edit form. Another store's product is a 404, so the partner
+// app can never load a competitor's listing into its editor.
+router.get('/vendor/:id', requireAuth, requireApprovedVendor, async (req, res, next) => {
+  try {
+    const product = await prisma.product.findFirst({
+      where: { id: req.params.id, vendorId: req.user.vendor.id },
+      include: {
+        variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
+        extraCategories: { select: { id: true, name: true } },
+      },
+    });
+    if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
+    res.json({ product: parseExtraCategories(parseVariants(parseImageUrls(product))) });
   } catch (err) { next(err); }
 });
 
@@ -500,6 +519,8 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
         proposedShowOnDeals:      rest.showOnDeals      ?? null,
         proposedShowOnFlashDeals: rest.showOnFlashDeals ?? null,
         proposedShowOnSearch:     rest.showOnSearch     ?? null,
+        proposedShowOnRecentDeals: rest.showOnRecentDeals ?? null,
+        proposedShowOnNewArrivals: rest.showOnNewArrivals ?? null,
         proposedExtraCategories:  JSON.stringify(normalizedExtras),
         status: 'PENDING',
       },
@@ -672,6 +693,8 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         proposedShowOnDeals:      data.showOnDeals      ?? null,
         proposedShowOnFlashDeals: data.showOnFlashDeals ?? null,
         proposedShowOnSearch:     data.showOnSearch     ?? null,
+        proposedShowOnRecentDeals: data.showOnRecentDeals ?? null,
+        proposedShowOnNewArrivals: data.showOnNewArrivals ?? null,
         // Extra categories: normalize then JSON-encode. The change
         // record only carries a JSON snapshot; the approval path
         // reconciles the join table.

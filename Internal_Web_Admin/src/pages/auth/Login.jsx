@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 
@@ -37,7 +37,7 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-surface p-6">
       <div className="w-full max-w-md">
         <div className="flex items-center gap-2 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center font-black text-lg">Y</div>
+          <div className="w-10 h-10 rounded-md bg-gradient-to-br from-primary-container to-primary text-white flex items-center justify-center font-black shadow-pop text-lg">Y</div>
           <div>
             <div className="font-bold text-xl">Yobou Admin</div>
             <div className="text-label-md text-on-surface-variant">Management portal</div>
@@ -94,12 +94,18 @@ export default function Login() {
               {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
               Sign in
             </button>
+            <div className="text-center">
+              <Link to="/forgot-password" className="text-sm text-primary font-medium">Forgot password?</Link>
+            </div>
           </form>
         </div>
 
-        <p className="mt-4 text-center text-label-md text-on-surface-variant">
-          Demo: admin@yobou.test / Admin123!
-        </p>
+        {/* Never advertise credentials on a production build. */}
+        {import.meta.env.DEV && (
+          <p className="mt-4 text-center text-label-md text-on-surface-variant">
+            Demo: admin@yobou.test / Admin123!
+          </p>
+        )}
       </div>
     </div>
   );
@@ -116,6 +122,8 @@ function humanizeError(e) {
   }
   if (code === 'NETWORK_ERROR') return msg || 'Cannot reach the server. Check your internet connection.';
   if (code === 'INVALID_CREDENTIALS') return 'Email or password is incorrect.';
+  if (code === 'TOO_MANY_ATTEMPTS') return 'Too many wrong passwords. Wait 15 minutes or reset your password.';
+  if (code === 'RATE_LIMITED') return 'Too many attempts. Please wait a few minutes and try again.';
   if (code === 'VENDOR_PENDING' || code === 'VENDOR_REJECTED') return 'This portal is for administrators only.';
   if (e instanceof TypeError) {
     return 'Cannot reach the server. Check your internet connection, or contact the operator if this keeps happening.';

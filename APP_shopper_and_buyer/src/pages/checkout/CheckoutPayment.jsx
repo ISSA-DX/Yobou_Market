@@ -10,6 +10,22 @@ import { formatPrice } from '../../lib/format';
 
 const SHIPPING_CENTS = 499;
 const FREE_SHIPPING_THRESHOLD_CENTS = 5000;
+// Same key is read by CheckoutCardNew, which places card orders.
+const PROMO_KEY = 'yobou:checkoutCoupon';
+
+function humanizePromoError(data, currency) {
+  switch (data?.error) {
+    case 'COUPON_NOT_FOUND': return "That code doesn't exist.";
+    case 'COUPON_INACTIVE': return 'This code is no longer active.';
+    case 'COUPON_NOT_STARTED': return "This code isn't valid yet.";
+    case 'COUPON_EXPIRED': return 'This code has expired.';
+    case 'COUPON_USED_UP': return 'This code has reached its usage limit.';
+    case 'COUPON_ALREADY_USED': return "You've already used this code.";
+    case 'COUPON_MIN_SUBTOTAL': return `Spend at least ${formatPrice(data.minSubtotalCents, currency)} to use this code.`;
+    case 'RATE_LIMITED': return 'Too many attempts — try again in a few minutes.';
+    default: return 'Could not apply this code.';
+  }
+}
 
 export default function CheckoutPayment() {
   const navigate = useNavigate();
@@ -18,6 +34,11 @@ export default function CheckoutPayment() {
   const [method, setMethod] = useState('CARD');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // Promo code: validated by the server against the selected cart.
+  const [promo, setPromo] = useState(null); // { code, description, discountCents }
+  const [promoInput, setPromoInput] = useState('');
+  const [promoErr, setPromoErr] = useState('');
+  const [promoBusy, setPromoBusy] = useState(false);
   // Fetch /api/cart on mount. api.js handles the 401 → refresh round-
   // trip on its own (server/src/auth/routes.js now sets the refresh
   // cookie SameSite=None; Secure in production so the cross-site
@@ -59,7 +80,43 @@ export default function CheckoutPayment() {
   const subtotal = selectedItems.reduce((s, i) => s + i.product.priceCents * i.quantity, 0);
   const itemCount = selectedItems.reduce((s, i) => s + i.quantity, 0);
   const shipping = subtotal >= FREE_SHIPPING_THRESHOLD_CENTS ? 0 : (selectedItems.length > 0 ? SHIPPING_CENTS : 0);
-  const total = subtotal + shipping;
+  const discount = promo && selectedItems.length > 0 ? Math.min(promo.discountCents, subtotal) : 0;
+  const total = subtotal - discount + shipping;
+
+  // Re-check a remembered promo when the cart total changes (min-subtotal
+  // rules, percentage amount).
+  useEffect(() => {
+    const saved = sessionStorage.getItem(PROMO_KEY);
+    if (!saved || !data) return;
+    applyPromo(saved, { silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subtotal, Boolean(data)]);
+
+  async function applyPromo(code, { silent = false } = {}) {
+    const clean = String(code || '').trim();
+    if (!clean) return;
+    setPromoBusy(true);
+    if (!silent) setPromoErr('');
+    try {
+      const r = await api('/api/coupons/preview', { method: 'POST', body: { code: clean } });
+      setPromo(r);
+      setPromoInput('');
+      setPromoErr('');
+      sessionStorage.setItem(PROMO_KEY, r.code);
+    } catch (e) {
+      setPromo(null);
+      sessionStorage.removeItem(PROMO_KEY);
+      setPromoErr(humanizePromoError(e.data, currency));
+    } finally {
+      setPromoBusy(false);
+    }
+  }
+
+  function removePromo() {
+    setPromo(null);
+    setPromoErr('');
+    sessionStorage.removeItem(PROMO_KEY);
+  }
 
   async function placeOrder(card) {
     setBusy(true); setErr('');
@@ -68,11 +125,13 @@ export default function CheckoutPayment() {
       if (!addressId) { navigate('/checkout/shipping'); return; }
       const body = { addressId, paymentMethod: method };
       if (method === 'CARD' && card) body.card = card;
+      if (promo) body.couponCode = promo.code;
       const { order, payment } = await api('/api/orders', { method: 'POST', body });
       if (!payment.ok) {
         setErr(payment.reason === 'DECLINED' ? 'Card was declined. Try another payment method.' : 'Payment failed.');
         return;
       }
+      sessionStorage.removeItem(PROMO_KEY);
       navigate(`/checkout/success/${order.id}`);
     } catch (e) {
       setErr(humanizeOrderError(e.data?.error));
@@ -92,7 +151,7 @@ export default function CheckoutPayment() {
         <span className="w-10" />
       </header>
 
-      <div className="flex items-center gap-2 text-label-md">
+      <div className="reveal reveal-wipe flex items-center gap-2 text-label-md">
         {['Shipping', 'Payment', 'Review'].map((step, i) => (
           <div key={step} className="flex-1 flex items-center gap-2">
             <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${i <= 1 ? 'bg-primary text-white' : 'bg-surface-high text-on-surface-variant'}`}>
@@ -109,7 +168,7 @@ export default function CheckoutPayment() {
           exactly what's heading into the charge before tapping Place
           Order. */}
       {selectedItems.length > 0 && (
-        <details className="card p-3 group" open>
+        <details className="reveal reveal-fade-up card p-3 group" open>
           <summary className="flex items-center gap-2 cursor-pointer list-none">
             <Icon name="shopping_bag" className="text-primary text-[20px]" />
             <span className="font-semibold text-sm">
@@ -155,11 +214,11 @@ export default function CheckoutPayment() {
         </details>
       )}
 
-      <h2 className="text-headline-md font-bold">Payment method</h2>
-      <PaymentMethodPicker value={method} onChange={setMethod} />
+      <h2 className="reveal reveal-slide-right text-headline-md font-bold">Payment method</h2>
+      <div className="reveal reveal-pop"><PaymentMethodPicker value={method} onChange={setMethod} /></div>
 
       {/* Express wallets */}
-      <div className="space-y-2">
+      <div className="reveal-stagger stagger-up space-y-2">
         <div className="text-label-md text-on-surface-variant">Express wallets</div>
         <button type="button" onClick={() => setMethod('PAYPAL')} className="w-full card p-3 flex items-center gap-3 hover:border-primary/40">
           <div className="w-10 h-10 rounded-lg bg-primary text-white flex items-center justify-center font-black">P</div>
@@ -184,8 +243,47 @@ export default function CheckoutPayment() {
         </div>
       </div>
 
-      <div className="card p-4 space-y-2">
+      <div className="reveal reveal-flip card p-4 space-y-2">
+        <div className="flex items-center gap-2">
+          <Icon name="sell" className="text-primary text-[20px]" />
+          <span className="font-semibold text-sm">Promo code</span>
+        </div>
+        {promo ? (
+          <div className="flex items-center gap-2 rounded-lg bg-tertiary-container/20 px-3 py-2">
+            <Icon name="check_circle" className="text-tertiary text-[20px]" />
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-sm">{promo.code}</div>
+              {promo.description && <div className="text-label-md text-on-surface-variant line-clamp-1">{promo.description}</div>}
+            </div>
+            <span className="font-semibold text-tertiary text-sm">−{formatPrice(discount, currency)}</span>
+            <button type="button" onClick={removePromo} className="p-1" aria-label="Remove promo code">
+              <Icon name="close" className="text-[18px] text-on-surface-variant" />
+            </button>
+          </div>
+        ) : (
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => { e.preventDefault(); applyPromo(promoInput); }}
+          >
+            <input
+              className="input flex-1 uppercase"
+              placeholder="Enter code"
+              autoCapitalize="characters"
+              value={promoInput}
+              onChange={(e) => setPromoInput(e.target.value)}
+              maxLength={40}
+            />
+            <button type="submit" disabled={promoBusy || !promoInput.trim()} className="btn-secondary px-4 disabled:opacity-60">
+              Apply
+            </button>
+          </form>
+        )}
+        {promoErr && <div className="text-error text-label-md">{promoErr}</div>}
+      </div>
+
+      <div className="reveal reveal-tilt card p-4 space-y-2">
         <Row label={`Subtotal (${itemCount} items)`} value={formatPrice(subtotal, currency)} />
+        {discount > 0 && <Row label={`Promo ${promo.code}`} value={`−${formatPrice(discount, currency)}`} />}
         <Row label="Shipping" value={shipping === 0 ? 'FREE' : formatPrice(shipping, currency)} />
         <div className="border-t border-outline-variant/30 pt-2 mt-2">
           <Row label="Total" value={formatPrice(total, currency)} bold />
@@ -194,17 +292,21 @@ export default function CheckoutPayment() {
 
       {err && <div className="text-error text-sm">{err}</div>}
 
-      <div className="fixed bottom-0 inset-x-0 p-4 bg-white border-t border-outline-variant/30">
-        <button
-          onClick={() => method === 'CARD' ? navigate('/checkout/card/new') : placeOrder()}
-          disabled={busy || selectedItems.length === 0}
-          className="btn-primary w-full py-3 max-w-screen-md mx-auto disabled:opacity-60"
-        >
-          {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
-          {method === 'CARD'
-            ? `Enter card details · ${formatPrice(total, currency)}`
-            : `Place order · ${formatPrice(total, currency)}`}
-        </button>
+      {/* Same centred column as the page (TransactionLayout main), so the
+          bar lines up with the cards on tablets and the web build. */}
+      <div className="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-outline-variant/30" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        <div className="max-w-screen-md mx-auto p-4">
+          <button
+            onClick={() => method === 'CARD' ? navigate('/checkout/card/new') : placeOrder()}
+            disabled={busy || selectedItems.length === 0}
+            className="btn-primary w-full py-3 whitespace-normal text-center leading-tight disabled:opacity-60"
+          >
+            {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
+            <span>{method === 'CARD' ? 'Enter card details' : 'Place order'}</span>
+            <span aria-hidden="true">·</span>
+            <span className="whitespace-nowrap">{formatPrice(total, currency)}</span>
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -226,6 +328,12 @@ function humanizeOrderError(code) {
     case 'INSUFFICIENT_STOCK': return 'An item in your cart is out of stock.';
     case 'NO_SELECTION': return 'Please go back to your cart and select at least one item.';
     case 'PRODUCT_NOT_AVAILABLE': return 'A product in your cart is no longer available.';
+    case 'COUPON_USED_UP':
+    case 'COUPON_EXPIRED':
+    case 'COUPON_INACTIVE':
+    case 'COUPON_ALREADY_USED':
+    case 'COUPON_MIN_SUBTOTAL':
+      return 'Your promo code can no longer be applied. Remove it and try again.';
     default: return 'Could not place order. Please try again.';
   }
 }

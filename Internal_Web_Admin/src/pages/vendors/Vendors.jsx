@@ -1,3 +1,4 @@
+import StatusBadge from '../../components/StatusBadge';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
@@ -93,7 +94,7 @@ export default function Vendors() {
                 <div className="font-bold text-lg">{v.businessName}</div>
                 <div className="text-label-md text-on-surface-variant">{v.user?.name || '—'} · {v.user?.email || '—'}</div>
               </div>
-              <span className={`chip ${TONE[v.status] || ''}`}>{v.status}</span>
+              <StatusBadge status={v.status} />
             </div>
             <div className="text-sm text-on-surface-variant">
               <Icon name="phone" className="text-[14px] mr-1" />

@@ -19,11 +19,14 @@ import './styles/index.css';
 // to the DOM. So when Vite's `base` is './' (APK) we translate it to '/'
 // here instead of letting `.replace(/\/$/, '')` collapse it to '.'.
 //
-// In dev (vite dev) the Vite server still serves at root, so we use '/'.
-const rawBasePath = import.meta.env.VITE_BASE_PATH;
+// Vite exposes its `base` as import.meta.env.BASE_URL in every mode, so we
+// derive the basename from it. (Dev used to hard-code '/', but vite.config
+// serves dev at /partner/ — deep links such as /partner/products or the
+// emailed /partner/reset-password link fell through to the catch-all
+// redirect and landed on the dashboard.)
+const rawBasePath = import.meta.env.BASE_URL;
 const basename = (() => {
-  if (!import.meta.env.PROD) return '/';
-  if (!rawBasePath || rawBasePath === './' || rawBasePath === '.') return '/';
+  if (!rawBasePath || rawBasePath === './' || rawBasePath === '.' || rawBasePath === '/') return '/';
   return rawBasePath.replace(/\/$/, '');
 })();
 

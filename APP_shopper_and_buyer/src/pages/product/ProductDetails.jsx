@@ -319,7 +319,7 @@ export default function ProductDetails() {
     <div className="pb-32">
       {/* Image carousel */}
       <div className="relative">
-        <div ref={carouselRef} className="aspect-square bg-surface-low overflow-x-auto no-scrollbar snap-x snap-mandatory flex">
+        <div ref={carouselRef} className="reveal reveal-blur aspect-square bg-surface-low overflow-x-auto no-scrollbar snap-x snap-mandatory flex">
           {images.map((src, i) => (
             <img
               key={i}
@@ -362,9 +362,10 @@ export default function ProductDetails() {
       </div>
 
       <div className="px-4 pt-5 space-y-4">
-        <div>
-          <div className="text-label-md text-on-surface-variant uppercase">{p.category}</div>
-          <h1 className="mt-1 text-headline-lg font-bold">{p.name}</h1>
+        <div className="reveal reveal-fade-up">
+          <div className="eyebrow">{p.vendor?.businessName ? `${p.vendor.businessName} · ${p.category}` : p.category}</div>
+          {/* Product names read in ink (page titles elsewhere keep the brand blue). */}
+          <h1 className="mt-1 text-headline-lg font-bold text-on-surface leading-tight">{p.name}</h1>
           <div className="mt-2 flex items-center gap-3">
             {typeof p.rating === 'number' && p.rating > 0 ? (
               <>
@@ -374,12 +375,12 @@ export default function ProductDetails() {
                   ))}
                 </div>
                 <a href="#reviews" className="text-label-md text-on-surface-variant hover:text-primary">
-                  {p.rating.toFixed(1)}{typeof p.reviewCount === 'number' && p.reviewCount > 0 ? ` (${p.reviewCount} review${p.reviewCount === 1 ? '' : 's'})` : ''} · {p.stock} in stock
+                  {p.rating.toFixed(1)}{typeof p.reviewCount === 'number' && p.reviewCount > 0 ? ` (${p.reviewCount} review${p.reviewCount === 1 ? '' : 's'})` : ''}
                 </a>
               </>
             ) : (
-              <a href="#reviews" className="text-label-md text-on-surface-variant/70 italic hover:text-primary">
-                No reviews yet · {p.stock} in stock
+              <a href="#reviews" className="text-label-md text-on-surface-variant hover:text-primary">
+                No reviews yet — be the first
               </a>
             )}
           </div>
@@ -392,22 +393,37 @@ export default function ProductDetails() {
               server's `compareAtPriceCents` which the admin/partner
               apps set in the deal-price workflow. */}
           <div className="mt-3 flex items-baseline gap-2 flex-wrap">
-            <span className="text-headline-lg font-bold text-primary">{formatPrice(p.priceCents, currency)}</span>
+            <span className={`text-[28px] leading-8 font-extrabold tracking-tight ${p.compareAtPriceCents > p.priceCents ? 'text-sale' : 'text-on-surface'}`}>
+              {formatPrice(p.priceCents, currency)}
+            </span>
             {p.compareAtPriceCents && p.compareAtPriceCents > p.priceCents && (
               <>
                 <span className="text-on-surface-variant line-through text-base">
                   {formatPrice(p.compareAtPriceCents, currency)}
                 </span>
-                <span className="chip bg-tertiary text-white text-label-md font-bold px-2 py-0.5 rounded-full">
-                  {Math.round((1 - p.priceCents / p.compareAtPriceCents) * 100)}% off
+                <span className="px-2 py-0.5 rounded-md bg-sale text-white text-label-md font-black">
+                  -{Math.round((1 - p.priceCents / p.compareAtPriceCents) * 100)}%
                 </span>
               </>
             )}
           </div>
+          <div className="mt-2 flex items-center gap-2 text-label-md font-semibold">
+            {p.stock > 0 ? (
+              <span className={p.stock <= 5 ? 'text-amber-600' : 'text-tertiary'}>
+                <Icon name={p.stock <= 5 ? 'local_fire_department' : 'check_circle'} className="text-[16px] align-text-bottom" fill />{' '}
+                {p.stock <= 5 ? `Only ${p.stock} left — order soon` : 'In stock'}
+              </span>
+            ) : (
+              <span className="text-error">Out of stock</span>
+            )}
+            <span className="text-on-surface-variant font-medium">
+              · {p.priceCents >= 5000 ? 'Free delivery' : 'Free delivery over $50'}
+            </span>
+          </div>
         </div>
 
         {hasVariants && (
-          <div>
+          <div className="reveal reveal-slide-left" style={{ "--reveal-delay": "80ms" }}>
             <div className="text-label-md text-on-surface-variant mb-2">Color</div>
             <div className="flex flex-wrap gap-2">
               {uniqueColors.map((c) => (
@@ -431,7 +447,7 @@ export default function ProductDetails() {
         )}
 
         {hasVariants && (
-          <div>
+          <div className="reveal reveal-slide-left" style={{ "--reveal-delay": "160ms" }}>
             <div className="flex items-center justify-between mb-2">
               <div className="text-label-md text-on-surface-variant">
                 Size
@@ -522,28 +538,8 @@ export default function ProductDetails() {
               </div>
             )}
 
-            {/* In-page Quick add. Amazon-style: an explicit one-tap
-                CTA above the description so the shopper doesn't have to
-                scroll past the spec tabs to commit. The same logic as
-                the sticky bottom buttons (disabled when the pick is
-                OOS or invalid). Renders only on variant products. */}
-            <button
-              type="button"
-              onClick={add}
-              disabled={busy || outOfStock || !exactMatch}
-              className="mt-4 w-full btn-primary py-3 disabled:opacity-60 flex items-center justify-center gap-2"
-            >
-              {busy ? (
-                <Icon name="progress_activity" className="text-[18px] animate-spin" />
-              ) : (
-                <Icon name="shopping_bag" />
-              )}
-              {exactMatch
-                ? `Add ${pickedColor} × ${pickedSize} to cart · ${formatPrice(p.priceCents, currency)}`
-                : outOfStock
-                  ? 'Sold out'
-                  : 'Pick a color and size'}
-            </button>
+            {/* The sticky bottom bar is the single add-to-cart action;
+                it reflects the picked colour/size. */}
           </div>
         )}
 
@@ -575,14 +571,14 @@ export default function ProductDetails() {
           </div>
         </div>
 
-        <ProductDescriptionTabs product={p} onChanged={() => refetch()} />
+        <div className="reveal reveal-flip"><ProductDescriptionTabs product={p} onChanged={() => refetch()} /></div>
 
         {/* Delivery card — expanded with cash-on-delivery (a Yobou
             selling point) and a stock urgency hint when stock is
             running low. Temu and Amazon both surface "Only N left,
             order soon" right above the variant picker; we put it on
             the delivery line so the value-prop stays consistent. */}
-        <div className="card p-4 flex items-center gap-3">
+        <div className="reveal reveal-slide-right card p-4 flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-tertiary-container/20 flex items-center justify-center">
             <Icon name="local_shipping" className="text-tertiary" />
           </div>
@@ -619,7 +615,7 @@ export default function ProductDetails() {
             on VoiceOver/Narrator at 200% magnification and meets
             WCAG-AA contrast against surface-low without a separate
             fontweight bump. */}
-        <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="reveal-stagger stagger-pop grid grid-cols-3 gap-2 text-center" style={{ "--stagger-step": "100ms" }}>
           <div className="card p-3 flex flex-col items-center gap-1">
             <Icon name="lock" className="text-primary text-[20px]" />
             <span className="text-label-md font-semibold">Secure checkout</span>
@@ -649,7 +645,7 @@ export default function ProductDetails() {
             anywhere; it’s a transparent "trust anchor" pattern that
             Amazon uses for its brand storefront widgets. */}
         {p.vendor && (
-          <div className="card p-4 flex items-center gap-3">
+          <div className="reveal reveal-tilt card p-4 flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-primary-container/40 flex items-center justify-center">
               <Icon name="storefront" className="text-primary text-[24px]" />
             </div>
@@ -679,7 +675,7 @@ export default function ProductDetails() {
             by what the shopper can learn at the moment of purchase.
             Pure HTML <details>/<summary> — no portal/aria-expanded
             state machinery needed. */}
-        <div className="card divide-y divide-outline-variant/30">
+        <div className="reveal reveal-wipe card divide-y divide-outline-variant/30">
           <details className="group p-4">
             <summary className="flex items-center justify-between cursor-pointer list-none">
               <span className="flex items-center gap-2 font-semibold text-sm">
@@ -727,7 +723,7 @@ export default function ProductDetails() {
           </details>
         </div>
 
-        <RelatedProducts productId={p.id} onAdd={add} />
+        <div className="reveal reveal-fade-up"><RelatedProducts productId={p.id} onAdd={add} /></div>
       </div>
 
       {/* Sticky CTA. Layered with `z-40` so it sits ABOVE the bottom
@@ -746,7 +742,7 @@ export default function ProductDetails() {
           handler which then calls add() / buy() and navigates to
           /cart or /checkout/shipping as expected. */}
       <div
-        className="fixed bottom-0 inset-x-0 p-4 bg-white border-t border-outline-variant/30 shadow-float z-40"
+        className="fixed bottom-0 inset-x-0 px-4 pt-3 glass border-t border-outline-variant/50 shadow-nav z-40"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
         <div className="max-w-screen-md mx-auto grid grid-cols-2 gap-3">

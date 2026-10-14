@@ -39,6 +39,9 @@ function paramsToState(p) {
     inStock: p.get('inStock') === 'true',
     sort: p.get('sort') || 'featured',
     page: Number(p.get('page') || '1') || 1,
+    // Home section "See all" links (curated placements).
+    showOnNewArrivals: p.get('showOnNewArrivals') === 'true',
+    showOnRecentDeals: p.get('showOnRecentDeals') === 'true',
   };
 }
 
@@ -56,6 +59,8 @@ function buildQueryString(state) {
   if (state.inStock) p.set('inStock', 'true');
   if (state.sort && state.sort !== 'featured') p.set('sort', state.sort);
   if (state.page && state.page !== 1) p.set('page', String(state.page));
+  if (state.showOnNewArrivals) p.set('showOnNewArrivals', 'true');
+  if (state.showOnRecentDeals) p.set('showOnRecentDeals', 'true');
   return p.toString() ? `?${p.toString()}` : '';
 }
 
@@ -297,11 +302,28 @@ export default function Search() {
         </div>
       </div>
 
+      {/* Curated section view (from a Home "See all" link). */}
+      {(state.showOnNewArrivals || state.showOnRecentDeals) && (
+        <div className="reveal reveal-fade-down flex items-center gap-2 rounded-lg bg-primary/[0.06] border border-primary/15 px-3 py-2">
+          <Icon name={state.showOnNewArrivals ? 'new_releases' : 'local_offer'} className="text-primary text-[20px]" />
+          <span className="flex-1 text-sm font-semibold">
+            {state.showOnNewArrivals ? 'New arrivals' : 'Recent deals'}
+          </span>
+          <button
+            type="button"
+            onClick={() => setParams({ ...state, showOnNewArrivals: false, showOnRecentDeals: false, page: 1 })}
+            className="text-label-md font-semibold text-primary"
+          >
+            Show all products
+          </button>
+        </div>
+      )}
+
       {/* Active filter chips — horizontally scrollable, removable in
           place. "Clear all" sits at the end of the scrollable row so a
           long filter list still leaves a fast escape hatch. */}
       {activeFilterCount > 0 && (
-        <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 py-1 whitespace-nowrap">
+        <div className="reveal-stagger stagger-left flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 py-1 whitespace-nowrap" style={{ "--stagger-step": "40ms" }}>
           {draft.category.map((c) => (
             <button
               key={`cat-${c}`}
@@ -398,7 +420,7 @@ export default function Search() {
       {/* Results grid + page paginator */}
       {!loading && !error && data.products.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+          <div className="reveal-stagger stagger-zoom grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
             {data.products.map((p) => <ProductCard key={p.id} product={p} onAdd={quickAdd} />)}
           </div>
 
@@ -466,7 +488,7 @@ function FilterSheet({ facets, draft, setDraft, onApply, onClear, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-surface">
+    <div className="anim-sheet fixed inset-0 z-50 flex flex-col bg-surface">
       <header className="flex items-center justify-between px-4 h-14 border-b border-outline-variant/30 flex-none">
         <button type="button" onClick={onClose} className="p-2 -ml-2" aria-label="Close filters">
           <Icon name="close" className="text-[24px]" />
@@ -478,7 +500,7 @@ function FilterSheet({ facets, draft, setDraft, onApply, onClear, onClose }) {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
         {/* Categories */}
         {facets.categories?.length > 0 && (
-          <section>
+          <section className="reveal reveal-fade-up" style={{ "--reveal-delay": "120ms" }}>
             <h3 className="text-title-md font-bold mb-2">Category</h3>
             <ul className="space-y-1.5">
               {facets.categories.map((c) => (
@@ -501,7 +523,7 @@ function FilterSheet({ facets, draft, setDraft, onApply, onClear, onClose }) {
 
         {/* Brands (vendors) */}
         {facets.vendors?.length > 0 && (
-          <section>
+          <section className="reveal reveal-fade-up" style={{ "--reveal-delay": "180ms" }}>
             <h3 className="text-title-md font-bold mb-2">Brand</h3>
             <ul className="space-y-1.5">
               {facets.vendors.map((v) => (
@@ -527,7 +549,7 @@ function FilterSheet({ facets, draft, setDraft, onApply, onClear, onClose }) {
             envelope across the shop in formatted dollars so users
             know what range the shop actually carries before they
             enter numbers. */}
-        <section>
+        <section className="reveal reveal-fade-up" style={{ "--reveal-delay": "240ms" }}>
           <h3 className="text-title-md font-bold mb-2">Price</h3>
           <div className="flex items-center gap-2">
             <div className="flex-1 relative">
@@ -567,7 +589,7 @@ function FilterSheet({ facets, draft, setDraft, onApply, onClear, onClose }) {
 
         {/* In-stock toggle — single switch on the right; label on the
             left toggles the same state for big-tap accessibility. */}
-        <section>
+        <section className="reveal reveal-fade-up" style={{ "--reveal-delay": "300ms" }}>
           <label className="flex items-center justify-between py-1.5 cursor-pointer gap-3">
             <span className="text-title-md font-bold flex-1">In stock only</span>
             <button

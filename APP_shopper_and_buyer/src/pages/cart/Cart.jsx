@@ -239,7 +239,7 @@ export default function Cart() {
           <span className="w-10" />
         </header>
         <div className="py-16">
-          <div className="mx-auto w-24 h-24 rounded-full bg-surface-low flex items-center justify-center">
+          <div className="reveal reveal-pop mx-auto w-24 h-24 rounded-full bg-surface-low flex items-center justify-center">
             <Icon name="shopping_bag" className="text-[44px] text-on-surface-variant" />
           </div>
           <h2 className="mt-5 text-headline-md font-bold">Your cart is empty</h2>
@@ -277,7 +277,7 @@ export default function Cart() {
 
       <div className="lg:grid lg:grid-cols-12 lg:gap-8">
         {/* Items column */}
-        <div className="lg:col-span-8 space-y-4">
+        <div className="lg:col-span-7 space-y-4">
           {/* Selection bar. Single round-trip to the server for the
               entire cart when the master checkbox flips — see
               setSelectionAll. The indeterminate attribute is a DOM
@@ -349,7 +349,7 @@ export default function Cart() {
               render the same CartItem body so the visual treatment
               stays consistent. */}
           {selectedItems.length > 0 && (
-            <div className="space-y-3">
+            <div className="reveal-stagger stagger-left space-y-3">
               {selectedItems.map((it) => (
                 <CartItem
                   key={it.id}
@@ -365,7 +365,7 @@ export default function Cart() {
           )}
 
           {unselectedItems.length > 0 && (
-            <div className="space-y-3">
+            <div className="reveal-stagger stagger-blur space-y-3">
               {selectedItems.length > 0 && (
                 <div className="flex items-center gap-2 mt-4 mb-2">
                   <Icon name="bookmark" className="text-[18px] text-on-surface-variant" />
@@ -396,8 +396,8 @@ export default function Cart() {
         </div>
 
         {/* Summary column */}
-        <div className="lg:col-span-4 mt-6 lg:mt-0">
-          <div className="card p-5 lg:sticky lg:top-4 space-y-3">
+        <div className="lg:col-span-5 mt-6 lg:mt-0">
+          <div className="reveal reveal-fade-up card p-5 lg:sticky lg:top-4 space-y-3" style={{ "--reveal-delay": "150ms" }}>
             <h2 className="text-headline-md font-bold hidden lg:block">Order Summary</h2>
             {selectedItems.length === 0 ? (
               <div className="text-sm text-on-surface-variant text-center py-4">
@@ -418,7 +418,9 @@ export default function Cart() {
                   value={shipping === 0 ? 'FREE' : formatPrice(shipping, currency)}
                   valueClass={shipping === 0 ? 'text-tertiary font-semibold' : ''}
                 />
-                <SummaryRow label="Tax" value="Calculated at checkout" muted />
+                {shipping === 0 && selectedItems.length > 0 && (
+                  <div className="text-label-md font-semibold text-tertiary flex items-center gap-1"><Icon name="celebration" className="text-[16px]" /> You unlocked free delivery</div>
+                )}
                 <div className="border-t border-outline-variant/30 pt-3 mt-1">
                   <SummaryRow label="Estimated total" value={formatPrice(total, currency)} bold />
                 </div>
@@ -455,20 +457,22 @@ export default function Cart() {
               type="button"
               onClick={proceedToCheckout}
               disabled={selectionBusy}
-              className="btn-primary w-full py-3 mt-2 disabled:opacity-60 flex items-center justify-center gap-2"
+              // whitespace-normal: .btn is nowrap, and on desktop the summary
+              // column is narrow enough that the label spilled out of the button.
+              className="btn-primary w-full py-3 px-3 mt-2 whitespace-normal text-center leading-tight disabled:opacity-60 flex items-center justify-center gap-2"
             >
-              {selectionBusy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
+              {selectionBusy && <Icon name="progress_activity" className="text-[18px] animate-spin shrink-0" />}
               {selectedItems.length > 0 ? (
                 <>
-                  Proceed to Checkout ({itemCount})
-                  <Icon name="arrow_forward" />
+                  <span className="min-w-0">Proceed to Checkout ({itemCount})</span>
+                  <Icon name="arrow_forward" className="shrink-0" />
                 </>
               ) : selectionBusy ? (
                 <>Selecting items…</>
               ) : (
                 <>
-                  Proceed with all {validItems.length} {validItems.length === 1 ? 'item' : 'items'}
-                  <Icon name="arrow_forward" />
+                  <span className="min-w-0">Proceed with all {validItems.length} {validItems.length === 1 ? 'item' : 'items'}</span>
+                  <Icon name="arrow_forward" className="shrink-0" />
                 </>
               )}
             </button>

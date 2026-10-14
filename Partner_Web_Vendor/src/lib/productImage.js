@@ -19,6 +19,10 @@ const API = import.meta.env.VITE_API_BASE || '';
 function resolveUrl(u) {
   if (!u) return u;
   if (/^(https?:|data:|blob:)/i.test(u)) return u;
+  // Seeded catalogue images are bundled with each app (public/seed-images),
+  // which is served under this app's base path (/partner/…), not the host root.
+  const seed = /^\/?seed-images\/([^#?]+)/.exec(u);
+  if (seed) return `${BASE}seed-images/${seed[1]}`;
   if (u.startsWith('/') && API) return `${API}${u}`;
   return u;
 }

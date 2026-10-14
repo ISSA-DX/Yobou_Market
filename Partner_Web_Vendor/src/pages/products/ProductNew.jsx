@@ -50,6 +50,8 @@ const EMPTY_FORM = {
   showOnDeals: true,
   showOnFlashDeals: false,
   showOnSearch: true,
+  showOnRecentDeals: false,
+  showOnNewArrivals: true,
   // Additional category pin targets. Empty by default; the primary
   // `category` is the product's main page. Server-side normalize
   // (trim / dedupe / cap 10 / cap 80 chars) happens on submit.
@@ -95,7 +97,8 @@ export default function ProductNew() {
   const navigate = useNavigate();
   const isEdit = Boolean(id);
 
-  const productApi = useApi(isEdit ? `/api/products/${id}` : null, { skip: !isEdit });
+  // Vendor-scoped read: 404s for products owned by another store.
+  const productApi = useApi(isEdit ? `/api/products/vendor/${id}` : null, { skip: !isEdit });
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -133,6 +136,8 @@ export default function ProductNew() {
         showOnDeals: p.showOnDeals !== undefined ? p.showOnDeals : true,
         showOnFlashDeals: p.showOnFlashDeals !== undefined ? p.showOnFlashDeals : false,
         showOnSearch: p.showOnSearch !== undefined ? p.showOnSearch : true,
+        showOnRecentDeals: p.showOnRecentDeals !== undefined ? p.showOnRecentDeals : false,
+        showOnNewArrivals: p.showOnNewArrivals !== undefined ? p.showOnNewArrivals : true,
         // extraCategories arrives as an array of {id, name} from the
         // /api/products/:id response; flatten to the string[] the
         // form / submit payload expects.

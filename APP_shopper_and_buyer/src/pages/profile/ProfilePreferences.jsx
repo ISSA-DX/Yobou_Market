@@ -134,12 +134,12 @@ export default function ProfilePreferences() {
         )}
 
         {/* Appearance / Theme */}
-        <section className="card p-4 md:p-5">
+        <section className="reveal reveal-fade-up card p-4 md:p-5">
           {/* text-on-surface dropped (v0.3.20 h2 default = brand blue). */}
           <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
             <Icon name="palette" className="text-[20px] text-primary" /> Appearance
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="reveal-stagger stagger-pop grid grid-cols-1 sm:grid-cols-3 gap-3">
             {THEMES.map((t) => (
               <button
                 key={t.code}
@@ -163,7 +163,7 @@ export default function ProfilePreferences() {
         </section>
 
         {/* Region */}
-        <section className="card p-4 md:p-5">
+        <section className="reveal reveal-slide-left card p-4 md:p-5">
           {/* text-on-surface dropped (v0.3.20 h2 default = brand blue). */}
           <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
             <Icon name="language" className="text-[20px] text-primary" /> Region
@@ -212,7 +212,7 @@ export default function ProfilePreferences() {
         </section>
 
         {/* Notifications */}
-        <section className="card p-4 md:p-5">
+        <section className="reveal reveal-slide-right card p-4 md:p-5">
           {/* text-on-surface dropped (v0.3.20 h2 default = brand blue). */}
           <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
             <Icon name="notifications" className="text-[20px] text-primary" /> Notifications
@@ -254,7 +254,7 @@ export default function ProfilePreferences() {
           </div>
         </section>
 
-        <section className="card p-4 md:p-5">
+        <section className="reveal reveal-tilt card p-4 md:p-5">
           {/* text-on-surface dropped (v0.3.20 h2 default = brand blue). */}
           <h2 className="text-base font-semibold mb-2 flex items-center gap-2">
             <Icon name="info" className="text-[20px] text-primary" /> About

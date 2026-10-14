@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api } from '../../api';
 import Icon from '../../components/Icon';
 import OrderTimeline from '../../components/OrderTimeline';
+import LiveTracking from '../../components/LiveTracking';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImage } from '../../lib/productImage';
 import { formatPrice, userLocale } from '../../lib/format';
@@ -109,34 +110,22 @@ export default function TrackOrder() {
       </header>
 
       <div className="px-4 space-y-4">
-        {/* Top bento */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bento">
-            <div className="text-label-md text-on-surface-variant">Order ID</div>
-            <div className="font-bold mt-1">#{order.id.slice(-6).toUpperCase()}</div>
-          </div>
-          <div className="bento">
-            <div className="text-label-md text-on-surface-variant">{eta.label}</div>
-            <div className="font-bold mt-1 text-sm">{eta.value}</div>
-          </div>
-          <div className="bento">
-            <div className="text-label-md text-on-surface-variant">Status</div>
-            <div className="font-bold mt-1 text-sm">{order.status}</div>
-          </div>
-        </div>
+        <StatusHero order={order} eta={eta} locale={locale} />
 
-        {/* Live tracking card — replaces the placeholder map + driver */}
-        <TrackingCard order={order} carrierUrl={carrierUrl} />
+        {/* Store/carrier shipment details — Yobou-courier orders show the
+            live courier card below instead. */}
+        {!order.delivery && <TrackingCard order={order} carrierUrl={carrierUrl} />}
+        {order.delivery && <div className="reveal reveal-blur"><LiveTracking orderId={order.id} title="Your Yobou courier" /></div>}
 
         {/* Timeline */}
-        <div className="card p-4">
+        <div className="reveal reveal-wipe card p-4">
           <h3 className="font-bold mb-3">Order status</h3>
           <OrderTimeline currentStatus={order.status} events={order.timeline} />
         </div>
 
         {/* Delivery address */}
         {address?.line1 && (
-          <div className="card p-4">
+          <div className="reveal reveal-slide-right card p-4">
             <div className="text-label-md text-on-surface-variant">Delivering to</div>
             {address.recipientName && (
               <div className="font-semibold mt-1">{address.recipientName}</div>
@@ -148,9 +137,9 @@ export default function TrackOrder() {
         )}
 
         {/* Items */}
-        <div className="card p-4">
+        <div className="reveal reveal-fade-up card p-4">
           <h3 className="font-bold mb-3">Items in this order</h3>
-          <div className="space-y-3">
+          <div className="reveal-stagger stagger-left space-y-3">
             {(order.items || []).map((it) => {
               if (!it?.product) return null;
               const lineTotal = (it.priceCents || 0) * (it.quantity || 1);
@@ -210,24 +199,64 @@ export default function TrackOrder() {
 // TrackingCard — shows the real carrier + tracking number (with outbound link
 // when we know the carrier's URL), shipped-at, and ETA. Replaces the old
 // placeholder map + fake driver.
-function TrackingCard({ order, carrierUrl }) {
-  if (order.status === 'PLACED' || order.status === 'PAID') {
-    return (
-      <div className="card p-4 flex items-start gap-3">
-        <div className="w-10 h-10 rounded-full bg-surface-high flex items-center justify-center flex-shrink-0">
-          <Icon name="inventory_2" className="text-primary" />
+// Status hero — the one-glance answer to "where is my order?".
+const HERO = {
+  PLACED: { icon: 'receipt_long', title: 'Order received', tone: 'from-slate-700 to-slate-500' },
+  PAID: { icon: 'verified', title: 'Order confirmed', tone: 'from-[#0a2a8f] to-primary-container' },
+  PROCESSING: { icon: 'inventory_2', title: 'Being prepared', tone: 'from-amber-600 to-amber-400' },
+  SHIPPED: { icon: 'local_shipping', title: 'On the way', tone: 'from-[#0a2a8f] to-primary-container' },
+  DELIVERED: { icon: 'task_alt', title: 'Delivered', tone: 'from-emerald-700 to-emerald-500' },
+  CANCELLED: { icon: 'block', title: 'Order cancelled', tone: 'from-rose-700 to-rose-500' },
+  REFUNDED: { icon: 'currency_exchange', title: 'Refunded', tone: 'from-slate-700 to-slate-500' },
+};
+const HERO_STEPS = ['PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
+
+function StatusHero({ order, eta, locale }) {
+  const h = HERO[order.status] || HERO.PLACED;
+  const closed = ['CANCELLED', 'REFUNDED'].includes(order.status);
+  const reached = HERO_STEPS.indexOf(order.status);
+  const sub = order.status === 'DELIVERED'
+    ? 'Enjoy your purchase — you can rate it or request a refund below.'
+    : closed
+      ? (order.cancelReason ? `Reason: ${order.cancelReason}` : 'This order is closed.')
+      : order.status === 'PLACED'
+        ? (order.paymentMethod === 'COD' ? 'Pay on delivery · the store is getting it ready.' : 'Waiting for payment confirmation.')
+        : `${eta.label === 'ETA' ? 'Arriving' : eta.label} ${eta.value}`;
+
+  return (
+    <section className={`reveal reveal-zoom anim-shine relative overflow-hidden rounded-2xl p-5 text-white bg-gradient-to-br ${h.tone} shadow-float`}>
+      <div className="pointer-events-none absolute -right-8 -top-10 w-40 h-40 rounded-full bg-white/10" />
+      <div className="relative flex items-start gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
+          <Icon name={h.icon} className="text-[30px]" fill />
         </div>
-        <div>
-          <div className="font-semibold">Preparing your order</div>
-          <div className="text-sm text-on-surface-variant">
-            We'll add tracking info here as soon as the vendor ships your package.
-          </div>
+        <div className="flex-1 min-w-0">
+          {/* text-white: overrides the global h2 colour on the gradient. */}
+          <h2 className="text-headline-md font-extrabold text-white">{h.title}</h2>
+          <p className="mt-0.5 text-sm text-white/85">{sub}</p>
+          <p className="mt-2 text-label-md text-white/70">
+            Order #{order.id.slice(-8).toUpperCase()} · {new Date(order.createdAt).toLocaleDateString(locale, { dateStyle: 'medium' })}
+          </p>
         </div>
       </div>
-    );
-  }
+      {!closed && (
+        <div className="relative mt-4 grid grid-cols-4 gap-1.5">
+          {['Confirmed', 'Preparing', 'On the way', 'Delivered'].map((label, i) => (
+            <div key={label}>
+              <div className={`h-1.5 rounded-full ${i <= reached ? 'bg-white' : 'bg-white/25'}`} />
+              <div className={`mt-1 text-[10px] font-semibold ${i <= reached ? 'text-white' : 'text-white/60'}`}>{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
 
-  if (order.status === 'CANCELLED' || order.status === 'REFUNDED') return null;
+function TrackingCard({ order, carrierUrl }) {
+  // Before shipping, the status hero already explains what is happening.
+  if (!['SHIPPED', 'DELIVERED'].includes(order.status)) return null;
+  if (!order.carrier && !order.trackingNumber && !order.shippedAt) return null;
 
   return (
     <div className="card p-4 space-y-2">
@@ -237,11 +266,10 @@ function TrackingCard({ order, carrierUrl }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-semibold">
-            {order.status === 'DELIVERED' ? 'Delivered' : 'In transit'}
+            {order.carrier ? `Shipped with ${order.carrier}` : 'Shipped by the store'}
           </div>
           <div className="text-sm text-on-surface-variant">
-            {order.carrier || 'Carrier'}
-            {order.trackingNumber ? ` · ${order.trackingNumber}` : ''}
+            {order.trackingNumber ? `Tracking ${order.trackingNumber}` : 'No tracking number yet'}
           </div>
         </div>
         {carrierUrl && (

@@ -1,3 +1,4 @@
+import StatusBadge from '../../components/StatusBadge';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
@@ -124,7 +125,7 @@ export default function Refunds() {
                   ${(r.amountCents / 100).toFixed(2)} · {new Date(r.createdAt).toLocaleString()}
                 </div>
               </div>
-              <span className={`chip ${STATUS_TONE[r.status] || ''}`}>{r.status}</span>
+              <StatusBadge status={r.status} />
             </div>
 
             <div className="bg-surface-low rounded-md p-3 text-sm">

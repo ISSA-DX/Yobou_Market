@@ -17,7 +17,7 @@ export default function AppleConfirm() {
         <h1 className="text-headline-md font-bold">Sign in with Apple</h1>
       </div>
 
-      <div className="card p-4 flex items-center gap-3">
+      <div className="reveal reveal-pop card p-4 flex items-center gap-3">
         <div className="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center font-bold">D</div>
         <div>
           <div className="font-semibold">Demo Shopper</div>

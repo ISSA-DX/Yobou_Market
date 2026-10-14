@@ -1,3 +1,4 @@
+import StatusBadge from '../../components/StatusBadge';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
@@ -149,7 +150,7 @@ export default function Changes() {
                   </div>
                 </div>
               </div>
-              <span className={`chip ${STATUS_TONE[c.status] || ''}`}>{c.status}</span>
+              <StatusBadge status={c.status} />
             </div>
 
             <ChangeDiff change={c} />
@@ -222,6 +223,12 @@ function ChangeDiff({ change }) {
   if (change.proposedShowOnSearch !== null) {
     fields.push({ label: 'Show in Search', value: change.proposedShowOnSearch ? 'On' : 'Off' });
   }
+  if (change.proposedShowOnRecentDeals != null) {
+    fields.push({ label: 'Recent deals', value: change.proposedShowOnRecentDeals ? 'On' : 'Off' });
+  }
+  if (change.proposedShowOnNewArrivals != null) {
+    fields.push({ label: 'New arrivals', value: change.proposedShowOnNewArrivals ? 'On' : 'Off' });
+  }
 
   return (
     <div className="bg-surface-low rounded-md p-3">
@@ -238,9 +245,10 @@ function ChangeDiff({ change }) {
           {change.proposedImageUrls.map((url, i) => (
             <img
               key={`${url}-${i}`}
-              src={url}
+              src={productImage({ imageUrls: [url], category: change.proposedCategory })}
               alt=""
               className="w-16 h-16 rounded-md object-cover bg-surface-high"
+              onError={(e) => { e.currentTarget.src = `${import.meta.env.BASE_URL}seed-images/placeholder.svg`; }}
             />
           ))}
         </div>
@@ -251,6 +259,7 @@ function ChangeDiff({ change }) {
             src={productImage(change.product)}
             alt=""
             className="w-16 h-16 rounded-md object-cover bg-surface-high"
+            onError={(e) => { e.currentTarget.src = `${import.meta.env.BASE_URL}seed-images/placeholder.svg`; }}
           />
         </div>
       )}

@@ -74,7 +74,7 @@ export default function ProfileAddresses() {
       </button>
 
       {showForm && (
-        <form onSubmit={save} className="card p-4 space-y-3 mb-4">
+        <form onSubmit={save} className="reveal reveal-fade-down card p-4 space-y-3 mb-4">
           <h2 className="font-bold">New address</h2>
           <div>
             <label className="text-label-md text-on-surface-variant">Recipient name</label>
@@ -112,7 +112,7 @@ export default function ProfileAddresses() {
         </form>
       )}
 
-      <div className="space-y-3">
+      <div className="reveal-stagger stagger-left space-y-3">
         {addresses.map((a) => (
           <div key={a.id} className={`card p-4 relative ${a.isDefault ? 'border-primary/40' : ''}`}>
             {a.isDefault && (

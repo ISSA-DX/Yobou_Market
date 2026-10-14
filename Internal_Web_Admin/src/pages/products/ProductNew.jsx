@@ -50,6 +50,8 @@ const EMPTY_FORM = {
   showOnDeals: true,
   showOnFlashDeals: false,
   showOnSearch: true,
+  showOnRecentDeals: false,
+  showOnNewArrivals: true,
   // Additional category pin targets. Empty by default; the primary
   // `category` is the product's main page. Server-side normalize
   // (trim / dedupe / cap 10 / cap 80 chars) happens on save.
@@ -150,6 +152,8 @@ export default function ProductNew() {
         showOnDeals: p.showOnDeals !== undefined ? p.showOnDeals : true,
         showOnFlashDeals: p.showOnFlashDeals !== undefined ? p.showOnFlashDeals : false,
         showOnSearch: p.showOnSearch !== undefined ? p.showOnSearch : true,
+        showOnRecentDeals: p.showOnRecentDeals !== undefined ? p.showOnRecentDeals : false,
+        showOnNewArrivals: p.showOnNewArrivals !== undefined ? p.showOnNewArrivals : true,
         // extraCategories arrives as [{id, name}]; flatten to string[]
         // for the form / submit payload.
         extraCategories: Array.isArray(p.extraCategories)

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
+import { termsUrl, privacyUrl } from '../../lib/legal';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -10,14 +11,19 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!acceptTerms) {
+      setErr('Please accept the Terms of Service to create your account.');
+      return;
+    }
     setErr(''); setBusy(true);
     try {
-      await register({ name, email, password });
+      await register({ name, email, password, acceptTerms: true });
       navigate('/home');
     } catch (e) {
       setErr(humanizeError(e.data?.error));
@@ -27,22 +33,17 @@ export default function Register() {
   }
 
   return (
-    <div className="py-6 auth-page">
+    <div className="pt-2 pb-6 auth-page">
       {/* Header row used to carry a Y+ 'Yobou' wordmark above the
           <h1>Create account</h1> below it — duplicate brand chrome.
           The card already brands the page via the welcome message;
           the wordmark atop it was repetition. Help affordance
           stays, end-aligned, with reduced top padding to claw back
           vertical real estate. */}
-      <div className="flex items-center justify-end mb-4">
-        <Link to="/help" className="p-2 rounded-full hover:bg-surface-low" aria-label="Help">
-          <Icon name="help" className="text-[22px] text-on-surface-variant" />
-        </Link>
-      </div>
-
-      <div className="card p-6">
-        <h1 className="text-headline-lg font-bold">Create account</h1>
-        <p className="mt-1 text-on-surface-variant">Join Yobou and start shopping today.</p>
+      {/* Brand + help live in TransactionLayout's header. */}
+      <div className="reveal-stagger stagger-blur card p-6 sm:p-8" style={{ "--stagger-step": "70ms" }}>
+        <h1 className="page-title">Create account</h1>
+        <p className="page-subtitle">Join Yobou — free delivery over $50 and pay on delivery.</p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
@@ -90,9 +91,19 @@ export default function Register() {
             </div>
           </div>
 
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-1" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} />
+            <span>
+              I agree to the{' '}
+              <a href={termsUrl} target="_blank" rel="noopener noreferrer" className="text-primary font-semibold">Terms of Service</a>
+              {' '}and{' '}
+              <a href={privacyUrl} target="_blank" rel="noopener noreferrer" className="text-primary font-semibold">Privacy Policy</a>.
+            </span>
+          </label>
+
           {err && <div className="text-error text-sm">{err}</div>}
 
-          <button type="submit" disabled={busy} className="btn-primary w-full py-3 disabled:opacity-60">
+          <button type="submit" disabled={busy || !acceptTerms} className="btn-primary w-full py-3 disabled:opacity-60">
             {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
             Create account
           </button>
@@ -111,6 +122,7 @@ function humanizeError(code) {
   switch (code) {
     case 'EMAIL_TAKEN': return 'An account with that email already exists.';
     case 'INVALID_INPUT': return 'Please check your details and try again.';
+    case 'RATE_LIMITED': return 'Too many sign-ups from this network. Please try again later.';
     default: return 'Something went wrong. Try again.';
   }
 }

@@ -5,6 +5,7 @@ const { prisma } = require('../prisma');
 const { refundCreate, adminReview } = require('../lib/validators');
 const { requireAuth, requireRole } = require('../auth/middleware');
 const { notify, audit } = require('../lib/notifications');
+const { recordRefund } = require('../lib/ledger');
 
 const router = express.Router();
 
@@ -130,6 +131,8 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
           timeline: { create: { status: 'REFUNDED', actorId: req.user.id, actorRole: 'ADMIN' } },
         },
       });
+      // Claw back the stores' earnings (and Yobou's commission) for the refund.
+      await recordRefund(tx, refund.orderId, refund.amountCents);
       return approvedRefund;
     });
 

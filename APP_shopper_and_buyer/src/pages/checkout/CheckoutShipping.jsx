@@ -95,7 +95,7 @@ export default function CheckoutShipping() {
       </header>
 
       {/* Progress */}
-      <div className="flex items-center gap-2 text-label-md">
+      <div className="reveal reveal-wipe flex items-center gap-2 text-label-md">
         {['Shipping', 'Payment', 'Review'].map((step, i) => (
           <div key={step} className="flex-1 flex items-center gap-2">
             <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs ${i === 0 ? 'bg-primary text-white' : 'bg-surface-high text-on-surface-variant'}`}>
@@ -112,7 +112,7 @@ export default function CheckoutShipping() {
           somehow landed on this page with all items unselected the
           cart page is the right next step, not this page. */}
       {selectedItems.length > 0 && (
-        <details className="card p-3 group" open>
+        <details className="reveal reveal-fade-up card p-3 group" open>
           <summary className="flex items-center gap-2 cursor-pointer list-none">
             <Icon name="shopping_bag" className="text-primary text-[20px]" />
             <span className="font-semibold text-sm">
@@ -147,10 +147,10 @@ export default function CheckoutShipping() {
         </details>
       )}
 
-      <h2 className="text-headline-md font-bold">Shipping address</h2>
+      <h2 className="reveal reveal-slide-right text-headline-md font-bold">Shipping address</h2>
 
       {addresses.length > 0 && (
-        <div className="space-y-2">
+        <div className="reveal-stagger stagger-left space-y-2">
           <div className="text-label-md text-on-surface-variant">Saved addresses</div>
           {addresses.map((a) => (
             <button
@@ -186,7 +186,7 @@ export default function CheckoutShipping() {
           <label className="text-label-md text-on-surface-variant">Street address</label>
           <input className="input mt-1" required value={form.street} onChange={(e) => update('street', e.target.value)} placeholder="123 Main St, Apt 4B" />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="reveal-stagger stagger-up grid grid-cols-2 gap-3">
           <div>
             <label className="text-label-md text-on-surface-variant">City</label>
             <input className="input mt-1" required value={form.city} onChange={(e) => update('city', e.target.value)} />
@@ -206,18 +206,11 @@ export default function CheckoutShipping() {
           Set as my default address
         </label>
 
-        <div className="card h-32 bg-gradient-to-br from-surface-high to-surface-low flex items-center justify-center text-on-surface-variant">
-          <div className="text-center">
-            <Icon name="map" className="text-[28px]" />
-            <div className="text-label-md mt-1">Map preview</div>
-          </div>
-        </div>
-
         {err && <div className="text-error text-sm">{err}</div>}
 
-        <div className="fixed bottom-0 inset-x-0 p-4 bg-white border-t border-outline-variant/30">
-          <div className="max-w-screen-md mx-auto">
-            <button type="submit" disabled={busy} className="btn-primary w-full py-3 disabled:opacity-60">
+        <div className="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-outline-variant/30" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div className="max-w-screen-md mx-auto p-4">
+            <button type="submit" disabled={busy} className="btn-primary w-full py-3 whitespace-normal text-center leading-tight disabled:opacity-60">
               {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
               Continue to Payment
               <Icon name="arrow_forward" />

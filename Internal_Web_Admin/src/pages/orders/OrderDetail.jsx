@@ -11,11 +11,14 @@
 //   - Refund button → existing /api/refunds flow
 //
 // URL: /orders/:id/track  (was referenced in Orders.jsx but never registered).
+import StatusBadge from '../../components/StatusBadge';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api';
 import Icon from '../../components/Icon';
 import Modal from '../../components/Modal';
+import { productImage } from '../../lib/productImage';
+import LiveTracking from '../../components/LiveTracking';
 
 const STATUS_COLORS = {
   PLACED: 'bg-surface-high text-on-surface',
@@ -28,6 +31,16 @@ const STATUS_COLORS = {
 };
 
 const CARRIERS = ['DHL', 'FedEx', 'UPS', 'USPS', 'YobouDirect', 'Other'];
+
+const TIMELINE_ICON = {
+  PLACED: 'receipt_long',
+  PAID: 'payments',
+  PROCESSING: 'inventory_2',
+  SHIPPED: 'local_shipping',
+  DELIVERED: 'task_alt',
+  CANCELLED: 'block',
+  REFUNDED: 'currency_exchange',
+};
 
 function StatusPill({ status }) {
   return (
@@ -100,7 +113,7 @@ export default function OrderDetail() {
           <div className="text-sm text-on-surface-variant">Placed {fmtDate(order.createdAt)}</div>
         </div>
         <div className="flex items-center gap-2">
-          <StatusPill status={order.status} />
+          <StatusBadge status={order.status} className="text-label-md px-3 py-1" />
           {canCancel && (
             <button onClick={() => setCancelOpen(true)} className="btn-secondary text-error">
               <Icon name="block" className="text-[18px]" /> Cancel order
@@ -133,8 +146,13 @@ export default function OrderDetail() {
               {order.items.map((it) => (
                 <div key={it.id} className="flex items-center gap-4 py-3">
                   <div className="w-16 h-16 rounded-md bg-surface-low overflow-hidden flex-shrink-0">
-                    {it.product?.images?.[0] ? (
-                      <img src={it.product.images[0]} alt="" className="w-full h-full object-cover" />
+                    {it.product ? (
+                      <img
+                        src={productImage(it.product)}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.currentTarget.src = `${import.meta.env.BASE_URL}seed-images/placeholder.svg`; }}
+                      />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-on-surface-variant">
                         <Icon name="image" />
@@ -142,13 +160,13 @@ export default function OrderDetail() {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{it.product?.title || 'Removed product'}</div>
+                    <div className="font-medium truncate">{it.product?.name || 'Removed product'}</div>
                     <div className="text-sm text-on-surface-variant">
-                      {it.product?.vendor?.businessName ? `${it.product.vendor.businessName} · ` : ''}qty {it.qty}
+                      {it.product?.vendor?.businessName ? `${it.product.vendor.businessName} · ` : 'Yobou Direct · '}qty {it.quantity}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-semibold">{fmtMoney(it.lineTotalCents)}</div>
+                    <div className="font-semibold">{fmtMoney(it.priceCents * it.quantity)}</div>
                     <div className="text-label-md text-on-surface-variant">{fmtMoney(it.priceCents)} ea</div>
                   </div>
                 </div>
@@ -156,15 +174,20 @@ export default function OrderDetail() {
             </div>
             <div className="border-t border-outline-variant/30 mt-3 pt-3 flex justify-end gap-6 text-sm">
               <div className="text-on-surface-variant">Subtotal</div>
-              <div className="font-semibold">{fmtMoney(order.subtotalCents)}</div>
+              {/* Older orders stored 0 — fall back to the line items. */}
+              <div className="font-semibold">
+                {fmtMoney(order.subtotalCents || order.items.reduce((s, it) => s + it.priceCents * it.quantity, 0))}
+              </div>
             </div>
+            {order.discountCents > 0 && (
+              <div className="flex justify-end gap-6 text-sm">
+                <div className="text-on-surface-variant">Promo {order.couponCode}</div>
+                <div className="font-semibold text-tertiary">−{fmtMoney(order.discountCents)}</div>
+              </div>
+            )}
             <div className="flex justify-end gap-6 text-sm">
               <div className="text-on-surface-variant">Shipping</div>
               <div className="font-semibold">{fmtMoney(order.shippingCents)}</div>
-            </div>
-            <div className="flex justify-end gap-6 text-sm">
-              <div className="text-on-surface-variant">Tax</div>
-              <div className="font-semibold">{fmtMoney(order.taxCents)}</div>
             </div>
             <div className="flex justify-end gap-6 mt-2 text-base">
               <div className="font-bold">Total</div>
@@ -172,27 +195,38 @@ export default function OrderDetail() {
             </div>
           </section>
 
+          {/* Last-mile courier */}
+          <CourierSection order={order} onUpdated={load} />
+          {order.delivery && <LiveTracking orderId={order.id} title="Live courier tracking" />}
+
           {/* Tracking */}
           <TrackingSection order={order} onUpdated={load} />
 
           {/* Timeline */}
           <section className="card p-5">
             <h2 className="font-bold text-lg mb-3">Timeline</h2>
-            <ol className="space-y-3">
-              {order.timeline?.length ? order.timeline.map((ev) => (
-                <li key={ev.id} className="flex gap-3">
-                  <div className="w-2 h-2 rounded-full bg-primary mt-2 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="font-semibold">{ev.status}</span>
-                      <span className="text-on-surface-variant">· {fmtDate(ev.at)}</span>
+            <ol className="relative">
+              {order.timeline?.length ? order.timeline.map((ev, i) => (
+                <li key={ev.id} className="relative flex gap-3 pb-4 last:pb-0">
+                  {/* Connector line between events */}
+                  {i < order.timeline.length - 1 && <span className="absolute left-[11px] top-6 bottom-0 w-0.5 bg-outline-variant/70" />}
+                  <div className={`relative z-10 w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
+                    i === order.timeline.length - 1 ? 'bg-primary text-white shadow-pop' : 'bg-primary/10 text-primary'
+                  }`}
+                  >
+                    <Icon name={TIMELINE_ICON[ev.status] || 'radio_button_checked'} className="text-[14px]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap text-sm">
+                      <StatusBadge status={ev.status} />
+                      <span className="text-on-surface-variant">{fmtDate(ev.at)}</span>
                       {ev.actorRole && (
-                        <span className="text-label-sm px-1.5 py-0.5 rounded bg-surface-high text-on-surface-variant">
-                          {ev.actorRole}
+                        <span className="text-label-sm font-semibold text-on-surface-variant">
+                          by {ev.actorRole.toLowerCase()}
                         </span>
                       )}
                     </div>
-                    {ev.note && <div className="text-sm text-on-surface-variant mt-0.5">{ev.note}</div>}
+                    {ev.note && <div className="text-sm text-on-surface mt-1">{ev.note}</div>}
                   </div>
                 </li>
               )) : (
@@ -214,14 +248,15 @@ export default function OrderDetail() {
           {/* Shipping */}
           <section className="card p-5">
             <h2 className="font-bold text-lg mb-2">Shipping address</h2>
-            {order.shippingAddress ? (
+            {(order.snapshotLine1 || order.address) ? (
               <address className="not-italic text-sm space-y-0.5">
-                <div>{order.shippingAddress.line1}</div>
-                {order.shippingAddress.line2 && <div>{order.shippingAddress.line2}</div>}
+                {(order.snapshotName || order.address?.recipientName) && (
+                  <div className="font-medium">{order.snapshotName || order.address.recipientName}</div>
+                )}
+                <div>{order.snapshotLine1 || order.address?.line1}</div>
                 <div>
-                  {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.postalCode}
+                  {order.snapshotCity || order.address?.city}, {order.snapshotState || order.address?.state} {order.snapshotPostal || order.address?.postal}
                 </div>
-                <div>{order.shippingAddress.country}</div>
               </address>
             ) : (
               <div className="text-sm text-on-surface-variant">No shipping address.</div>
@@ -232,7 +267,15 @@ export default function OrderDetail() {
           <section className="card p-5">
             <h2 className="font-bold text-lg mb-2">Payment</h2>
             <div className="text-sm">Method: <span className="font-medium">{order.paymentMethod}</span></div>
-            <div className="text-sm">Status: <span className="font-medium">{order.paymentStatus || '—'}</span></div>
+            <div className="text-sm">
+              Status:{' '}
+              <span className="font-medium">
+                {order.paymentTxnId ? 'Paid' : order.paymentMethod === 'COD' ? 'Due on delivery' : 'Unpaid'}
+              </span>
+            </div>
+            {order.paymentTxnId && (
+              <div className="text-label-md text-on-surface-variant break-all">Txn {order.paymentTxnId}</div>
+            )}
           </section>
         </div>
       </div>
@@ -251,6 +294,89 @@ export default function OrderDetail() {
         onDone={() => { setShipOpen(false); load(); }}
       />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Courier section — assign / re-assign a Yobou courier for last-mile
+// delivery and show the job's progress (see /deliveries for the board).
+// ---------------------------------------------------------------------------
+const DELIVERY_LABEL = {
+  ASSIGNED: 'Assigned — waiting for pickup',
+  PICKED_UP: 'Out for delivery',
+  DELIVERED: 'Delivered',
+  FAILED: 'Delivery attempt failed',
+};
+
+function CourierSection({ order, onUpdated }) {
+  const d = order.delivery;
+  const [drivers, setDrivers] = useState([]);
+  const [driverId, setDriverId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const finished = ['DELIVERED', 'CANCELLED', 'REFUNDED'].includes(order.status);
+  const dispatchable = ['PAID', 'PROCESSING'].includes(order.status)
+    || (order.status === 'PLACED' && order.paymentMethod === 'COD');
+  const canAssign = !finished && (d ? ['ASSIGNED', 'FAILED'].includes(d.status) : dispatchable);
+
+  useEffect(() => {
+    if (!canAssign) return;
+    api('/api/admin/drivers')
+      .then((r) => setDrivers((r.drivers || []).filter((x) => !x.disabledAt)))
+      .catch(() => setDrivers([]));
+  }, [canAssign]);
+
+  async function assign() {
+    if (!driverId) return;
+    setBusy(true); setErr('');
+    try {
+      await api(`/api/admin/orders/${order.id}/assign-driver`, { method: 'POST', body: { driverId } });
+      setDriverId('');
+      onUpdated();
+    } catch (e) {
+      setErr(e?.data?.error || 'Could not assign courier.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!d && !canAssign) return null;
+
+  return (
+    <section className="card p-5">
+      <h2 className="font-bold text-lg mb-3 flex items-center gap-2">
+        <Icon name="two_wheeler" className="text-[22px] text-primary" /> Yobou courier
+      </h2>
+      {d && (
+        <div className="text-sm space-y-1 mb-3">
+          <div>Courier: <span className="font-medium">{d.driver?.name || 'Unassigned'}</span>{d.driver?.phone ? ` · ${d.driver.phone}` : ''}</div>
+          <div>Status: <span className="font-medium">{DELIVERY_LABEL[d.status] || d.status}</span>{d.attempts ? ` · ${d.attempts} failed attempt(s)` : ''}</div>
+          {d.failReason && <div className="text-error">Last failure: {d.failReason}</div>}
+          {d.codAmountCents > 0 && (
+            <div>
+              Cash on delivery: <span className="font-medium">{fmtMoney(d.codAmountCents)}</span>
+              {d.codCollectedCents != null && ` · collected ${fmtMoney(d.codCollectedCents)}`}
+            </div>
+          )}
+          {d.recipientName && <div>Received by: <span className="font-medium">{d.recipientName}</span></div>}
+          {d.deliveredAt && <div>Delivered at: <span className="font-medium">{fmtDate(d.deliveredAt)}</span></div>}
+        </div>
+      )}
+      {canAssign && (
+        <div className="flex flex-wrap items-center gap-2">
+          <select className="input max-w-xs" value={driverId} onChange={(e) => setDriverId(e.target.value)}>
+            <option value="">{drivers.length ? 'Choose a courier…' : 'No active couriers — add one in Deliveries'}</option>
+            {drivers.map((x) => (
+              <option key={x.id} value={x.id}>{x.name} · {x.activeDeliveries} active</option>
+            ))}
+          </select>
+          <button onClick={assign} disabled={!driverId || busy} className="btn-primary disabled:opacity-60">
+            {d ? 'Re-assign courier' : 'Assign courier'}
+          </button>
+        </div>
+      )}
+      {err && <div className="text-error text-sm mt-2">{err}</div>}
+    </section>
   );
 }
 

@@ -3,6 +3,11 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
 import './styles/index.css';
+import './styles/motion.css';
+import { enableMotion } from './lib/motion';
+
+// Before the first paint, so revealed sections never flash in then hide.
+enableMotion();
 
 // basename lets the React Router tree match the URL prefix where this app
 // is served. In production each build picks the right prefix via the

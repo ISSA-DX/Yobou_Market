@@ -69,7 +69,7 @@ export default function RelatedProducts({ productId, onAdd, excludeId }) {
         Customers also viewed
       </h2>
       <div
-        className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1 snap-x snap-mandatory"
+        className="reveal-stagger stagger-left flex gap-3 overflow-x-auto pb-3 -mx-1 px-1 snap-x snap-mandatory"
         style={{ scrollbarWidth: 'thin' }}
       >
         {visible.map((p) => (

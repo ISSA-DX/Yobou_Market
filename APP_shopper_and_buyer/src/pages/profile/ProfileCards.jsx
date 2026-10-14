@@ -83,7 +83,7 @@ export default function ProfileCards() {
       </button>
 
       {showForm && (
-        <div className="card p-4 mb-4">
+        <div className="reveal reveal-zoom card p-4 mb-4">
           {formErr && <div className="text-error text-sm mb-3">{formErr}</div>}
           <CardForm
             onSubmit={addCard}
@@ -92,7 +92,7 @@ export default function ProfileCards() {
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="reveal-stagger stagger-flip space-y-3">
         {methods.map((m) => (
           <div key={m.id} className={`card p-4 flex items-center gap-3 relative ${m.isDefault ? 'border-primary/40' : ''}`}>
             <div className="w-12 h-12 rounded-lg bg-surface-low flex items-center justify-center text-primary">
