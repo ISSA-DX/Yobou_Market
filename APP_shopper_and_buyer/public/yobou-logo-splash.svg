@@ -1,0 +1,31 @@
+<svg width="1242" height="2688" viewBox="0 0 1242 2688" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="230" y1="160" x2="1012" y2="2400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A3CBE"/>
+      <stop offset="0.52" stop-color="#0034B9"/>
+      <stop offset="1" stop-color="#091F52"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="420" y1="880" x2="878" y2="1460" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF1B0"/>
+      <stop offset="0.45" stop-color="#F7D777"/>
+      <stop offset="1" stop-color="#D9A21C"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1242" height="2688" fill="url(#bg)"/>
+
+  <g opacity="0.18">
+    <circle cx="1050" cy="180" r="190" fill="white"/>
+    <circle cx="160" cy="2300" r="230" fill="#6E8EFF"/>
+    <circle cx="1200" cy="2140" r="260" fill="#1539A3"/>
+  </g>
+
+  <rect x="390" y="760" width="462" height="462" rx="120" fill="rgba(255,255,255,0.08)"/>
+  <path d="M468 850H562C650.444 850 722 921.556 722 1010V1048C722 1136.44 650.444 1208 562 1208H505V1380H468V850ZM505 904H562C620.125 904 667 950.875 667 1009V1048C667 1106.12 620.125 1153 562 1153H505V904Z" fill="white"/>
+  <path d="M560 850H710L860 1082L860 1380H805V1112L692 850H560Z" fill="white"/>
+  <path d="M702 974L820 850H916L802 1098H702V974Z" fill="url(#gold)"/>
+  <circle cx="888" cy="896" r="34" fill="#E7B740"/>
+
+  <text x="621" y="1705" text-anchor="middle" font-family="'Segoe UI', sans-serif" font-size="156" font-weight="800" fill="white" letter-spacing="-6">Yobou</text>
+  <text x="621" y="1796" text-anchor="middle" font-family="'Segoe UI', sans-serif" font-size="48" font-weight="700" fill="#CBE0FF" letter-spacing="12">MARKET</text>
+</svg>

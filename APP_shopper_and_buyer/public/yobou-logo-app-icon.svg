@@ -1,0 +1,26 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="120" y1="80" x2="894" y2="962" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A3CBE"/>
+      <stop offset="0.55" stop-color="#0034B9"/>
+      <stop offset="1" stop-color="#091F52"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="330" y1="260" x2="630" y2="620" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF1B0"/>
+      <stop offset="0.45" stop-color="#F7D777"/>
+      <stop offset="1" stop-color="#D9A21C"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="160" y1="120" x2="520" y2="520" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity="0.36"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="80" y="80" width="864" height="864" rx="220" fill="url(#bg)"/>
+  <rect x="80" y="80" width="864" height="864" rx="220" fill="url(#shine)"/>
+
+  <path d="M292 248H396C455.348 248 502 294.652 502 354V388C502 447.348 455.348 494 396 494H344V620H292V248ZM344 300H396C431.346 300 460 328.654 460 364V388C460 423.346 431.346 452 396 452H344V300Z" fill="white"/>
+  <path d="M386 248H532L672 434L672 620H616V454L504 248H386Z" fill="white"/>
+  <path d="M532 360L626 248H712L604 430H532V360Z" fill="url(#gold)"/>
+  <circle cx="700" cy="290" r="42" fill="#E7B740"/>
+</svg>

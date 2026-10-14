@@ -84,7 +84,7 @@ export const useStore = create((set, get) => ({
   },
 
   async login(email, password) {
-    const data = await api('/api/auth/login', { method: 'POST', body: { email, password }, auth: false });
+    const data = await api('/api/auth/login', { method: 'POST', body: { email, password }, auth: false, retryNetwork: true });
     if (!data?.accessToken || !data?.user) {
       const err = new Error(data?.error || 'LOGIN_FAILED');
       err.data = data;

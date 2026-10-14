@@ -7,6 +7,7 @@ import PaymentMethodPicker from '../../components/PaymentMethodPicker';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImage } from '../../lib/productImage';
 import { formatPrice } from '../../lib/format';
+import MobileMoneyForm from '../../components/MobileMoneyForm';
 
 const SHIPPING_CENTS = 499;
 const FREE_SHIPPING_THRESHOLD_CENTS = 5000;
@@ -32,6 +33,7 @@ export default function CheckoutPayment() {
   const currency = useStore((s) => s.user?.currency || 'USD');
   const ensureGuestSession = useStore((s) => s.ensureGuestSession);
   const [method, setMethod] = useState('CARD');
+  const [mobileMoney, setMobileMoney] = useState({ provider: 'MPESA', phone: '', country: 'KE' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   // Promo code: validated by the server against the selected cart.
@@ -126,6 +128,7 @@ export default function CheckoutPayment() {
       const body = { addressId, paymentMethod: method };
       if (method === 'CARD' && card) body.card = card;
       if (promo) body.couponCode = promo.code;
+      if (method === 'MOBILE_MONEY') body.mobileMoney = mobileMoney;
       const { order, payment } = await api('/api/orders', { method: 'POST', body });
       if (!payment.ok) {
         setErr(payment.reason === 'DECLINED' ? 'Card was declined. Try another payment method.' : 'Payment failed.');
@@ -217,6 +220,10 @@ export default function CheckoutPayment() {
       <h2 className="reveal reveal-slide-right text-headline-md font-bold">Payment method</h2>
       <div className="reveal reveal-pop"><PaymentMethodPicker value={method} onChange={setMethod} /></div>
 
+      {method === 'MOBILE_MONEY' && (
+        <MobileMoneyForm value={mobileMoney} onChange={setMobileMoney} />
+      )}
+
       {/* Express wallets */}
       <div className="reveal-stagger stagger-up space-y-2">
         <div className="text-label-md text-on-surface-variant">Express wallets</div>
@@ -292,13 +299,28 @@ export default function CheckoutPayment() {
 
       {err && <div className="text-error text-sm">{err}</div>}
 
+      <div className="card p-3 space-y-2 text-sm">
+        <div className="flex items-center gap-2 text-on-surface-variant">
+          <Icon name="verified_user" className="text-[18px] text-primary" />
+          <span>Secure, encrypted checkout</span>
+        </div>
+        <div className="flex items-center gap-2 text-on-surface-variant">
+          <Icon name="payments" className="text-[18px] text-primary" />
+          <span>Pay on delivery & mobile money available</span>
+        </div>
+        <div className="flex items-center gap-2 text-on-surface-variant">
+          <Icon name="storefront" className="text-[18px] text-primary" />
+          <span>Pickup point delivery available in major cities</span>
+        </div>
+      </div>
+
       {/* Same centred column as the page (TransactionLayout main), so the
           bar lines up with the cards on tablets and the web build. */}
       <div className="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-outline-variant/30" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="max-w-screen-md mx-auto p-4">
           <button
             onClick={() => method === 'CARD' ? navigate('/checkout/card/new') : placeOrder()}
-            disabled={busy || selectedItems.length === 0}
+            disabled={busy || selectedItems.length === 0 || (method === 'MOBILE_MONEY' && !isMobileMoneyValid(mobileMoney))}
             className="btn-primary w-full py-3 whitespace-normal text-center leading-tight disabled:opacity-60"
           >
             {busy && <Icon name="progress_activity" className="text-[18px] animate-spin" />}
@@ -336,4 +358,8 @@ function humanizeOrderError(code) {
       return 'Your promo code can no longer be applied. Remove it and try again.';
     default: return 'Could not place order. Please try again.';
   }
+}
+
+function isMobileMoneyValid(mm) {
+  return mm && mm.provider && mm.country?.length === 2 && mm.phone?.replace(/\D/g, '').length >= 8;
 }

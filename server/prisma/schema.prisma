@@ -205,6 +205,7 @@ model ProductVariant {
   // Back-relation so cart-items can resolve to the source variant
   // row for inventory accounting.
   cartItems CartItem[]
+  orderItems OrderItem[]
 
   @@unique([productId, color, size]) // prevent duplicate variant rows for the same combo
   @@index([productId])
@@ -295,11 +296,14 @@ model PaymentMethod {
   id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String // 'CARD'
-  brand       String // 'visa' | 'mastercard' | 'amex' | 'discover'
-  last4       String
-  expiryMonth String
-  expiryYear  String
+  type           String // 'CARD' | 'MOBILE_MONEY'
+  brand          String? // card brand
+  last4          String?
+  expiryMonth    String?
+  expiryYear     String?
+  mobileProvider String?
+  mobileNumber   String?
+  mobileCountry  String?
   isDefault   Boolean  @default(false)
   createdAt   DateTime @default(now())
 
@@ -314,7 +318,7 @@ model Order {
   subtotalCents  Int     @default(0)
   shippingCents  Int     @default(0)
   totalCents     Int
-  paymentMethod  String // CARD | PAYPAL | COD
+  paymentMethod  String // CARD | PAYPAL | COD | MOBILE_MONEY
   paymentTxnId   String?
   addressId      String
   address        Address @relation(fields: [addressId], references: [id], onDelete: Restrict)
@@ -344,6 +348,7 @@ model Order {
   timeline  TimelineEvent[]
   refunds   Refund[]
   delivery  Delivery?
+  mobileMoneyTxns MobileMoneyTxn[]
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
 }
@@ -467,14 +472,37 @@ model CouponRedemption {
   @@index([couponId, userId])
 }
 
+model MobileMoneyTxn {
+  id            String   @id @default(cuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId        String
+  provider      String
+  country       String
+  amountCents   Int
+  currency      String   @default("USD")
+  status        String   @default("PENDING")
+  providerTxnId String?
+  maskedPhone   String
+  failureReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([userId])
+  @@index([status])
+}
+
 model OrderItem {
   id         String  @id @default(cuid())
   orderId    String
   productId  String
+  variantId  String?
   quantity   Int
   priceCents Int
   order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product    Product @relation(fields: [productId], references: [id])
+  variant    ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 }
 
 model TimelineEvent {

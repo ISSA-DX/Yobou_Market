@@ -1,0 +1,28 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="24" y1="28" x2="312" y2="316" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A3CBE"/>
+      <stop offset="0.5" stop-color="#0034B9"/>
+      <stop offset="1" stop-color="#091F52"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="120" y1="80" x2="250" y2="260" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF1B0"/>
+      <stop offset="0.45" stop-color="#F7D777"/>
+      <stop offset="1" stop-color="#D9A21C"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="58" y1="40" x2="214" y2="214" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity="0.36"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="30" y="30" width="260" height="260" rx="68" fill="url(#bg)"/>
+  <rect x="30" y="30" width="260" height="260" rx="68" fill="url(#shine)"/>
+  <path d="M92 84H104C121.673 84 136 98.3269 136 116V201C136 218.673 121.673 233 104 233H92V84ZM108 135H136V198.5C136 205.956 129.956 212 122.5 212H108V135ZM169 84H210C227.673 84 242 98.3269 242 116V131C242 148.673 227.673 163 210 163H183V233H169V84ZM191 112H210C218.837 112 226 119.163 226 128V131C226 139.837 218.837 147 210 147H191V112ZM219 233H205L150 155L167 143L219 233ZM223 233H238L183 117H169L223 233Z" fill="white"/>
+  <path d="M182 118L230 78H271L210 176H185L182 118Z" fill="url(#gold)"/>
+  <circle cx="270" cy="86" r="18" fill="#E7B740"/>
+
+  <text x="352" y="188" font-family="Poppins, 'Segoe UI', sans-serif" font-size="112" font-weight="800" fill="#0B1C30" letter-spacing="-4">Yobou</text>
+  <text x="360" y="249" font-family="Poppins, 'Segoe UI', sans-serif" font-size="30" font-weight="700" fill="#0034B9" letter-spacing="9">MARKET</text>
+  <rect x="360" y="281" width="290" height="10" rx="5" fill="url(#gold)"/>
+</svg>

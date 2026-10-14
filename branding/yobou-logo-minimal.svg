@@ -1,0 +1,16 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="26" y1="32" x2="280" y2="286" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F5DFF"/>
+      <stop offset="1" stop-color="#0034B9"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="34" y="34" width="250" height="250" rx="60" fill="url(#bg)"/>
+  <path d="M106 92H166C184.778 92 200 107.222 200 126V135C200 153.778 184.778 169 166 169H146V226H126V169H106V92ZM126 112H166C175.941 112 184 120.059 184 130V135C184 144.941 175.941 153 166 153H126V112Z" fill="white"/>
+  <path d="M160 92L214 170L214 226C214 240.359 224.641 251 239 251H252C266.359 251 277 240.359 277 226V170L221 92H160Z" fill="white"/>
+  <path d="M218 101L257 83H288L246 171H218V101Z" fill="#F3C75A"/>
+
+  <text x="350" y="192" font-family="'Segoe UI', sans-serif" font-size="108" font-weight="800" fill="#0B1C30" letter-spacing="-5">Yobou</text>
+  <text x="360" y="248" font-family="'Segoe UI', sans-serif" font-size="28" font-weight="700" fill="#0034B9" letter-spacing="9">MARKET</text>
+</svg>

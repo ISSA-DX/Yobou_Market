@@ -20,6 +20,7 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
   const toggleWishlist = useStore((s) => s.toggleWishlist);
   const currency = useStore((s) => s.user?.currency || 'USD');
   const saved = wishlist.includes(product.id);
+  const dataSaver = useStore((s) => s.dataSaver);
   const cover = productImage(product);
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
@@ -103,7 +104,7 @@ export default function ProductCard({ product, onAdd, layout = 'grid' }) {
           alt={product.name}
           loading="lazy"
           onError={(e) => { e.currentTarget.src = '/seed-images/placeholder.svg'; }}
-          className="w-full h-full object-cover group-hover:scale-[1.04] transition-transform duration-500"
+          className={`w-full h-full object-cover ${dataSaver ? '' : 'group-hover:scale-105 transition-transform duration-300'}`}
         />
         {outOfStock && (
           <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center">

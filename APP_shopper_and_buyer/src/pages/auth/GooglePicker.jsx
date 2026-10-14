@@ -56,7 +56,7 @@ export default function GooglePicker() {
       </p>
 
       <div className="mt-8 flex items-center justify-center gap-4 text-label-md text-on-surface-variant">
-        <Link to="#">Help</Link>·<Link to="#">Privacy</Link>·<Link to="#">Terms</Link>
+        <Link to="/help">Help</Link>·<Link to="/help">Privacy</Link>·<Link to="/help">Terms</Link>
       </div>
     </div>
   );

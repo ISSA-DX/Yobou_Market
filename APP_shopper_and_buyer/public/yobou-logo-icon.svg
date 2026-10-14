@@ -1,0 +1,26 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="42" y1="28" x2="430" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A3CBE"/>
+      <stop offset="0.5" stop-color="#0034B9"/>
+      <stop offset="1" stop-color="#091F52"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="120" y1="80" x2="280" y2="240" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF1B0"/>
+      <stop offset="0.45" stop-color="#F7D777"/>
+      <stop offset="1" stop-color="#D9A21C"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="70" y1="48" x2="220" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="32" y="32" width="448" height="448" rx="108" fill="url(#bg)"/>
+  <rect x="32" y="32" width="448" height="448" rx="108" fill="url(#shine)"/>
+
+  <path d="M156 134H202C230.719 134 254 157.281 254 186V200C254 228.719 230.719 252 202 252H178V314H156V134ZM178 154H202C220.778 154 236 169.222 236 188V200C236 218.778 220.778 234 202 234H178V154Z" fill="white"/>
+  <path d="M197 134H278L340 232L340 314H318V236L260 134H197Z" fill="white"/>
+  <path d="M276 188L318 134H365L309 227H276V188Z" fill="url(#gold)"/>
+  <circle cx="355" cy="146" r="24" fill="#E7B740"/>
+</svg>

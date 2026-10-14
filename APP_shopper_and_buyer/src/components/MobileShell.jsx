@@ -3,6 +3,7 @@ import { Outlet, NavLink } from 'react-router-dom';
 import { replayAnimation } from '../lib/motion';
 import { useStore } from '../store';
 import Icon from './Icon';
+import NetworkStatus from './NetworkStatus';
 
 const NAV = [
   { to: '/home', label: 'Home', icon: 'home' },
@@ -34,6 +35,7 @@ export default function MobileShell() {
       className="min-h-screen bg-surface"
       style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}
     >
+      <NetworkStatus />
       {/* No global top bar: every page owns its header (Home carries the
           brand, search, notifications and cart; inner pages a back
           button + title). The old bell-only strip duplicated Home's

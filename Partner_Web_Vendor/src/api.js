@@ -1,6 +1,8 @@
 // Tiny fetch wrapper with access-token + transparent refresh.
 // Source of truth: Internal_Web_Admin/src/api.js (kept in sync).
 const BASE = import.meta.env.VITE_API_BASE || '';
+const MAX_NETWORK_RETRIES = 3;
+const RETRY_BASE_MS = 500;
 
 let accessToken = null;
 let refreshing = null;
@@ -42,7 +44,7 @@ export async function refreshAccessToken() {
   return refreshing;
 }
 
-export async function api(path, { method = 'GET', body, headers = {}, auth = true, retry = true } = {}) {
+export async function api(path, { method = 'GET', body, headers = {}, auth = true, retry = true, retryNetwork = false, retryCount = 0 } = {}) {
   const opts = {
     method,
     credentials: 'include',
@@ -55,6 +57,10 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
   try {
     res = await fetch(`${BASE}${path}`, opts);
   } catch (networkErr) {
+    if (retry && (method === 'GET' || method === 'HEAD' || retryNetwork) && retryCount < MAX_NETWORK_RETRIES) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_BASE_MS * 2 ** retryCount));
+      return api(path, { method, body, headers, auth, retry, retryNetwork, retryCount: retryCount + 1 });
+    }
     const err = new Error(networkErr?.message || 'Network request failed');
     err.code = 'NETWORK_ERROR';
     err.data = {

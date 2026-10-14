@@ -1,9 +1,12 @@
 /**
- * Abuse protection for the public auth endpoints.
+ * Abuse protection for the public endpoints.
  *
  *   rateLimit({ windowMs, max })  — per-IP fixed window → 429 RATE_LIMITED
  *   loginGuard                    — per-email lockout after repeated wrong
  *                                    passwords → 429 TOO_MANY_ATTEMPTS
+ *
+ * rateLimit also accepts the { category, maxRequests } spelling used in
+ * index.js; `category`/`name` and `maxRequests`/`max` are interchangeable.
  *
  * State is in memory, which is right for the single Render instance this
  * app runs on. If you scale to several instances, move these counters to
@@ -12,7 +15,9 @@
  * caller passes { force: true } or RATE_LIMIT_IN_DEV=1 is set. The
  * per-account loginGuard is always on.
  */
-function rateLimit({ windowMs, max, name = 'default', force = false }) {
+function rateLimit({ windowMs = 60_000, max, maxRequests, name, category, force = false } = {}) {
+  const limit = max ?? maxRequests ?? 30;
+  const label = name || category || 'default';
   const hits = new Map(); // key → { count, resetAt }
   const sweep = setInterval(() => {
     const now = Date.now();
@@ -24,7 +29,7 @@ function rateLimit({ windowMs, max, name = 'default', force = false }) {
     const env = process.env.NODE_ENV;
     const relaxed = env === 'test' || (env === 'development' && process.env.RATE_LIMIT_IN_DEV !== '1');
     if (relaxed && !force) return next();
-    const key = `${name}:${req.ip}`;
+    const key = `${label}:${req.ip || req.socket?.remoteAddress || 'unknown'}`;
     const now = Date.now();
     let entry = hits.get(key);
     if (!entry || entry.resetAt <= now) {
@@ -32,10 +37,14 @@ function rateLimit({ windowMs, max, name = 'default', force = false }) {
       hits.set(key, entry);
     }
     entry.count += 1;
-    if (entry.count > max) {
+    if (entry.count > limit) {
       const retryAfterSec = Math.ceil((entry.resetAt - now) / 1000);
       res.set('Retry-After', String(retryAfterSec));
-      return res.status(429).json({ error: 'RATE_LIMITED', retryAfterSec });
+      return res.status(429).json({
+        error: 'RATE_LIMITED',
+        retryAfterSec,
+        message: `Too many requests. Please wait ${retryAfterSec} seconds and try again.`,
+      });
     }
     next();
   };

@@ -180,4 +180,75 @@ describe('Products API', { concurrency: 1 }, () => {
       .send({ stock: -1 })
       .expect(400);
   });
+
+  it('publishes color and size variants so shoppers can choose available options', async () => {
+    const token = await seedAdmin();
+    const res = await request(app)
+      .post('/api/products/admin')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Branded Tee',
+        description: 'Blue short sleeve for men',
+        priceCents: 2500,
+        category: 'Men',
+        stock: 0,
+        status: 'LIVE',
+        variants: [
+          { color: 'Blue', size: 'M', stock: 12 },
+          { color: 'Black', size: 'XL', stock: 8 },
+        ],
+      })
+      .expect(201);
+
+    assert.equal(res.body.product.variants.length, 2);
+    assert.ok(res.body.product.variants.some((v) => v.color === 'Blue' && v.size === 'M' && v.stock === 12));
+    assert.ok(res.body.product.variants.some((v) => v.color === 'Black' && v.size === 'XL' && v.stock === 8));
+
+    const detail = await request(app)
+      .get(`/api/products/${res.body.product.id}`)
+      .expect(200);
+
+    assert.equal(detail.body.product.variants.length, 2);
+    assert.ok(detail.body.product.variants.some((v) => v.color === 'Blue' && v.size === 'M' && v.stock === 12));
+    assert.ok(detail.body.product.variants.some((v) => v.color === 'Black' && v.size === 'XL' && v.stock === 8));
+  });
+
+  it('accepts a selected color/size variant when adding to cart', async () => {
+    const token = await seedAdmin();
+    const create = await request(app)
+      .post('/api/products/admin')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Variant Cart Tee',
+        description: 'Select a size and color',
+        priceCents: 3000,
+        category: 'Fashion',
+        stock: 0,
+        status: 'LIVE',
+        variants: [
+          { color: 'Blue', size: 'M', stock: 7 },
+          { color: 'Black', size: 'XL', stock: 4 },
+        ],
+      })
+      .expect(201);
+
+    const blueM = create.body.product.variants.find((v) => v.color === 'Blue' && v.size === 'M');
+    assert.ok(blueM);
+
+    const res = await request(app)
+      .post('/api/cart')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ productId: create.body.product.id, variantId: blueM.id, quantity: 2 })
+      .expect(201);
+
+    assert.equal(res.body.item.variantId, blueM.id);
+    assert.equal(res.body.item.quantity, 2);
+
+    const cart = await request(app)
+      .get('/api/cart')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    assert.ok(cart.body.items.some((i) => i.product.id === create.body.product.id && i.variantId === blueM.id));
+  });
 });
