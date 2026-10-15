@@ -19,6 +19,7 @@ import Changes from './pages/changes/Changes';
 import Deliveries from './pages/deliveries/Deliveries';
 import Finance from './pages/finance/Finance';
 import Promotions from './pages/promotions/Promotions';
+import CategoriesAdmin from './pages/categories/Categories';
 import { ForgotPassword, ResetPassword } from './pages/auth/PasswordReset';
 import Refunds from './pages/refunds/Refunds';
 import Users from './pages/users/Users';
@@ -63,6 +64,7 @@ export default function App() {
           <Route path="/products" element={<ErrorBoundary><Products /></ErrorBoundary>} />
           <Route path="/products/new" element={<ErrorBoundary><ProductNew /></ErrorBoundary>} />
           <Route path="/products/:id/edit" element={<ErrorBoundary><ProductNew /></ErrorBoundary>} />
+          <Route path="/categories" element={<ErrorBoundary><CategoriesAdmin /></ErrorBoundary>} />
           <Route path="/vendors" element={<ErrorBoundary><Vendors /></ErrorBoundary>} />
           <Route path="/vendors/new" element={<ErrorBoundary><VendorNew /></ErrorBoundary>} />
           <Route path="/orders" element={<ErrorBoundary><Orders /></ErrorBoundary>} />

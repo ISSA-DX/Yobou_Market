@@ -19,6 +19,7 @@ const { parseImageUrls } = require('./products');
 const { notifyMany, notifyProductChange, audit } = require('../lib/notifications');
 const { issueResetLink } = require('../lib/passwordReset');
 
+const { FLAG_KEYS, normalizeExtraCategories, applyExtraCategories } = require('../lib/placement');
 const router = express.Router();
 
 router.use(requireAuth, requireRole('ADMIN'));
@@ -59,6 +60,7 @@ router.get('/products', async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
       include: {
         vendor: { select: { id: true, businessName: true } },
+        extraCategories: { select: { id: true, name: true, subcategory: true } },
         changes: {
           where: { status: 'PENDING' },
           select: { id: true, action: true },
@@ -87,6 +89,19 @@ const productBulk = z.discriminatedUnion('action', [
   // value = vendor id, or null to move the products to Yobou Direct.
   z.object({ action: z.literal('assignVendor'), ids: z.array(z.string()).min(1).max(1000), value: z.string().nullable() }),
   z.object({ action: z.literal('setCategory'), ids: z.array(z.string()).min(1).max(1000), value: z.string().trim().min(1).max(80) }),
+  // Move products to a category AND department in one step.
+  z.object({
+    action: z.literal('setDepartment'),
+    ids: z.array(z.string()).min(1).max(1000),
+    value: z.object({ category: z.string().trim().min(1).max(80), subcategory: z.string().trim().max(80).nullable().optional() }),
+  }),
+  // Also show products on another category / department page (adds a pin;
+  // existing pins are kept), or remove the pin for that category.
+  z.object({
+    action: z.literal('pin'),
+    ids: z.array(z.string()).min(1).max(1000),
+    value: z.object({ category: z.string().trim().min(1).max(80), subcategory: z.string().trim().max(80).nullable().optional(), on: z.boolean() }),
+  }),
   // Percentage change applied to priceCents, e.g. -10 = 10% off, 5 = +5%.
   z.object({ action: z.literal('adjustPrice'), ids: z.array(z.string()).min(1).max(1000), value: z.number().min(-90).max(500) }),
   // Only applies to products without variants (variant stock is per row).
@@ -98,7 +113,7 @@ const productBulk = z.discriminatedUnion('action', [
     action: z.literal('setPlacement'),
     ids: z.array(z.string()).min(1).max(1000),
     value: z.object({
-      flag: z.enum(['showOnHome', 'showOnDeals', 'showOnFlashDeals', 'showOnRecentDeals', 'showOnNewArrivals', 'showOnSearch']),
+      flag: z.enum(FLAG_KEYS),
       on: z.boolean(),
     }),
   }),
@@ -137,7 +152,19 @@ router.post('/products/bulk', async (req, res, next) => {
         let update;
         if (data.action === 'setStatus') update = { status: data.value };
         else if (data.action === 'assignVendor') update = { vendorId: data.value };
-        else if (data.action === 'setCategory') update = { category: data.value };
+        else if (data.action === 'setCategory') update = { category: data.value, subcategory: null };
+        else if (data.action === 'setDepartment') update = { category: data.value.category, subcategory: data.value.subcategory || null };
+        else if (data.action === 'pin') {
+          const { category, subcategory, on } = data.value;
+          const pins = await tx.categoryExtra.findMany({ where: { productId: p.id } });
+          const others = pins.filter((x) => x.name.toLowerCase() !== category.toLowerCase());
+          const next = normalizeExtraCategories([...others, ...(on ? [{ name: category, subcategory }] : [])]);
+          if (on && next.length === others.length) { result.skipped.push({ id: p.id, reason: 'PIN_LIMIT' }); continue; }
+          await applyExtraCategories(tx, p.id, next);
+          touched.push({ action: 'update', product });
+          result.updated += 1;
+          continue;
+        }
         else if (data.action === 'setPlacement') update = { [data.value.flag]: data.value.on };
         else if (data.action === 'setStock') {
           if (_count.variants > 0) { result.skipped.push({ id: p.id, reason: 'HAS_VARIANTS' }); continue; }

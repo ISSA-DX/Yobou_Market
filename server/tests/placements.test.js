@@ -177,7 +177,8 @@ test('placements — vendor POST /api/product-changes records proposedShow* + pr
   assert.strictEqual(res.status, 201);
   assert.strictEqual(res.body.change.proposedShowOnHome, false);
   assert.strictEqual(res.body.change.proposedShowOnFlashDeals, true);
-  assert.deepStrictEqual(res.body.change.proposedExtraCategories, ['Accessories']);
+  // Legacy string pins come back normalized to { name, subcategory }.
+  assert.deepStrictEqual(res.body.change.proposedExtraCategories, [{ name: 'Accessories', subcategory: null }]);
   // Untouched flags are stored as null (the standard proposed*
   // convention for "leave the existing Product value alone").
   assert.strictEqual(res.body.change.proposedShowOnDeals, null);

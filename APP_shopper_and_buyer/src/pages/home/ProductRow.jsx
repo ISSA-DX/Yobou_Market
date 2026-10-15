@@ -39,7 +39,7 @@ export default function ProductRow({
         </div>
       )}
 
-      <div className="flex gap-3 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory px-4 pb-1 min-h-[280px]">
+      <div className="flex gap-3 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory scroll-px-4 px-4 pb-1 min-h-[280px]">
         {loading ? (
           <>
             {Array.from({ length: skeletonCount }).map((_, i) => (

@@ -72,7 +72,7 @@ export default function Wishlist() {
       // confirms the add, and the ProductCard flips to "Added" for
       // 3s. The user stays on the wishlist so they can keep
       // reviewing their saved items.
-      toast.success(`Added ${p.name} to cart`);
+      toast.addedToCart(p);
     } catch (e) {
       toast.error(e?.data?.error || 'Could not add to cart');
     }

@@ -138,6 +138,10 @@ model Product {
   // "remove the deal" empty value without the DB caring.
   compareAtPriceCents Int?
   category    String
+  // Optional subcategory name within `category` (e.g. Phones →
+  // "Smartphones"). Free-text like `category`, matched against the
+  // curated Subcategory rows of that category. Null = category only.
+  subcategory String?
   imageUrls   String           @default("[]") // JSON array
   // `stock` is the canonical available-quantity count for the storefront:
   // when the product has variants, it's the SUM(variants.stock); when no
@@ -169,6 +173,11 @@ model Product {
   showOnSearch      Boolean         @default(true)
   showOnRecentDeals Boolean         @default(false)
   showOnNewArrivals Boolean         @default(true)
+  //   - showOnCategorySpotlight: the banner carousel at the top of the
+  //     product's category and department pages (and any category it is
+  //     pinned to). OFF by default; when nothing is flagged the shopper
+  //     app falls back to the category's best real deals.
+  showOnCategorySpotlight Boolean   @default(false)
   createdAt   DateTime         @default(now())
   orderItems  OrderItem[]
   cartItems   CartItem[]
@@ -223,6 +232,37 @@ model Category {
   slug      String   @unique
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+  // Editorial content for the shopper category page. Seeded once from
+  // server/src/lib/categoryCatalog.js (tracked by contentSeededAt) and
+  // owned by the admin after that.
+  icon        String? // Material Symbols name
+  tagline     String?
+  description String?
+  featured    Boolean  @default(false) // shown in the shopper "Featured" bento
+  sortOrder   Int      @default(0)
+  guide       String   @default("[]") // JSON [{title, body}]
+  faqs        String   @default("[]") // JSON [{q, a}]
+  contentSeededAt DateTime?
+  subcategories Subcategory[]
+}
+
+// Second level of the catalogue (Category → Subcategory). Products
+// reference a subcategory by name via Product.subcategory, mirroring
+// the Product.category convention.
+model Subcategory {
+  id          String   @id @default(cuid())
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+  description String   @default("")
+  icon        String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@unique([categoryId, name])
+  @@unique([categoryId, slug])
 }
 
 // Many-to-many opt-in: a product's additional category pin targets
@@ -236,10 +276,12 @@ model CategoryExtra {
   id        String   @id @default(cuid())
   productId String
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  name      String
+  name      String   // category name
+  // Optional department within `name`. Null = the whole category page.
+  subcategory String?
   createdAt DateTime @default(now())
 
-  @@unique([productId, name]) // same product can't be pinned twice to the same name
+  @@unique([productId, name]) // one pin per category per product
   @@index([name]) // future multi-cat filter would look up by name
 }
 
@@ -537,6 +579,8 @@ model ProductChange {
   // now this is intentionally write-only.
   proposedCompareAtPriceCents Int?
   proposedCategory    String?
+  // null = leave alone (UPDATE); "" = clear the subcategory.
+  proposedSubcategory String?
   proposedImageUrls   String? // JSON array
   proposedStock       Int?
   proposedStatus      String?
@@ -559,6 +603,7 @@ model ProductChange {
   proposedShowOnSearch     Boolean?
   proposedShowOnRecentDeals Boolean?
   proposedShowOnNewArrivals Boolean?
+  proposedShowOnCategorySpotlight Boolean?
   // JSON-encoded string[] of extra category names. Mirrors the
   // existing proposedImageUrls / proposedVariants pattern. On
   // approval the route handler deletes-and-recreates the

@@ -14,7 +14,6 @@ const FREE_SHIPPING_THRESHOLD_CENTS = 5000;
 
 export default function Cart() {
   const navigate = useNavigate();
-  const refreshCart = useStore((s) => s.refreshCartCount);
   const ensureGuestSession = useStore((s) => s.ensureGuestSession);
   const user = useStore((s) => s.user);
   const bootDone = useStore((s) => s.bootDone);
@@ -99,7 +98,11 @@ export default function Cart() {
     if (masterRef.current) masterRef.current.indeterminate = someSelected;
   }, [someSelected, allSelected]);
 
-  useEffect(() => { if (data) refreshCart(); }, [data, refreshCart]);
+  // Keep the nav badge in step with what this page just loaded — no
+  // second /api/cart request needed.
+  useEffect(() => {
+    if (data?.items) useStore.setState({ cartCount: data.items.reduce((n, i) => n + i.quantity, 0) });
+  }, [data]);
 
   async function setQty(item, qty) {
     if (qty < 0) return;

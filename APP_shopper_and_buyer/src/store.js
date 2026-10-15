@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { api, setAccessToken, onAuthChange } from './api';
+import { api, setAccessToken, onAuthChange, refreshAccessToken } from './api';
+import { toast } from './lib/toast';
 
 const THEME_KEY = 'yobou:theme';
 const DARK_KEY = 'yobou:dark';
@@ -85,6 +86,13 @@ function applyDark(dark) {
 // and avoids leaking the variable into any future HMR reload.
 let cartReqId = 0;
 
+// Session lifecycle singletons. `bootPromise` makes boot() run once per
+// page load even though React StrictMode mounts effects twice in dev;
+// `guestPromise` makes concurrent ensureGuestSession() callers share one
+// POST /api/auth/guest instead of each minting their own guest.
+let bootPromise = null;
+let guestPromise = null;
+
 export const useStore = create((set, get) => ({
   user: null,
   bootDone: false,
@@ -122,13 +130,19 @@ export const useStore = create((set, get) => ({
     return get()._applyTheme(nextTheme, true);
   },
 
-  toggleWishlist(productId) {
+  toggleWishlist(productId, { silent = false } = {}) {
     const list = get().wishlist;
-    const next = list.includes(productId)
+    const removing = list.includes(productId);
+    const next = removing
       ? list.filter((id) => id !== productId)
       : [...list, productId];
     writeWishlist(next);
     set({ wishlist: next });
+    if (!silent) {
+      if (removing) toast.info('Removed from wishlist');
+      else toast.success('Saved to wishlist', { action: { label: 'View', to: '/wishlist' } });
+    }
+    return !removing;
   },
 
   isWishlisted(productId) {
@@ -209,6 +223,9 @@ export const useStore = create((set, get) => ({
   // the badge empty even though the item is on the server. Only
   // the newest call's response may write to zustand.
   async refreshCartCount() {
+    // Concurrent callers (shell, cart page, add-to-cart) share the GET via
+    // api()'s in-flight de-duplication; cartReqId still guarantees only the
+    // newest response writes the badge.
     const myId = ++cartReqId;
     const user = get().user;
     // Guests have a server-side User row (created via /api/auth/guest)
@@ -238,60 +255,60 @@ export const useStore = create((set, get) => ({
   // guest. Idempotent — calling this when a real user is already
   // signed in is a no-op.
   async ensureGuestSession() {
+    // Never decide "nobody is signed in" before boot has restored the
+    // session — that race used to mint a new guest on every page load
+    // that touched the cart, wiping the previous guest's cart.
+    await get().boot();
     if (get().user) return get().user;
-    try {
-      const data = await api('/api/auth/guest', { method: 'POST', auth: false });
-      if (!data?.accessToken || !data?.user) return null;
-      setAccessToken(data.accessToken);
-      set({ user: data.user });
-      return data.user;
-    } catch {
-      return null;
+    if (!guestPromise) {
+      guestPromise = (async () => {
+        try {
+          // The server returns the CURRENT session if one exists, so this
+          // can never replace a live guest or account.
+          const data = await api('/api/auth/guest', { method: 'POST', auth: false });
+          if (!data?.accessToken || !data?.user) return null;
+          setAccessToken(data.accessToken);
+          set({ user: data.user });
+          return data.user;
+        } catch {
+          return null;
+        } finally {
+          guestPromise = null;
+        }
+      })();
     }
+    return guestPromise;
   },
 
   // Called once on boot to restore the session from the refresh cookie.
-  async boot() {
+  boot() {
+    if (!bootPromise) bootPromise = get()._boot();
+    return bootPromise;
+  },
+
+  async _boot() {
     // Pre-auth theme is ALWAYS light so the Sign-In / Register /
     // AppleConfirm / GooglePicker screens are predictably bright.
-    // Returning sessions with a stored dark theme used to bleed into
-    // the login screen (the boot refresh would re-apply `dark` before
-    // the user had re-auth'd), which read as a UI bug. After the
-    // refresh resolves with a valid user, their stored theme takes
-    // over — see below.
+    // After the refresh resolves with a valid user, their stored theme
+    // takes over — see below.
     if (!get().user) {
       get()._applyTheme('light', false);
     }
+    // Subscribe first so the refresh below (and any later background
+    // refresh) keeps zustand's user in sync.
+    onAuthChange(({ user }) => set({ user }));
     try {
-      // cache: 'no-store' + Date.now() suffix defends against the
-      // Capacitor WebView serving a stale cached 401 from a prior
-      // session that was already in the disk cache. Without this,
-      // a shopper reopening the app after a server restart would
-      // see "Couldn't load your cart" forever — the refresh would
-      // never actually reach the server.
-      // CRITICAL: no Cache-Control / Pragma headers — those are
-      // not CORS-safelisted and the WebView's preflight gets
-      // rejected by the server's Content-Type + Authorization
-      // allow-list. See api.js api() for full rationale.
-      const r = await fetch(
-        (import.meta.env.VITE_API_BASE || '') + '/api/auth/refresh?_t=' + Date.now(),
-        {
-          method: 'POST',
-          credentials: 'include',
-          cache: 'no-store',
+      // Shared with api()'s 401 handler, so a page request that 401s
+      // while boot is refreshing waits for this one instead of firing a
+      // second refresh.
+      const data = await refreshAccessToken();
+      if (data?.user) {
+        if (data.user.theme && ['light', 'dark', 'system'].includes(data.user.theme)) {
+          get()._applyTheme(data.user.theme, false);
         }
-      );
-      if (r.ok) {
-        const data = await r.json();
-        if (data?.accessToken && data?.user) {
-          setAccessToken(data.accessToken);
-          if (data.user.theme && ['light', 'dark', 'system'].includes(data.user.theme)) {
-            get()._applyTheme(data.user.theme, false);
-          }
-          set({ user: data.user });
-        }
+        set({ user: data.user });
       }
-    } catch { /* no-op */ }
+    } catch { /* no session — the shopper browses anonymously until a guest is needed */ }
 
     applyDark(get().dark);
 
@@ -308,8 +325,8 @@ export const useStore = create((set, get) => ({
       else if (mq.addListener) mq.addListener(handler);
     }
 
-    onAuthChange(({ user }) => set({ user }));
-    if (get().user) await get().refreshCartCount();
     set({ bootDone: true });
+    // The cart badge loads once MobileShell sees the user (refreshCartCount
+    // is de-duplicated), so boot doesn't fetch the cart itself.
   },
 }));

@@ -114,6 +114,7 @@ export default function App() {
             <Route path="/home" element={<Home />} />
             <Route path="/categories" element={<Categories />} />
             <Route path="/categories/:slug" element={<CategoryDetail />} />
+            <Route path="/categories/:slug/:sub" element={<CategoryDetail />} />
             {/* ErrorBoundary on PDP prevents a child-render crash (e.g.
                 a malformed live-sync event or a related-product card
                 missing a field) from blanking the whole page. Without

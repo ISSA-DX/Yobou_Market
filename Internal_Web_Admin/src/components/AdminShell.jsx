@@ -82,6 +82,7 @@ function NavItem({ to, label, icon, badge }) {
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: 'space_dashboard' },
   { to: '/products', label: 'Products', icon: 'inventory_2' },
+  { to: '/categories', label: 'Categories', icon: 'category' },
   { to: '/changes', label: 'Changes', icon: 'pending_actions', badgeKey: 'changes' },
   { to: '/refunds', label: 'Refunds', icon: 'assignment_return', badgeKey: 'refunds' },
   { to: '/vendors', label: 'Vendors', icon: 'storefront' },

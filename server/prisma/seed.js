@@ -24,27 +24,21 @@ const USERS = [
 //
 // `Pharmacy` is intentionally absent — health/medicine needs
 // regulatory review before we ship it.
-const CATEGORIES = [
-  'Electronics', 'Phones', 'Computer', 'Fashion', 'Shoes', 'Beauty',
-  'Home', 'Kitchen', 'Sports', 'Fitness', 'Toys', 'Gaming',
-  'TV & Audio', 'Appliances', 'Automotive', 'Books', 'Grocery',
-  'Health', 'Pet Supplies', 'Baby', 'Jewelry', 'Watches', 'Bags',
-  'Office', 'Garden', 'Tools', 'Arts & Crafts', 'Musical Instruments',
-];
+const { CATEGORY_NAMES: CATEGORIES } = require('../src/lib/categoryCatalog');
 
 const PRODUCTS = [
-  { name: 'Wireless Earbuds Pro', priceCents: 4999, category: 'Electronics', description: 'Active noise-cancelling earbuds with 30-hour battery life.' },
-  { name: 'Smart Watch X3', priceCents: 12999, category: 'Electronics', description: 'AMOLED display, heart-rate monitor, 7-day battery.' },
-  { name: '4K Action Camera', priceCents: 18999, category: 'Electronics', description: 'Waterproof to 30m, hyper-smooth stabilization.' },
-  { name: 'Linen Summer Shirt', priceCents: 3499, category: 'Fashion', description: 'Breathable linen, relaxed fit, three colors.' },
-  { name: 'Canvas Tote Bag', priceCents: 2499, category: 'Fashion', description: 'Heavyweight canvas, 12L capacity.' },
-  { name: 'Slim Fit Chinos', priceCents: 4999, category: 'Fashion', description: 'Stretch cotton blend, machine washable.' },
-  { name: 'Aroma Diffuser', priceCents: 2999, category: 'Home', description: 'Ultrasonic, 7-color mood light, 8-hour runtime.' },
+  { name: 'Wireless Earbuds Pro', priceCents: 4999, category: 'Electronics', subcategory: 'Audio & Headphones', description: 'Active noise-cancelling earbuds with 30-hour battery life.' },
+  { name: 'Smart Watch X3', priceCents: 12999, category: 'Electronics', subcategory: 'Wearables', description: 'AMOLED display, heart-rate monitor, 7-day battery.' },
+  { name: '4K Action Camera', priceCents: 18999, category: 'Electronics', subcategory: 'Cameras & Drones', description: 'Waterproof to 30m, hyper-smooth stabilization.' },
+  { name: 'Linen Summer Shirt', priceCents: 3499, category: 'Fashion', subcategory: 'Men', description: 'Breathable linen, relaxed fit, three colors.' },
+  { name: 'Canvas Tote Bag', priceCents: 2499, category: 'Fashion', subcategory: 'Accessories', description: 'Heavyweight canvas, 12L capacity.' },
+  { name: 'Slim Fit Chinos', priceCents: 4999, category: 'Fashion', subcategory: 'Men', description: 'Stretch cotton blend, machine washable.' },
+  { name: 'Aroma Diffuser', priceCents: 2999, category: 'Home', subcategory: 'Décor', description: 'Ultrasonic, 7-color mood light, 8-hour runtime.' },
   { name: 'Cast Iron Skillet 10"', priceCents: 3999, category: 'Home', description: 'Pre-seasoned, lifetime guarantee.' },
-  { name: 'Memory Foam Pillow', priceCents: 4499, category: 'Home', description: 'Contoured support, cooling gel layer.' },
-  { name: 'Vitamin C Serum', priceCents: 1999, category: 'Beauty', description: '20% L-ascorbic acid, vegan, fragrance-free.' },
-  { name: 'Mineral Sunscreen SPF50', priceCents: 1799, category: 'Beauty', description: 'Reef-safe, non-comedogenic, 50ml.' },
-  { name: 'Rose Clay Face Mask', priceCents: 1499, category: 'Beauty', description: 'Detoxifying, kaolin + bentonite, 100g.' },
+  { name: 'Memory Foam Pillow', priceCents: 4499, category: 'Home', subcategory: 'Bedding & Bath', description: 'Contoured support, cooling gel layer.' },
+  { name: 'Vitamin C Serum', priceCents: 1999, category: 'Beauty', subcategory: 'Skincare', description: '20% L-ascorbic acid, vegan, fragrance-free.' },
+  { name: 'Mineral Sunscreen SPF50', priceCents: 1799, category: 'Beauty', subcategory: 'Skincare', description: 'Reef-safe, non-comedogenic, 50ml.' },
+  { name: 'Rose Clay Face Mask', priceCents: 1499, category: 'Beauty', subcategory: 'Skincare', description: 'Detoxifying, kaolin + bentonite, 100g.' },
 ];
 
 // Local SVGs in APP_shopper_and_buyer/public/seed-images — bundled into
@@ -111,6 +105,7 @@ async function main() {
         description: p.description,
         priceCents: p.priceCents,
         category: p.category,
+        subcategory: p.subcategory || null,
         imageUrls: IMG(p.category, i + 1),
         stock: 50,
         status: 'LIVE',
@@ -128,7 +123,7 @@ async function main() {
     await prisma.category.upsert({
       where: { name },
       update: {},
-      create: { name, slug: name.toLowerCase(), isActive: true },
+      create: { name, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''), isActive: true },
     });
   }
 

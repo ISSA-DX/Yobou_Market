@@ -7,6 +7,8 @@ const { prisma } = require('../prisma');
 const { productUpsert, productUpsertPartial, productListQuery } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
 const { audit, notifyProductChange, notifyAdminsProductChangeSubmitted } = require('../lib/notifications');
+const categoriesRouter = require('./categories');
+const { FLAG_KEYS, normalizeExtraCategories, applyExtraCategories, inCategoryWhere, pinsToWire } = require('../lib/placement');
 
 const router = express.Router();
 
@@ -57,7 +59,7 @@ function parseVariants(product) {
 // the field is absent (e.g. legacy include without the relation).
 function parseExtraCategories(product) {
   if (!product || !Array.isArray(product.extraCategories)) return product;
-  return { ...product, extraCategories: product.extraCategories.map((e) => ({ id: e.id, name: e.name })) };
+  return { ...product, extraCategories: pinsToWire(product.extraCategories) };
 }
 
 /**
@@ -136,34 +138,14 @@ function requireAdminOrApprovedVendor(req, res, next) {
 // admin form applies client-side (trim, drop empties, dedupe) plus a
 // 10-entry cap and an 80-char per-name cap to match `Product.category`.
 // Idempotent — safe to call on every write.
-function normalizeExtraCategories(input) {
-  if (!Array.isArray(input)) return [];
-  const seen = new Set();
-  const out = [];
-  for (const raw of input) {
-    if (typeof raw !== 'string') continue;
-    const trimmed = raw.trim();
-    if (trimmed.length === 0) continue;
-    if (trimmed.length > 80) continue;
-    if (seen.has(trimmed)) continue;
-    seen.add(trimmed);
-    out.push(trimmed);
-    if (out.length >= 10) break;
-  }
-  return out;
+// '' / whitespace / null all mean "no subcategory".
+function normalizeSubcategory(v) {
+  if (typeof v !== 'string') return null;
+  const t = v.trim().slice(0, 80);
+  return t || null;
 }
 
-// Reconcile the CategoryExtra rows for a product with the caller's
-// array. The reconciliation matches the variant helper: delete all
-// existing rows for the product, then create the new ones. ≤10
-// inserts makes this trivially cheap. Run inside a transaction that
-// already holds the product row.
-async function applyExtraCategories(tx, productId, names) {
-  await tx.categoryExtra.deleteMany({ where: { productId } });
-  for (const name of names) {
-    await tx.categoryExtra.create({ data: { productId, name } });
-  }
-}
+
 
 // Build an absolute URL from the live request so <img src=...> resolves
 // correctly when the SPA is served from a different origin than the API
@@ -232,25 +214,27 @@ router.get('/', async (req, res, next) => {
   try {
     const parsed = productListQuery.parse(req.query);
     const where = { status: 'LIVE' };
-    if (parsed.category) where.category = parsed.category;
+    const and = [];
+    // A category (and department) page lists its own products plus any
+    // pinned there from other categories — see lib/placement.js.
+    if (parsed.category) and.push(inCategoryWhere(parsed.category, parsed.subcategory));
     if (parsed.vendor) where.vendorId = parsed.vendor;
     if (parsed.q) {
       const term = parsed.q;
-      where.OR = [
+      and.push({ OR: [
         { name: { contains: term } },
         { category: { contains: term } },
+        { subcategory: { contains: term } },
         { description: { contains: term } },
-      ];
+      ] });
     }
+    if (and.length) where.AND = and;
     if (parsed.minPrice != null) where.priceCents = { ...(where.priceCents || {}), gte: parsed.minPrice };
     if (parsed.maxPrice != null) where.priceCents = { ...(where.priceCents || {}), lte: parsed.maxPrice };
     if (parsed.inStock === true) where.stock = { gt: 0 };
-    if (parsed.showOnHome != null) where.showOnHome = parsed.showOnHome;
-    if (parsed.showOnDeals != null) where.showOnDeals = parsed.showOnDeals;
-    if (parsed.showOnFlashDeals != null) where.showOnFlashDeals = parsed.showOnFlashDeals;
-    if (parsed.showOnSearch != null) where.showOnSearch = parsed.showOnSearch;
-    if (parsed.showOnRecentDeals != null) where.showOnRecentDeals = parsed.showOnRecentDeals;
-    if (parsed.showOnNewArrivals != null) where.showOnNewArrivals = parsed.showOnNewArrivals;
+    for (const flag of FLAG_KEYS) {
+      if (parsed[flag] != null) where[flag] = parsed[flag];
+    }
 
     // Resolved page size: explicit pageSize wins, legacy `limit`
     // follows (kept for callers like Home.jsx that don't pass a
@@ -273,6 +257,7 @@ router.get('/', async (req, res, next) => {
         include: {
           vendor: { select: { id: true, businessName: true } },
           variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
+          extraCategories: { select: { id: true, name: true, subcategory: true } },
         },
       }),
       prisma.product.groupBy({ by: ['category'], where: facetWhere, _count: { _all: true } }),
@@ -291,7 +276,7 @@ router.get('/', async (req, res, next) => {
 
     const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
     res.json({
-      products: products.map((p) => parseVariants(parseImageUrls(p))),
+      products: products.map((p) => parseExtraCategories(parseVariants(parseImageUrls(p)))),
       facets: {
         categories: categoriesFacet
           .map((c) => ({ name: c.category, count: c._count._all }))
@@ -319,19 +304,59 @@ router.get('/', async (req, res, next) => {
 // table. Shopper pages still call `/api/products/categories` for the
 // name+count shape; new admin/partner pickers should hit
 // `/api/categories` which adds id/slug/isActive.
+async function loadPublicCategories() {
+  const rows = await prisma.category.findMany({
+    where: { isActive: true },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    include: { subcategories: { where: { isActive: true } } },
+  });
+  const [counts, subCounts] = await Promise.all([
+    categoriesRouter.getCategoryCounts(),
+    categoriesRouter.getSubcategoryCounts(),
+  ]);
+  return rows.map((c) => categoriesRouter.serializeCategory(c, counts, subCounts));
+}
+
+// `count` is kept alongside `productCount` for older shopper builds.
+function publicSummary(c) {
+  return {
+    name: c.name,
+    slug: c.slug,
+    icon: c.icon,
+    tagline: c.tagline,
+    featured: c.featured,
+    count: c.productCount,
+    productCount: c.productCount,
+    subcategories: c.subcategories.map(({ name, slug, icon, productCount }) => ({ name, slug, icon, productCount })),
+  };
+}
+
 router.get('/categories', async (_req, res, next) => {
   try {
-    const rows = await prisma.category.findMany({
-      where: { isActive: true },
-      orderBy: { name: 'asc' },
-    });
-    const groups = await prisma.product.groupBy({
-      by: ['category'],
-      where: { status: 'LIVE' },
-      _count: { _all: true },
-    });
-    const counts = Object.fromEntries(groups.map((g) => [g.category, g._count._all]));
-    res.json({ categories: rows.map((c) => ({ name: c.name, count: counts[c.name] || 0 })) });
+    const all = await loadPublicCategories();
+    res.json({ categories: all.map(publicSummary) });
+  } catch (err) { next(err); }
+});
+
+// Public category page payload. `:key` accepts the slug, the exact
+// name, or a legacy name-based link (e.g. "TV%20%26%20Audio"), so old
+// deep links keep working.
+router.get('/categories/:key', async (req, res, next) => {
+  try {
+    const key = String(req.params.key || '').trim();
+    const keySlug = categoriesRouter.slugify(key);
+    const all = await loadPublicCategories();
+    const category = all.find((c) => c.slug === key || c.slug === keySlug
+      || c.name.toLowerCase() === key.toLowerCase()
+      || categoriesRouter.slugify(c.name) === keySlug);
+    if (!category) return res.status(404).json({ error: 'CATEGORY_NOT_FOUND' });
+    // Related: featured first, then the busiest categories.
+    const related = all
+      .filter((c) => c.name !== category.name)
+      .sort((a, b) => Number(b.featured) - Number(a.featured) || b.productCount - a.productCount || a.sortOrder - b.sortOrder)
+      .slice(0, 8)
+      .map(publicSummary);
+    res.json({ category: { ...category, count: category.productCount }, related });
   } catch (err) { next(err); }
 });
 
@@ -358,6 +383,7 @@ router.get('/vendor/mine', requireAuth, requireApprovedVendor, async (req, res, 
       orderBy: { createdAt: 'desc' },
       include: {
         variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
+        extraCategories: { select: { id: true, name: true, subcategory: true } },
       },
     });
     res.json({ products: products.map((p) => parseVariants(parseImageUrls(p))) });
@@ -373,7 +399,7 @@ router.get('/vendor/:id', requireAuth, requireApprovedVendor, async (req, res, n
       where: { id: req.params.id, vendorId: req.user.vendor.id },
       include: {
         variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
-        extraCategories: { select: { id: true, name: true } },
+        extraCategories: { select: { id: true, name: true, subcategory: true } },
       },
     });
     if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
@@ -467,7 +493,7 @@ router.get('/:id', async (req, res, next) => {
       include: {
         vendor: { select: { id: true, businessName: true } },
         variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
-        extraCategories: { select: { id: true, name: true } },
+        extraCategories: { select: { id: true, name: true, subcategory: true } },
       },
     });
     if (!product) return res.status(404).json({ error: 'NOT_FOUND' });
@@ -503,6 +529,7 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
         // a strikethrough/percentage badge.
         proposedCompareAtPriceCents: rest.compareAtPriceCents ?? null,
         proposedCategory: rest.category,
+        proposedSubcategory: rest.subcategory ? rest.subcategory.trim() : null,
         proposedImageUrls: stringifyImageUrls(rest).imageUrls,
         proposedStock: rest.stock ?? 0,
         proposedStatus: rest.status || 'LIVE',
@@ -521,6 +548,7 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
         proposedShowOnSearch:     rest.showOnSearch     ?? null,
         proposedShowOnRecentDeals: rest.showOnRecentDeals ?? null,
         proposedShowOnNewArrivals: rest.showOnNewArrivals ?? null,
+        proposedShowOnCategorySpotlight: rest.showOnCategorySpotlight ?? null,
         proposedExtraCategories:  JSON.stringify(normalizedExtras),
         status: 'PENDING',
       },
@@ -556,7 +584,7 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
         ? variants.reduce((s, v) => s + (typeof v.stock === 'number' ? v.stock : 0), 0)
         : data.stock;
       const created = await tx.product.create({
-        data: { ...stringifyImageUrls(rest), stock },
+        data: { ...stringifyImageUrls(rest), subcategory: normalizeSubcategory(rest.subcategory), stock },
       });
       if (Array.isArray(variants) && variants.length > 0) {
         await applyVariants(tx, created.id, variants.map((v) => ({ ...v, id: undefined })));
@@ -568,7 +596,7 @@ router.post('/admin', requireAuth, requireRole('ADMIN'), async (req, res, next) 
         where: { id: created.id },
         include: {
           variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
-          extraCategories: { select: { id: true, name: true } },
+          extraCategories: { select: { id: true, name: true, subcategory: true } },
         },
       });
     });
@@ -623,6 +651,7 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         // reconciled against the CategoryExtra join table.
         const { variants, extraCategories, ...rest } = data;
         const updateData = stringifyImageUrls(rest);
+        if (rest.subcategory !== undefined) updateData.subcategory = normalizeSubcategory(rest.subcategory);
         // If variants are provided, recompute Product.stock. If variants
         // is an empty array, that's "clear all variants" — stock falls
         // back to the legacy `data.stock` (or stays where it is if the
@@ -649,7 +678,7 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
           where: { id: req.params.id },
           include: {
             variants: { select: { id: true, color: true, size: true, stock: true, imageUrls: true } },
-            extraCategories: { select: { id: true, name: true } },
+            extraCategories: { select: { id: true, name: true, subcategory: true } },
           },
         });
       });
@@ -679,6 +708,8 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         // priceCents against the live product before applying.
         proposedCompareAtPriceCents: data.compareAtPriceCents !== undefined ? data.compareAtPriceCents : null,
         proposedCategory: data.category ?? null,
+        // undefined = leave alone; '' (or null) = clear.
+        proposedSubcategory: data.subcategory !== undefined ? (data.subcategory || '').trim() : null,
         proposedImageUrls: data.imageUrls !== undefined ? JSON.stringify(data.imageUrls || []) : null,
         proposedStock: data.stock ?? null,
         proposedStatus: data.status ?? null,
@@ -695,6 +726,7 @@ router.patch('/:id', requireAuth, requireAdminOrApprovedVendor, async (req, res,
         proposedShowOnSearch:     data.showOnSearch     ?? null,
         proposedShowOnRecentDeals: data.showOnRecentDeals ?? null,
         proposedShowOnNewArrivals: data.showOnNewArrivals ?? null,
+        proposedShowOnCategorySpotlight: data.showOnCategorySpotlight ?? null,
         // Extra categories: normalize then JSON-encode. The change
         // record only carries a JSON snapshot; the approval path
         // reconciles the join table.

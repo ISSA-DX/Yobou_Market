@@ -6,6 +6,7 @@ const { productChangeCreate, adminReview } = require('../lib/validators');
 const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/middleware');
 const { notify, audit, notifyProductChange, notifyAdminsProductChangeSubmitted } = require('../lib/notifications');
 const { applyVariants } = require('./products');
+const { normalizeExtraCategories, applyExtraCategories, parseProposedPins } = require('../lib/placement');
 
 const router = express.Router();
 
@@ -23,13 +24,13 @@ function parseChange(change) {
     try { out.proposedVariants = JSON.parse(change.proposedVariants); }
     catch { out.proposedVariants = []; }
   }
-  // proposedExtraCategories is a JSON-encoded string[] on the row. Surface
+  // proposedExtraCategories is a JSON snapshot of category pins. Surface
   // it as a real array so the admin review page can render it without
   // re-parsing. Null on the row becomes null here (distinct from
   // undefined, which would mean the change didn't touch the field at all).
   if (typeof change.proposedExtraCategories === 'string' && change.proposedExtraCategories) {
-    try { out.proposedExtraCategories = JSON.parse(change.proposedExtraCategories); }
-    catch { out.proposedExtraCategories = []; }
+    // Normalized to [{ name, subcategory }] whatever shape was stored.
+    out.proposedExtraCategories = parseProposedPins(change.proposedExtraCategories);
   }
   return out;
 }
@@ -42,28 +43,6 @@ function stringifyVariants(arr) {
   return JSON.stringify(Array.isArray(arr) ? arr : []);
 }
 
-// Normalize the vendor's extra-categories list before persisting it as a
-// JSON snapshot on the change row. Same rules as the live Product write
-// path in server/src/routes/products.js: trim each entry, drop empties,
-// dedupe, cap 10 entries, cap each name at 80 chars. Mirrored here so
-// the change row's JSON is consistent with what the approve path will
-// actually write to CategoryExtra.
-function normalizeExtraCategories(input) {
-  if (!Array.isArray(input)) return [];
-  const out = [];
-  const seen = new Set();
-  for (const raw of input) {
-    if (typeof raw !== 'string') continue;
-    const trimmed = raw.trim().slice(0, 80);
-    if (!trimmed) continue;
-    const key = trimmed.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(trimmed);
-    if (out.length >= 10) break;
-  }
-  return out;
-}
 
 // Vendor submits a change request for admin approval.
 // Action CREATE -> proposed* fields required and applied on approval.
@@ -104,6 +83,7 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
         proposedPriceCents: data.priceCents ?? null,
         proposedCompareAtPriceCents: data.compareAtPriceCents !== undefined ? data.compareAtPriceCents : null,
         proposedCategory: data.category ?? null,
+        proposedSubcategory: data.subcategory !== undefined ? (data.subcategory || '').trim() : null,
         proposedImageUrls: data.imageUrls !== undefined ? stringifyImageUrls(data.imageUrls) : null,
         proposedStock: data.stock ?? null,
         proposedStatus: data.status ?? null,
@@ -121,6 +101,7 @@ router.post('/', requireAuth, requireApprovedVendor, async (req, res, next) => {
         proposedShowOnSearch:     data.showOnSearch     ?? null,
         proposedShowOnRecentDeals: data.showOnRecentDeals ?? null,
         proposedShowOnNewArrivals: data.showOnNewArrivals ?? null,
+        proposedShowOnCategorySpotlight: data.showOnCategorySpotlight ?? null,
         // Extra categories: JSON snapshot of the normalized list (trim,
         // drop empties, dedupe, cap 10, cap 80 chars each). The approve
         // path reconciles the CategoryExtra join table from this string.
@@ -220,11 +201,7 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
         // empty array. The proposedExtraCategories column is
         // JSON-encoded, not a join table reference, so it survives a
         // rejected-change cycle unchanged.
-        let proposedExtras = [];
-        try {
-          if (change.proposedExtraCategories) proposedExtras = JSON.parse(change.proposedExtraCategories);
-        } catch { proposedExtras = []; }
-        if (!Array.isArray(proposedExtras)) proposedExtras = [];
+        const proposedPins = parseProposedPins(change.proposedExtraCategories);
         const stock = Array.isArray(proposedVariants) && proposedVariants.length > 0
           ? proposedVariants.reduce((s, v) => s + (typeof v.stock === 'number' ? v.stock : 0), 0)
           : (change.proposedStock ?? 0);
@@ -240,6 +217,7 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
             priceCents: change.proposedPriceCents ?? 0,
             compareAtPriceCents: change.proposedCompareAtPriceCents ?? null,
             category: change.proposedCategory || 'Uncategorized',
+            subcategory: change.proposedSubcategory || null,
             imageUrls: change.proposedImageUrls || '[]',
             stock,
             status: change.proposedStatus || 'LIVE',
@@ -249,29 +227,14 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
             showOnSearch:     change.proposedShowOnSearch     ?? true,
             showOnRecentDeals: change.proposedShowOnRecentDeals ?? false,
             showOnNewArrivals: change.proposedShowOnNewArrivals ?? true,
+            showOnCategorySpotlight: change.proposedShowOnCategorySpotlight ?? false,
           },
         });
         if (Array.isArray(proposedVariants) && proposedVariants.length > 0) {
           await applyVariants(tx, created.id, proposedVariants);
         }
-        // Persist the proposed extra-category pins. Truncate to the
-        // 10-entry cap to match the validator + admin form.
-        const trimmedExtras = proposedExtras
-          .filter((n) => typeof n === 'string' && n.trim().length > 0)
-          .map((n) => n.trim().slice(0, 80))
-          .slice(0, 10);
-        // Dedupe while preserving insertion order so the admin's
-        // intended ordering survives.
-        const seen = new Set();
-        const finalExtras = [];
-        for (const name of trimmedExtras) {
-          if (seen.has(name)) continue;
-          seen.add(name);
-          finalExtras.push(name);
-        }
-        for (const name of finalExtras) {
-          await tx.categoryExtra.create({ data: { productId: created.id, name } });
-        }
+        // Persist the proposed category pins (normalized on parse).
+        await applyExtraCategories(tx, created.id, proposedPins);
         appliedProductId = created.id;
       } else if (change.action === 'UPDATE') {
         // Build the update payload from non-null proposed fields only.
@@ -286,6 +249,7 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
         if (change.proposedDescription !== null) data.description = change.proposedDescription;
         if (change.proposedPriceCents !== null) data.priceCents = change.proposedPriceCents;
         if (change.proposedCategory !== null) data.category = change.proposedCategory;
+        if (change.proposedSubcategory !== null) data.subcategory = change.proposedSubcategory || null;
         if (change.proposedImageUrls !== null) data.imageUrls = change.proposedImageUrls;
         if (change.proposedStock !== null) data.stock = change.proposedStock;
         if (change.proposedStatus !== null) data.status = change.proposedStatus;
@@ -334,6 +298,7 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
         if (change.proposedShowOnSearch     !== null) data.showOnSearch     = change.proposedShowOnSearch;
         if (change.proposedShowOnRecentDeals !== null) data.showOnRecentDeals = change.proposedShowOnRecentDeals;
         if (change.proposedShowOnNewArrivals !== null) data.showOnNewArrivals = change.proposedShowOnNewArrivals;
+        if (change.proposedShowOnCategorySpotlight !== null) data.showOnCategorySpotlight = change.proposedShowOnCategorySpotlight;
         await tx.product.update({ where: { id: change.productId }, data });
         if (Array.isArray(proposedVariants)) {
           await applyVariants(tx, change.productId, proposedVariants);
@@ -345,25 +310,7 @@ router.post('/:id/approve', requireAuth, requireRole('ADMIN'), async (req, res, 
         // out-of-band or the vendor's submission slipped past the
         // form's client-side cap.
         if (change.proposedExtraCategories !== null) {
-          let proposedExtras = [];
-          try { proposedExtras = JSON.parse(change.proposedExtraCategories); }
-          catch { proposedExtras = []; }
-          if (!Array.isArray(proposedExtras)) proposedExtras = [];
-          const seen = new Set();
-          const finalExtras = [];
-          for (const raw of proposedExtras) {
-            if (typeof raw !== 'string') continue;
-            const trimmed = raw.trim().slice(0, 80);
-            if (!trimmed) continue;
-            if (seen.has(trimmed)) continue;
-            seen.add(trimmed);
-            finalExtras.push(trimmed);
-            if (finalExtras.length >= 10) break;
-          }
-          await tx.categoryExtra.deleteMany({ where: { productId: change.productId } });
-          for (const name of finalExtras) {
-            await tx.categoryExtra.create({ data: { productId: change.productId, name } });
-          }
+          await applyExtraCategories(tx, change.productId, parseProposedPins(change.proposedExtraCategories));
         }
       } else if (change.action === 'DELETE') {
         // Preserve order history by hiding instead of hard-deleting.

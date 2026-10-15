@@ -10,6 +10,7 @@ import { useStore } from '../../store';
 import { formatPrice } from '../../lib/format';
 import { toast } from '../../lib/toast';
 import { useProductLiveSync } from '../../lib/useProductLiveSync';
+import { SURFACES, pinsFromProduct, pinLabel } from '../../lib/placement';
 
 const STATUS_STYLES = {
   LIVE: 'bg-tertiary-container/20 text-tertiary border-0',
@@ -176,7 +177,10 @@ export default function Products() {
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-on-surface-variant">{p.category}</td>
+                <td className="px-4 py-3 text-on-surface-variant">
+                  {p.category}{p.subcategory && <div className="text-label-sm">{p.subcategory}</div>}
+                  <PlacementBadges product={p} />
+                </td>
                 <td className="px-4 py-3 font-semibold">{formatPrice(p.priceCents, currency)}</td>
                 <td className="px-4 py-3">
                   <button
@@ -261,6 +265,37 @@ export default function Products() {
           (so order history stays intact).
         </p>
       </Modal>
+    </div>
+  );
+}
+// Compact "where it shows" chips under the category: pins + the curated
+// surfaces that are switched on (default-on Home/Search are implied).
+function PlacementBadges({ product }) {
+  const pins = pinsFromProduct(product);
+  const curated = SURFACES.filter((s) => !s.default && product[s.key]);
+  const hasDeal = product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
+  // Default-on surfaces switched off. New arrivals ages out naturally and
+  // Deals only matters for products that have a deal price.
+  const hiddenDefaults = SURFACES.filter((s) => s.default && product[s.key] === false
+    && s.key !== 'showOnNewArrivals' && (s.key !== 'showOnDeals' || hasDeal));
+  if (pins.length === 0 && curated.length === 0 && hiddenDefaults.length === 0) return null;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1 max-w-[220px]">
+      {curated.map((s) => (
+        <span key={s.key} title={s.label} className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-semibold">
+          <Icon name={s.icon} className="text-[11px]" />{s.short}
+        </span>
+      ))}
+      {pins.map((pin) => (
+        <span key={pin.name} title={`Pinned to ${pinLabel(pin)}`} className="inline-flex items-center gap-0.5 rounded-full bg-secondary/20 text-on-secondary px-1.5 py-0.5 text-[10px] font-semibold">
+          <Icon name="push_pin" className="text-[11px]" />{pinLabel(pin)}
+        </span>
+      ))}
+      {hiddenDefaults.length > 0 && (
+        <span title={hiddenDefaults.map((s) => s.label).join(', ')} className="inline-flex items-center gap-0.5 rounded-full bg-surface-high text-on-surface-variant px-1.5 py-0.5 text-[10px] font-semibold">
+          <Icon name="visibility_off" className="text-[11px]" />Not on: {hiddenDefaults.map((s) => s.short).join(', ')}
+        </span>
+      )}
     </div>
   );
 }

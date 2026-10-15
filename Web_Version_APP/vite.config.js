@@ -26,6 +26,9 @@ const shopperSrc = path.resolve(__dirname, '../APP_shopper_and_buyer/src');
 
 export default defineConfig({
   plugins: [react()],
+  // Serve the shopper app's static assets (seed-images, icons) too, so
+  // product artwork resolves the same way on both builds.
+  publicDir: path.resolve(__dirname, '../APP_shopper_and_buyer/public'),
   base: process.env.VITE_BASE_PATH || '/',
   resolve: {
     alias: {
