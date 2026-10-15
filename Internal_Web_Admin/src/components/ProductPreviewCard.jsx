@@ -43,7 +43,7 @@ export default function ProductPreviewCard({ form, vendorName }) {
           {form.name?.trim() || <span className="text-on-surface-variant italic">Product name</span>}
         </div>
         <div className="text-label-md text-on-surface-variant line-clamp-1">
-          {form.category?.trim() || <span className="italic">Category</span>}
+          {form.category?.trim() || <span className="italic">Category</span>}{form.subcategory ? ` › ${form.subcategory}` : ''}
         </div>
         <div className="flex items-center justify-between pt-1 gap-2">
           <div className="font-bold text-base flex items-baseline gap-2">

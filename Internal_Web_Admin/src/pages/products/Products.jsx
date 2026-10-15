@@ -9,6 +9,7 @@ import { productImage } from '../../lib/productImage';
 import { useProductLiveSync } from '../../lib/useProductLiveSync';
 import { shopperHomeUrl } from '../../lib/config';
 import { parseCsv } from '../../lib/csv';
+import { SURFACES, pinsFromProduct, pinLabel } from '../../lib/placement';
 
 const STATUS_STYLES = {
   LIVE: 'bg-tertiary-container/20 text-tertiary border-0',
@@ -23,8 +24,9 @@ const EMPTY_FILTERS = { q: '', status: '', vendor: '', stock: '' };
 const BULK_ACTIONS = {
   setStatus: { label: 'Change status', icon: 'visibility' },
   assignVendor: { label: 'Move to store', icon: 'storefront' },
-  setCategory: { label: 'Change category', icon: 'category' },
-  setPlacement: { label: 'Home sections', icon: 'dashboard_customize' },
+  setDepartment: { label: 'Move to department', icon: 'category' },
+  pin: { label: 'Pin to page', icon: 'push_pin' },
+  setPlacement: { label: 'Storefront sections', icon: 'dashboard_customize' },
   adjustPrice: { label: 'Adjust price %', icon: 'percent' },
   setStock: { label: 'Set stock', icon: 'inventory' },
   delete: { label: 'Delete', icon: 'delete' },
@@ -105,6 +107,7 @@ export default function Products() {
     if (action === 'adjustPrice') body.value = Number(value);
     else if (action === 'setStock') body.value = Math.max(0, Math.floor(Number(value)));
     else if (action === 'assignVendor') body.value = value === 'direct' ? null : value;
+    else if (action === 'setDepartment' || action === 'pin') body.value = { ...value, subcategory: value.subcategory || null };
     else if (action !== 'delete') body.value = value;
     setBusy(true);
     try {
@@ -256,7 +259,9 @@ export default function Products() {
                 value: key === 'setStatus' ? 'HIDDEN'
                   : key === 'assignVendor' ? 'direct'
                     : key === 'setPlacement' ? { flag: 'showOnNewArrivals', on: true }
-                      : '',
+                      : key === 'setDepartment' ? { category: '', subcategory: '' }
+                        : key === 'pin' ? { category: '', subcategory: '', on: true }
+                          : '',
               })}
               className={`btn-secondary py-1.5 px-3 text-sm ${key === 'delete' ? 'text-error' : ''}`}
             >
@@ -328,7 +333,10 @@ export default function Products() {
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-on-surface-variant">{p.category}</td>
+                <td className="px-4 py-3 text-on-surface-variant">
+                  {p.category}{p.subcategory && <div className="text-label-sm">{p.subcategory}</div>}
+                  <PlacementBadges product={p} />
+                </td>
                 <td className="px-4 py-3">
                   <div className="font-semibold">${(p.priceCents / 100).toFixed(2)}</div>
                   {p.compareAtPriceCents != null && (
@@ -417,9 +425,10 @@ function BulkModal({ bulk, setBulk, count, vendors, busy, onRun }) {
   const meta = BULK_ACTIONS[bulk.action];
   const set = (value) => setBulk({ ...bulk, value });
   const needsValue = bulk.action !== 'delete';
-  const valid = !needsValue || (bulk.value !== '' && bulk.value != null
+  const needsCategory = bulk.action === 'setDepartment' || bulk.action === 'pin';
+  const valid = (!needsCategory || Boolean(bulk.value?.category)) && (!needsValue || (bulk.value !== '' && bulk.value != null
     && (bulk.action !== 'adjustPrice' || (Number(bulk.value) >= -90 && Number(bulk.value) <= 500))
-    && (bulk.action !== 'setStock' || Number(bulk.value) >= 0));
+    && (bulk.action !== 'setStock' || Number(bulk.value) >= 0)));
 
   return (
     <Modal
@@ -459,15 +468,11 @@ function BulkModal({ bulk, setBulk, count, vendors, busy, onRun }) {
         {bulk.action === 'setPlacement' && (
           <>
             <label className="block">
-              <span className="label">Home section</span>
+              <span className="label">Section</span>
               <select className="input" value={bulk.value.flag} onChange={(e) => set({ ...bulk.value, flag: e.target.value })}>
-                <option value="showOnNewArrivals">New arrivals</option>
-                <option value="showOnRecentDeals">Recent deals</option>
-                <option value="showOnFlashDeals">Flash deals</option>
-                <option value="showOnDeals">Deals</option>
-                <option value="showOnHome">Home grid</option>
-                <option value="showOnSearch">Search results</option>
+                {SURFACES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
               </select>
+              <span className="block text-label-sm text-on-surface-variant mt-1">{SURFACES.find((s) => s.key === bulk.value.flag)?.helper}</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
               {[[true, 'Add to section'], [false, 'Remove from section']].map(([on, label]) => (
@@ -484,8 +489,23 @@ function BulkModal({ bulk, setBulk, count, vendors, busy, onRun }) {
             <p className="text-on-surface-variant">Applies immediately on the storefront.</p>
           </>
         )}
-        {bulk.action === 'setCategory' && (
-          <input className="input" placeholder="Category name, e.g. Kitchen" value={bulk.value} onChange={(e) => set(e.target.value)} />
+        {(bulk.action === 'setDepartment' || bulk.action === 'pin') && (
+          <DepartmentPicker value={bulk.value} onChange={set} allowWhole />
+        )}
+        {bulk.action === 'setDepartment' && (
+          <p className="text-on-surface-variant">Sets each product’s main category page. Pinned pages are kept.</p>
+        )}
+        {bulk.action === 'pin' && (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              {[[true, 'Pin to this page'], [false, 'Unpin from category']].map(([on, label]) => (
+                <button key={label} type="button" onClick={() => set({ ...bulk.value, on })} className={bulk.value.on === on ? 'btn-primary' : 'btn-secondary'}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-on-surface-variant">Pinned products also appear on that category or department page. Up to 10 pins per product; existing pins are kept.</p>
+          </>
         )}
         {bulk.action === 'adjustPrice' && (
           <>
@@ -507,5 +527,62 @@ function BulkModal({ bulk, setBulk, count, vendors, busy, onRun }) {
         )}
       </div>
     </Modal>
+  );
+}
+
+// Compact "where it shows" chips under the category: pins + the curated
+// surfaces that are switched on (default-on Home/Search are implied).
+function PlacementBadges({ product }) {
+  const pins = pinsFromProduct(product);
+  const curated = SURFACES.filter((s) => !s.default && product[s.key]);
+  const hasDeal = product.compareAtPriceCents != null && product.compareAtPriceCents > product.priceCents;
+  // Default-on surfaces switched off. New arrivals ages out naturally and
+  // Deals only matters for products that have a deal price.
+  const hiddenDefaults = SURFACES.filter((s) => s.default && product[s.key] === false
+    && s.key !== 'showOnNewArrivals' && (s.key !== 'showOnDeals' || hasDeal));
+  if (pins.length === 0 && curated.length === 0 && hiddenDefaults.length === 0) return null;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1 max-w-[220px]">
+      {curated.map((s) => (
+        <span key={s.key} title={s.label} className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 text-primary px-1.5 py-0.5 text-[10px] font-semibold">
+          <Icon name={s.icon} className="text-[11px]" />{s.short}
+        </span>
+      ))}
+      {pins.map((pin) => (
+        <span key={pin.name} title={`Pinned to ${pinLabel(pin)}`} className="inline-flex items-center gap-0.5 rounded-full bg-secondary/20 text-on-secondary px-1.5 py-0.5 text-[10px] font-semibold">
+          <Icon name="push_pin" className="text-[11px]" />{pinLabel(pin)}
+        </span>
+      ))}
+      {hiddenDefaults.length > 0 && (
+        <span title={hiddenDefaults.map((s) => s.label).join(', ')} className="inline-flex items-center gap-0.5 rounded-full bg-surface-high text-on-surface-variant px-1.5 py-0.5 text-[10px] font-semibold">
+          <Icon name="visibility_off" className="text-[11px]" />Not on: {hiddenDefaults.map((s) => s.short).join(', ')}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Category + optional department chooser for the bulk tool.
+function DepartmentPicker({ value, onChange, allowWhole }) {
+  const { data } = useApi('/api/categories');
+  const cats = (data?.categories || []).filter((c) => c.isActive !== false && c.source !== 'live');
+  const subs = (cats.find((c) => c.name === value.category)?.subcategories || []).filter((s) => s.isActive !== false);
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <label className="block">
+        <span className="label">Category</span>
+        <select className="input" value={value.category} onChange={(e) => onChange({ ...value, category: e.target.value, subcategory: '' })}>
+          <option value="">Choose…</option>
+          {cats.map((c) => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
+        </select>
+      </label>
+      <label className="block">
+        <span className="label">Department</span>
+        <select className="input" value={value.subcategory} onChange={(e) => onChange({ ...value, subcategory: e.target.value })} disabled={!value.category || subs.length === 0}>
+          <option value="">{allowWhole ? 'Whole category' : 'None'}</option>
+          {subs.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+        </select>
+      </label>
+    </div>
   );
 }

@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import Icon from '../../components/Icon';
+import { pinsFromProduct, pinLabel } from '../../lib/placement';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImage } from '../../lib/productImage';
 
@@ -205,6 +206,7 @@ function ChangeDiff({ change }) {
     fields.push({ label: 'Price', value: `$${(change.proposedPriceCents / 100).toFixed(2)}` });
   }
   if (change.proposedCategory !== null) fields.push({ label: 'Category', value: change.proposedCategory });
+  if (change.proposedSubcategory != null) fields.push({ label: 'Subcategory', value: change.proposedSubcategory || '— (cleared)' });
   if (change.proposedStock !== null) fields.push({ label: 'Stock', value: change.proposedStock });
   if (change.proposedStatus !== null) fields.push({ label: 'Visibility', value: change.proposedStatus });
   // Placements — only show the row when the vendor touched the flag
@@ -228,6 +230,9 @@ function ChangeDiff({ change }) {
   }
   if (change.proposedShowOnNewArrivals != null) {
     fields.push({ label: 'New arrivals', value: change.proposedShowOnNewArrivals ? 'On' : 'Off' });
+  }
+  if (change.proposedShowOnCategorySpotlight != null) {
+    fields.push({ label: 'Category spotlight', value: change.proposedShowOnCategorySpotlight ? 'On' : 'Off' });
   }
 
   return (
@@ -270,19 +275,19 @@ function ChangeDiff({ change }) {
           (CREATE). */}
       {Array.isArray(change.proposedExtraCategories) && (
         <div className="mt-2">
-          <div className="text-on-surface-variant text-sm">Extra categories: </div>
+          <div className="text-on-surface-variant text-sm">Also show in: </div>
           {change.proposedExtraCategories.length === 0 ? (
             <div className="text-sm italic text-on-surface-variant mt-0.5">
-              (none — will clear all extras)
+              (none — removes all pinned pages)
             </div>
           ) : (
             <ul className="flex flex-wrap gap-1.5 mt-1">
-              {change.proposedExtraCategories.map((name) => (
+              {pinsFromProduct({ extraCategories: change.proposedExtraCategories }).map((pin) => (
                 <li
-                  key={name}
-                  className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium"
+                  key={pin.name}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium"
                 >
-                  {name}
+                  <Icon name="push_pin" className="text-[12px]" /> {pinLabel(pin)}
                 </li>
               ))}
             </ul>

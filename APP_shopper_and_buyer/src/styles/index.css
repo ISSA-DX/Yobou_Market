@@ -139,140 +139,7 @@
 /* Hide scrollbar on horizontal scroll containers */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-/* Dark mode */
-.dark body { background: #0b1c30; color: #eaf1ff; }
-.dark .card { background: #15243f; color: #eaf1ff; }
-.dark .input,
-.dark .input-pill { background: #1f3052; border-color: #2d3f63; color: #eaf1ff; }
-.dark .btn-secondary { background: #1f3052; color: #b8c3ff; }
-.dark .chip { background: #1f3052; color: #a3b1c9; }
-.dark .bento { background: #15243f; }
 
-/*
-  ============================================================
-  DARK MODE — MIDNIGHT OCEAN (v0.3.21)
-  ============================================================
-  Premium dark theme. Deep navy-tinted canvas + 5 layered surface
-  tiers, vibrant brand accent that POPs against navy, and subtle
-  glass-morphism / glow effects for a refined, professional,
-  attractive look that reads instantly.
-
-  -- PALETTE --
-  body canvas         #0a1024  deep midnight navy (vertical gradient)
-  card / bento (S-1)  #142454  navy with elevation
-  elevated (S-2)      #1c2f5e  input / chip / btn-secondary
-  popover (S-3)       #243d7a  modal / drawer / notification
-  hairline            rgba(255, 255, 255, 0.08) — subtle white tick
-  brand text          #7c9eff  vibrant electric blue (8.6:1 on card)
-  brand surface       #3d6cff  (gradient with #2547cc + brand glow)
-  primary text (on)   #f4f7ff  cool off-white — softer than #FFFFFF
-  secondary text      #b4c0d8  cool gray with blue tint (8.6:1 on card)
-  tertiary            #8b95b3  mid (4.6:1 — AA body)
-  placeholder         #6f7f9f
-
-  -- PREMIUM EFFECTS --
-    .card     : inset top-edge hairline (glass) + soft deep shadow
-    .input    : brand-tinted focus ring (3px brand glow at 25% alpha)
-    .btn-primary : 135° brand gradient (light→deep) + brand-tinted
-                  drop shadow + 1px inner white-tick specular
-    btn-secondary hover : brand-tinted border + brighter surface
-    sticky header/bottom-nav : frosted glass (blur 20px, 88% alpha)
-    skeleton  : brand-tinted shimmer (not stark white)
-    Hero deal/welcome cards : unchanged Tailwind gradient
-                              (from-primary → primary-container)
-                              — now visually richer on dark canvas
-                              because the gradient contrasts the navy.
-
-  -- WCAG AUDIT --
-  text-on-surface #f4f7ff on #142454 ................ 14.4:1 (AAA)
-  text-on-surface-variant #b4c0d8 on #142454 ........ 8.6:1 (AAA)
-  text-primary #7c9eff on #142454 ................... 6.8:1 (AA)
-  text-primary #7c9eff on #0a1024 (body) ............ 9.6:1 (AAA)
-  white text on btn-primary gradient ................. 9.9:1 (AAA)
-  text-tertiary #8b95b3 on #142454 .................. 4.6:1 (AA body)
-  
-  -- MIGRATION FROM v0.3.19 --
-  Replaces the Material-Dark neutral palette (#121212/#1E1E1E/#272727
-  with #b8c3ff brand) that the user flagged as "sterile / not
-  professional". New navy-tinted palette creates visual depth via
-  elevation tint (not just pure gray) and the brand color now pops
-  instead of lying flat. Glass touchpoints (cards, sticky bars,
-  focus rings) add tactile feedback without visual noise.
-  prefers-contrast: more block (HC) preserved unchanged — pure
-  black/white for users with severe contrast needs.
-*/
-.dark body {
-  background: linear-gradient(180deg, #0a1024 0%, #0e1432 100%);
-  background-attachment: fixed;
-  color: #f4f7ff;
-}
-
-/* Surface-1 (cards, bento) — navy with glass top-edge highlight */
-.dark .card,
-.dark .bento {
-  background: #142454;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.40),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  color: #f4f7ff;
-}
-
-/* Surface-2 (input, chip, btn-secondary) */
-.dark .input {
-  background: #1c2f5e;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #f4f7ff;
-}
-.dark .input::placeholder { color: #6f7f9f; }
-.dark .input:focus {
-  border-color: rgba(124, 158, 255, 0.5);
-  box-shadow: 0 0 0 3px rgba(124, 158, 255, 0.25);
-}
-
-.dark .btn-secondary {
-  background: #1c2f5e;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  color: #f4f7ff;
-}
-.dark .btn-secondary:hover {
-  background: #243d7a;
-  border-color: rgba(124, 158, 255, 0.30);
-}
-
-.dark .chip {
-  background: rgba(124, 158, 255, 0.12);
-  border: 1px solid rgba(124, 158, 255, 0.20);
-  color: #c2d4ff;
-}
-
-/* Surface-3 (modal/popover/drawer/notification) */
-.dark .bg-white { background: #142454 !important; color: #f4f7ff; }
-
-/* Tailwind bg-white/opacity fractions on sticky/fixed chrome */
-.dark .bg-white\/80,
-.dark .bg-white\/90,
-.dark .bg-white\/95 {
-  background: rgba(20, 36, 84, 0.88) !important;
-  color: #f4f7ff;
-}
-.dark .bg-surface-low { background: #1c2f5e !important; }
-.dark .bg-surface-high { background: #1c2f5e !important; color: #f4f7ff; }
-.dark .bg-surface-highest { background: #243d7a !important; }
-
-/* Frosted glass on sticky headers / bottom-nav / fixed CTAs */
-.dark header.bg-white\/80,
-.dark header.bg-white\/90,
-.dark nav.bg-white\/80,
-.dark nav.bg-white\/90,
-.dark .sticky.bg-white\/80,
-.dark .sticky.bg-white\/90 {
-  background: rgba(10, 16, 36, 0.85) !important;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  color: #f4f7ff;
-  border-color: rgba(255, 255, 255, 0.08) !important;
-}
 
 /* Hide scrollbar on horizontal scroll containers */
 .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -292,12 +159,6 @@
   overflow: hidden;
 }
 
-/* Status accents — slightly brighter in dark to compensate for contrast */
-.dark .text-error { color: #ff8a80; }
-.dark .bg-primary\/30 { background: rgba(124, 158, 255, 0.30) !important; }
-.dark .bg-primary-container\/30 { background: rgba(140, 158, 255, 0.30) !important; }
-.dark .text-secondary { color: #ffd54f; }
-.dark .text-outline { color: #c2cfe6; }
 
 /*
   Auth-page uniform surface. Page, card, and inputs all use the
@@ -310,9 +171,6 @@
 /* v2: auth pages sit on the normal canvas; only the card is white. */
 .auth-page .card { background: #ffffff; }
 .auth-page .card .input { background: #ffffff; }
-.dark .auth-page,
-.dark .auth-page .card,
-.dark .auth-page .card .input { background: #142454; }
 
 /*
   Skeleton shimmer — premium subtle gradient. Dark mode uses a
@@ -334,15 +192,6 @@
   animation: shimmer 1.6s ease-in-out infinite;
   border-radius: 0.5rem;
 }
-.dark .skeleton {
-  background: linear-gradient(
-    90deg,
-    rgba(124, 158, 255, 0.04) 0%,
-    rgba(124, 158, 255, 0.14) 50%,
-    rgba(124, 158, 255, 0.04) 100%
-  );
-  background-size: 200% 100%;
-}
 
 /*
   Reduced motion — leave spin loaders alone (no translation trigger)
@@ -359,37 +208,12 @@
   .animate-pulse { animation: none; opacity: 0.6; }
 }
 
-/*
-  High-contrast user preference (Windows HC / macOS Increase
-  Contrast / Android HC Text). Strip the navy palette in favor
-  of pure black/white so users with severe contrast needs see
-  distinct surfaces, not the same navy blended with slightly-
-  different-navy. The blue brand is also lifted to pure white
-  + underline so the hierarchy still reads. The .outline (vs
-  .border) tactic preserves button dimensions when HC flips on.
-*/
-@media (prefers-contrast: more) {
-  .dark body { background: #000000; color: #ffffff; }
-  .dark .card { background: #0a0a0a; color: #ffffff; border-color: rgba(255, 255, 255, 0.40); }
-  .dark .input { background: #000000; border-color: #ffffff; color: #ffffff; }
-  .dark .text-primary { color: #ffffff; text-decoration: underline; }
-  .dark .text-on-surface-variant { color: #ffffff; }
-  .dark .chip,
-  .dark .btn-secondary { background: #000000; color: #ffffff; outline: 1px solid #ffffff; }
-  .dark .chip:focus-visible,
-  .dark .btn-secondary:focus-visible { outline-offset: 2px; }
-  /* HC escape hatch — flip h-tags to white for users on extreme
-     contrast settings, so the v0.3.22 stealth-black default
-     (.dark h1/2/3 { color: #000000 }) does not render page titles
-     invisible on a pure-black body. */
-  .dark h1, .dark h2, .dark h3 { color: #ffffff; }
-  .border-outline-variant\/30,
-  .border-outline-variant\/40 { border-color: rgba(0, 0, 0, 0.55) !important; }
-}
 
 /*
   Page/section headers (v0.3.22, user request). Light mode: brand
   primary #0034b9 on the white surface (8.6:1 AAA). Dark mode:
+  see the unified dark theme at the end of this file (headings use the
+  light text token there). The notes below are historical:
   pure #000000 — a deliberate stealth / inverted aesthetic, per
   user feedback. Contrast on the navy canvas (#0a1024) drops to
   ~1.1:1 by design; the header text reads at the card edge rather
@@ -404,50 +228,7 @@
 /* v2: page titles (h1) keep the brand blue; section headings use ink for hierarchy. */
 h1 { color: #0034b9; }
 h2, h3 { color: #0b1220; }
-.dark h1, .dark h2, .dark h3 { color: #000000; }
-/*
-  Card-context header rescue (v0.3.23, post-reviewer NIT 1). The
-  v0.3.22 global black rule applies the design intent on the dark
-  canvas (inverted / stealth look), but titles sitting INSIDE .card
-  blocks are functional navigation cues that users tap and read —
-  page titles, user name, section headers, form captions. Black-on-
-  #142454-navy at ~1.1:1 renders them invisible; users would file
-  "header disappeared in dark mode" as a regression.
 
-  Override HERE so card-context h-tags ride the legibility profile
-  (.card = #142454 in dark + #f4f7ff = 14.4:1 AAA). Canvas / hero h-
-  tags NOT wrapped by .card stay #000000 per the v0.3.22 request.
-
-  Specificity ladder: .dark .card h1 (0,2,1) > .dark h1 (0,1,1).
-*/
-.dark .card h1,
-.dark .card h2,
-.dark .card h3 { color: #f4f7ff; }
-
-/*
-  Design System v2 — dark-mode counterparts for the new component
-  classes (badges, tables, glass, divider). Identical in all three apps.
-*/
-.dark .card table thead th {
-  background: rgba(255, 255, 255, 0.03);
-  color: #b4c0d8;
-  border-color: rgba(255, 255, 255, 0.06);
-}
-.dark .card table tbody tr:hover { background: rgba(124, 158, 255, 0.06); }
-.dark .glass { background: rgba(10, 16, 36, 0.85); }
-.dark .divider { background: rgba(255, 255, 255, 0.08); }
-.dark .badge-success { background: rgba(16, 185, 129, 0.14); color: #6ee7b7; --tw-ring-color: rgba(110, 231, 183, 0.25); }
-.dark .badge-warning { background: rgba(245, 158, 11, 0.14); color: #fcd34d; --tw-ring-color: rgba(252, 211, 77, 0.25); }
-.dark .badge-danger  { background: rgba(244, 63, 94, 0.14); color: #fda4af; --tw-ring-color: rgba(253, 164, 175, 0.25); }
-.dark .badge-info    { background: rgba(124, 158, 255, 0.14); color: #c2d4ff; --tw-ring-color: rgba(124, 158, 255, 0.25); }
-.dark .badge-neutral { background: rgba(255, 255, 255, 0.06); color: #b4c0d8; --tw-ring-color: rgba(255, 255, 255, 0.12); }
-.dark .label { color: #b4c0d8; }
-.dark .bg-emerald-50 { background: rgba(16, 185, 129, 0.14); }
-.dark .bg-amber-50 { background: rgba(245, 158, 11, 0.14); }
-.dark .bg-rose-50 { background: rgba(244, 63, 94, 0.14); }
-.dark .text-emerald-700 { color: #6ee7b7; }
-.dark .text-amber-600, .dark .text-amber-700 { color: #fcd34d; }
-.dark .text-rose-600, .dark .text-rose-700 { color: #fda4af; }
 /* Network status banner fade-out animation */
 @keyframes fade-out-up {
   0% { opacity: 1; transform: translateY(0); }
@@ -456,4 +237,253 @@ h2, h3 { color: #0b1220; }
 .animate-fade-out {
   animation: fade-out-up 0.5s ease-out forwards;
   animation-delay: 1.5s;
+}
+
+/* =====================================================================
+   Yobou Market: unified dark theme
+   ---------------------------------------------------------------------
+   Replaces the three competing dark palettes this file used to define
+   (rgb(11,28,48), rgb(21,36,63) and rgb(20,36,84)), which made surfaces
+   look inconsistent. All text and background pairs meet WCAG AA
+   (4.5:1 or higher). Keep every ".dark" rule in this one block.
+   ===================================================================== */
+
+.dark {
+  color-scheme: dark;
+
+  /* Surfaces (darkest to lightest) */
+  --yb-bg:          #0B1220;  /* page background                 */
+  --yb-surface-1:   #141C2F;  /* cards, bottom nav, header       */
+  --yb-surface-2:   #1C2640;  /* inputs, chips, secondary btns   */
+  --yb-surface-3:   #26324F;  /* hover / pressed states          */
+  --yb-border:      rgba(255, 255, 255, 0.08);
+  --yb-border-strong: rgba(255, 255, 255, 0.14);
+
+  /* Text */
+  --yb-text:        #E8EDF7;  /* primary text      15.9:1 on bg  */
+  --yb-text-muted:  #A3AEC4;  /* secondary text     8.0:1 on card */
+  --yb-text-subtle: #8591A9;  /* captions, icons    5.2:1 on card */
+
+  /* Brand and status (lightened for dark backgrounds) */
+  --yb-primary:     #7C9EFF;  /* links, active tab  6.6:1 on card */
+  --yb-primary-bg:  rgba(124, 158, 255, 0.14);
+  --yb-secondary:   #FFD54F;
+  --yb-success:     #4ADE80;
+  --yb-warning:     #FCD34D;
+  --yb-error:       #FF8A80;
+}
+
+/* ---------- Page background ---------- */
+html.dark,
+.dark body,
+.dark .bg-surface {
+  background: var(--yb-bg) !important;
+  color: var(--yb-text);
+}
+
+/* ---------- Surfaces ---------- */
+.dark .card,
+.dark .bento,
+.dark .bg-white,
+.dark .auth-page .card,
+.dark .auth-page .bento {
+  background: var(--yb-surface-1) !important;
+  border: 1px solid var(--yb-border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  color: var(--yb-text);
+}
+
+.dark .bg-white\/80,
+.dark .bg-white\/90,
+.dark .bg-white\/95,
+.dark .glass {
+  background: rgba(20, 28, 47, 0.88) !important;
+  backdrop-filter: blur(20px) saturate(1.4);
+  color: var(--yb-text);
+}
+
+.dark .bg-surface-low,
+.dark .bg-surface-high,
+.dark .hover\:bg-surface-low:hover {
+  background: var(--yb-surface-2) !important;
+}
+
+.dark .bg-surface-highest {
+  background: var(--yb-surface-3) !important;
+}
+
+/* Translucent light panels (side rails, sticky page headers on the
+   page colour) — same frosted surface as the header. Low-alpha white
+   overlays (bg-white/10–30) on coloured banners are left alone. */
+.dark .bg-white\/60,
+.dark .bg-white\/70,
+.dark .hover\:bg-white\/60:hover,
+.dark .bg-surface\/80,
+.dark .bg-surface\/90,
+.dark .bg-surface\/95 {
+  background: rgba(20, 28, 47, 0.88) !important;
+  color: var(--yb-text);
+}
+
+/* Pastel category / icon tiles: a soft tint instead of a light block.
+   (Emerald, amber and rose keep their status tints below.) */
+.dark .bg-blue-50,
+.dark .bg-indigo-50,
+.dark .bg-slate-100,
+.dark .bg-pink-50,
+.dark .bg-orange-50,
+.dark .bg-teal-50,
+.dark .bg-green-50,
+.dark .bg-lime-50,
+.dark .bg-yellow-50,
+.dark .bg-violet-50,
+.dark .bg-cyan-50,
+.dark .bg-stone-100,
+.dark .bg-red-50,
+.dark .bg-sky-50,
+.dark .bg-fuchsia-50,
+.dark .bg-purple-50,
+.dark .bg-zinc-100,
+.dark .bg-neutral-100,
+.dark .bg-gray-100 {
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+/* ---------- Text ---------- */
+/* Fixes the bug ".dark h1, h2, h3 { color: black }" */
+.dark h1, .dark h2, .dark h3, .dark h4,
+.dark .card h1, .dark .card h2, .dark .card h3,
+.dark .bento h1, .dark .bento h2, .dark .bento h3,
+.dark .section-title {
+  color: var(--yb-text);
+}
+
+.dark .text-on-surface      { color: var(--yb-text) !important; }
+.dark .text-on-surface-variant,
+.dark .page-subtitle,
+.dark .label                { color: var(--yb-text-muted) !important; }
+.dark .text-outline,
+.dark .eyebrow              { color: var(--yb-text-subtle) !important; }
+
+.dark .text-primary         { color: var(--yb-primary) !important; }
+.dark .text-secondary       { color: var(--yb-secondary) !important; }
+.dark .text-tertiary        { color: var(--yb-success) !important; }
+.dark .text-error           { color: var(--yb-error) !important; }
+
+.dark .text-emerald-700     { color: var(--yb-success); }
+.dark .text-amber-600,
+.dark .text-amber-700       { color: var(--yb-warning); }
+.dark .text-rose-600,
+.dark .text-rose-700        { color: #FDA4AF; }
+
+/* ---------- Borders and dividers ---------- */
+.dark .divider,
+.dark .bg-outline-variant\/20,
+.dark .bg-outline-variant\/50 {
+  background: var(--yb-border) !important;
+}
+
+.dark .border-outline-variant,
+.dark .border-outline-variant\/50,
+.dark .border-outline-variant\/20 {
+  border-color: var(--yb-border) !important;
+}
+
+/* ---------- Bottom navigation ---------- */
+.dark nav.fixed {
+  background: var(--yb-surface-1) !important;
+  border-top: 1px solid var(--yb-border-strong);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- Forms ---------- */
+.dark .input,
+.dark .input-pill,
+.dark .auth-page .card .input {
+  background: var(--yb-surface-2) !important;
+  border: 1px solid var(--yb-border-strong);
+  color: var(--yb-text);
+}
+.dark .input::placeholder { color: var(--yb-text-subtle); }
+.dark .input:focus {
+  border-color: var(--yb-primary);
+  box-shadow: 0 0 0 3px rgba(124, 158, 255, 0.25);
+}
+.dark .input:disabled {
+  background: var(--yb-surface-1) !important;
+  color: var(--yb-text-subtle);
+}
+
+/* ---------- Buttons ---------- */
+/* .btn-primary keeps its blue gradient; white text on it already passes. */
+.dark .btn-secondary {
+  background: var(--yb-surface-2);
+  border: 1px solid var(--yb-border-strong);
+  color: var(--yb-text);
+}
+.dark .btn-secondary:hover {
+  background: var(--yb-surface-3);
+  border-color: rgba(124, 158, 255, 0.35);
+}
+.dark .btn-ghost { color: var(--yb-primary); }
+
+/* ---------- Chips and badges ---------- */
+.dark .chip {
+  background: var(--yb-primary-bg);
+  border: 1px solid rgba(124, 158, 255, 0.22);
+  color: #C2D4FF;
+}
+
+.dark .badge-success { background: rgba(74, 222, 128, 0.14);  color: var(--yb-success); --tw-ring-color: rgba(74, 222, 128, 0.25); }
+.dark .badge-warning { background: rgba(252, 211, 77, 0.14);  color: var(--yb-warning); --tw-ring-color: rgba(252, 211, 77, 0.25); }
+.dark .badge-danger  { background: rgba(244, 63, 94, 0.14);   color: #FDA4AF;           --tw-ring-color: rgba(253, 164, 175, 0.25); }
+.dark .badge-info    { background: var(--yb-primary-bg);       color: #C2D4FF;           --tw-ring-color: rgba(124, 158, 255, 0.25); }
+.dark .badge-neutral { background: rgba(255, 255, 255, 0.06); color: var(--yb-text-muted); --tw-ring-color: rgba(255, 255, 255, 0.12); }
+
+.dark .bg-emerald-50 { background: rgba(74, 222, 128, 0.14); }
+.dark .bg-amber-50   { background: rgba(252, 211, 77, 0.14); }
+.dark .bg-rose-50    { background: rgba(244, 63, 94, 0.14); }
+.dark .bg-primary\/30           { background: rgba(124, 158, 255, 0.30) !important; }
+.dark .bg-primary-container\/30 { background: rgba(124, 158, 255, 0.30) !important; }
+
+/* ---------- Tables ---------- */
+.dark .card table thead th,
+.dark .bento table thead th {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--yb-text-muted);
+  border-color: var(--yb-border);
+}
+.dark .card table tbody tr:hover,
+.dark .bento table tbody tr:hover {
+  background: rgba(124, 158, 255, 0.06);
+}
+
+/* ---------- Loading skeleton ---------- */
+.dark .skeleton {
+  background: linear-gradient(90deg,
+    rgba(124, 158, 255, 0.04) 0%,
+    rgba(124, 158, 255, 0.12) 50%,
+    rgba(124, 158, 255, 0.04) 100%) 0 0 / 200% 100%;
+}
+
+/*
+  High-contrast user preference (Windows HC / macOS Increase Contrast /
+  Android HC Text). Kept AFTER the unified theme, with !important on
+  its surfaces, so it still overrides the theme's !important rules:
+  pure black/white surfaces and white, underlined brand links for
+  users with severe contrast needs.
+*/
+@media (prefers-contrast: more) {
+  .dark body, html.dark, .dark .bg-surface { background: #000000 !important; color: #ffffff; }
+  .dark .card, .dark .bento, .dark .bg-white { background: #0a0a0a !important; color: #ffffff; border-color: rgba(255, 255, 255, 0.40); }
+  .dark .input { background: #000000 !important; border-color: #ffffff; color: #ffffff; }
+  .dark .text-primary { color: #ffffff !important; text-decoration: underline; }
+  .dark .text-on-surface-variant, .dark .eyebrow { color: #ffffff !important; }
+  .dark .chip,
+  .dark .btn-secondary { background: #000000 !important; color: #ffffff; outline: 1px solid #ffffff; }
+  .dark .chip:focus-visible,
+  .dark .btn-secondary:focus-visible { outline-offset: 2px; }
+  .dark h1, .dark h2, .dark h3, .dark h4 { color: #ffffff; }
+  .border-outline-variant\/30,
+  .border-outline-variant\/40 { border-color: rgba(0, 0, 0, 0.55) !important; }
 }

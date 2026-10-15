@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Icon from './Icon';
 import { subscribe, dismiss, getTypeMeta } from '../lib/toast';
 
@@ -6,6 +7,7 @@ import { subscribe, dismiss, getTypeMeta } from '../lib/toast';
 // Mounted once in App.jsx.
 export default function ToastHost() {
   const [items, setItems] = useState([]);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const off = subscribe(setItems);
@@ -29,15 +31,30 @@ export default function ToastHost() {
           // that was making PDP Add-to-Cart feel like a page
           // refresh). See the v0.3.9 commit message for the full
           // root-cause analysis.
-          <button
-            type="button"
+          <div
             key={t.id}
-            onClick={() => dismiss(t.id)}
-            className={`pointer-events-auto max-w-md shadow-float rounded-full px-4 py-2.5 flex items-center gap-2 ${meta.cls}`}
+            role={t.type === 'error' ? 'alert' : 'status'}
+            className={`pointer-events-auto max-w-md w-max shadow-float rounded-full pl-4 pr-1.5 py-1.5 flex items-center gap-2 ${meta.cls}`}
           >
-            <Icon name={meta.icon} className="text-[18px]" />
-            <span className="text-sm font-medium">{t.message}</span>
-          </button>
+            <Icon name={meta.icon} className="text-[18px] shrink-0" />
+            <span className="text-sm font-medium line-clamp-2 py-1">{t.message}</span>
+            {t.action ? (
+              <button
+                type="button"
+                onClick={() => {
+                  dismiss(t.id);
+                  if (t.action.href) window.open(t.action.href, '_blank', 'noopener');
+                  else navigate(t.action.to);
+                }}
+                className="shrink-0 rounded-full bg-white/20 hover:bg-white/30 px-3 py-1.5 text-sm font-bold"
+              >
+                {t.action.label}
+              </button>
+            ) : null}
+            <button type="button" onClick={() => dismiss(t.id)} className="shrink-0 w-8 h-8 rounded-full hover:bg-white/20 flex items-center justify-center" aria-label="Dismiss">
+              <Icon name="close" className="text-[18px]" />
+            </button>
+          </div>
         );
       })}
     </div>

@@ -39,6 +39,13 @@ const variantInput = z.object({
   imageUrls: z.array(z.string()).max(10).default([]),
 });
 
+// A category pin: a category name (legacy string form) or
+// { name, subcategory } for a specific department. See lib/placement.js.
+const categoryPin = z.union([
+  z.string().max(80),
+  z.object({ name: z.string().max(80), subcategory: z.string().max(80).nullable().optional() }),
+]);
+
 const productUpsert = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).default(''),
@@ -50,6 +57,8 @@ const productUpsert = z.object({
   // actually cheaper than the current price.
   compareAtPriceCents: z.number().int().nonnegative().nullable().optional(),
   category: z.string().min(1).max(80),
+  // Optional subcategory within `category`. Empty string / null = none.
+  subcategory: z.string().max(80).nullable().optional(),
   imageUrls: z.array(z.string()).default([]),
   stock: z.number().int().nonnegative().default(0),
   status: z.enum(['LIVE', 'DRAFT', 'HIDDEN']).default('LIVE'),
@@ -69,12 +78,11 @@ const productUpsert = z.object({
   showOnSearch: z.boolean().default(true),
   showOnRecentDeals: z.boolean().default(false),
   showOnNewArrivals: z.boolean().default(true),
-  // Additional category pin targets (in addition to the primary
-  // `category` string). Free-text, max 10 entries, each trimmed +
-  // deduped + capped at 80 chars to match `category`. Server-side
-  // normalization happens in the route handler so the form can
-  // send whatever shape is convenient.
-  extraCategories: z.array(z.string()).max(10).default([]),
+  showOnCategorySpotlight: z.boolean().default(false),
+  // Extra category / department pages this product also appears on, in
+  // addition to its primary category. Normalized server-side
+  // (lib/placement.js normalizeExtraCategories).
+  extraCategories: z.array(categoryPin).max(10).default([]),
 }).refine(
   // A deal is only valid if it's strictly more expensive than the
   // current price. A non-null compareAtPriceCents <= priceCents would
@@ -191,6 +199,7 @@ const productChangeCreate = z.object({
   // a clear error if the rule would be violated.
   compareAtPriceCents: z.number().int().nonnegative().nullable().optional(),
   category: z.string().min(1).max(80).optional(),
+  subcategory: z.string().max(80).nullable().optional(),
   imageUrls: z.array(z.string()).optional(),
   stock: z.number().int().nonnegative().optional(),
   status: z.enum(['LIVE', 'DRAFT', 'HIDDEN']).optional(),
@@ -208,8 +217,9 @@ const productChangeCreate = z.object({
   showOnSearch: z.boolean().optional(),
   showOnRecentDeals: z.boolean().optional(),
   showOnNewArrivals: z.boolean().optional(),
+  showOnCategorySpotlight: z.boolean().optional(),
   // Additional category pin targets. Server-side normalized on apply.
-  extraCategories: z.array(z.string()).max(10).optional(),
+  extraCategories: z.array(categoryPin).max(10).optional(),
 }).refine(
   (d) => d.action === 'CREATE' || !!d.productId,
   { message: 'productId is required for UPDATE/DELETE', path: ['productId'] }
@@ -270,6 +280,35 @@ const categoryUpdate = z.object({
   name: z.string().min(1).max(80).optional(),
   slug: z.string().min(1).max(80).optional(),
   isActive: z.boolean().optional(),
+  // Editorial content for the shopper category page.
+  icon: z.string().max(60).nullable().optional(),
+  tagline: z.string().max(160).nullable().optional(),
+  description: z.string().max(1200).nullable().optional(),
+  featured: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).max(10000).optional(),
+  guide: z.array(z.object({
+    title: z.string().min(1).max(80),
+    body: z.string().min(1).max(500),
+  })).max(8).optional(),
+  faqs: z.array(z.object({
+    q: z.string().min(1).max(160),
+    a: z.string().min(1).max(600),
+  })).max(12).optional(),
+}).refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
+
+const subcategoryCreate = z.object({
+  name: z.string().trim().min(1).max(80),
+  description: z.string().max(240).default(''),
+  icon: z.string().max(60).nullable().optional(),
+  sortOrder: z.number().int().min(0).max(10000).optional(),
+});
+
+const subcategoryUpdate = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  description: z.string().max(240).optional(),
+  icon: z.string().max(60).nullable().optional(),
+  sortOrder: z.number().int().min(0).max(10000).optional(),
+  isActive: z.boolean().optional(),
 }).refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
 
 // Review payload submitted by a customer. rating is the only numeric
@@ -325,6 +364,7 @@ const SORT_VALUES = ['featured', 'price-asc', 'price-desc', 'name-asc', 'newest'
 const productListQuery = z.object({
   q: z.string().min(1).max(200).optional(),
   category: z.string().min(1).max(80).optional(),
+  subcategory: z.string().min(1).max(80).optional(),
   vendor: z.string().min(1).max(80).optional(),
   minPrice: z.coerce.number().int().min(0).max(100000000).optional(),
   maxPrice: z.coerce.number().int().min(0).max(100000000).optional(),
@@ -339,6 +379,7 @@ const productListQuery = z.object({
   showOnSearch: queryBool.optional(),
   showOnRecentDeals: queryBool.optional(),
   showOnNewArrivals: queryBool.optional(),
+  showOnCategorySpotlight: queryBool.optional(),
 }).refine(
   (d) => d.minPrice == null || d.maxPrice == null || d.minPrice <= d.maxPrice,
   { message: 'minPrice must be <= maxPrice', path: ['minPrice'] }
@@ -365,6 +406,8 @@ module.exports = {
   CARRIERS,
   categoryCreate,
   categoryUpdate,
+  subcategoryCreate,
+  subcategoryUpdate,
   reviewCreate,
   reviewListQuery,
   productListQuery,

@@ -26,6 +26,7 @@ const EMPTY_FORM = {
   name: '',
   description: '',
   category: '',
+  subcategory: '',
   priceCents: 0,
   compareAtPriceCents: null,
   stock: 0,
@@ -38,6 +39,7 @@ const EMPTY_FORM = {
   showOnSearch: true,
   showOnRecentDeals: false,
   showOnNewArrivals: true,
+  showOnCategorySpotlight: false,
   // Additional category pin targets. Empty by default; the primary
   // `category` is the product's main page. Server-side normalize
   // (trim / dedupe / cap 10 / cap 80 chars) happens on submit.
@@ -110,6 +112,7 @@ export default function ProductNew() {
         name: p.name || '',
         description: p.description || '',
         category: p.category || '',
+        subcategory: p.subcategory || '',
         priceCents: Number(p.priceCents) || 0,
         compareAtPriceCents: p.compareAtPriceCents ?? null,
         stock: Number(p.stock) || 0,
@@ -128,11 +131,12 @@ export default function ProductNew() {
         showOnSearch: p.showOnSearch !== undefined ? p.showOnSearch : true,
         showOnRecentDeals: p.showOnRecentDeals !== undefined ? p.showOnRecentDeals : false,
         showOnNewArrivals: p.showOnNewArrivals !== undefined ? p.showOnNewArrivals : true,
+        showOnCategorySpotlight: Boolean(p.showOnCategorySpotlight),
         // extraCategories arrives as an array of {id, name} from the
         // /api/products/:id response; flatten to the string[] the
         // form / submit payload expects.
         extraCategories: Array.isArray(p.extraCategories)
-          ? p.extraCategories.map((e) => (typeof e === 'string' ? e : e.name))
+          ? p.extraCategories.map((e) => (typeof e === 'string' ? { name: e, subcategory: null } : { name: e.name, subcategory: e.subcategory || null }))
           : [],
       };
       setForm(next);

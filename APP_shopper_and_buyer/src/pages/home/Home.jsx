@@ -10,39 +10,25 @@ import { useNotifications } from '../../lib/useNotifications';
 import { useProductLiveSync } from '../../lib/useProductLiveSync';
 import { useRecentlyViewed } from '../../lib/useRecentlyViewed';
 import { toast } from '../../lib/toast';
+import { themeFor, categoryPath } from '../../lib/categoryTheme';
 
-const CATS = [
-  { name: 'Electronics', icon: 'devices', color: 'bg-blue-50 text-blue-600' },
-  { name: 'Phones', icon: 'smartphone', color: 'bg-indigo-50 text-indigo-600' },
-  { name: 'Computers', icon: 'computer', color: 'bg-slate-100 text-slate-700' },
-  { name: 'Fashion', icon: 'checkroom', color: 'bg-pink-50 text-pink-600' },
-  { name: 'Shoes', icon: 'steps', color: 'bg-orange-50 text-orange-600' },
-  { name: 'Beauty', icon: 'spa', color: 'bg-rose-50 text-rose-500' },
-  { name: 'Home', icon: 'chair', color: 'bg-amber-50 text-amber-700' },
-  { name: 'Kitchen', icon: 'blender', color: 'bg-teal-50 text-teal-600' },
-  { name: 'Sports', icon: 'sports_basketball', color: 'bg-green-50 text-green-600' },
-  { name: 'Fitness', icon: 'fitness_center', color: 'bg-lime-50 text-lime-700' },
-  { name: 'Toys', icon: 'toys', color: 'bg-yellow-50 text-yellow-600' },
-  { name: 'Gaming', icon: 'sports_esports', color: 'bg-violet-50 text-violet-600' },
-  { name: 'TV & Audio', icon: 'tv', color: 'bg-cyan-50 text-cyan-700' },
-  { name: 'Appliances', icon: 'kitchen', color: 'bg-stone-100 text-stone-700' },
-  { name: 'Automotive', icon: 'directions_car', color: 'bg-red-50 text-red-600' },
-  { name: 'Books', icon: 'menu_book', color: 'bg-emerald-50 text-emerald-700' },
-  { name: 'Grocery', icon: 'local_grocery_store', color: 'bg-lime-50 text-lime-800' },
-  { name: 'Health', icon: 'medical_services', color: 'bg-sky-50 text-sky-600' },
-  { name: 'Pet Supplies', icon: 'pets', color: 'bg-amber-50 text-amber-600' },
-  { name: 'Baby', icon: 'child_care', color: 'bg-fuchsia-50 text-fuchsia-600' },
-  { name: 'Jewelry', icon: 'diamond', color: 'bg-purple-50 text-purple-600' },
-  { name: 'Watches', icon: 'watch', color: 'bg-zinc-100 text-zinc-700' },
-  { name: 'Bags', icon: 'shopping_bag', color: 'bg-orange-50 text-orange-700' },
-  { name: 'Office', icon: 'print', color: 'bg-neutral-100 text-neutral-700' },
-  { name: 'Garden', icon: 'yard', color: 'bg-green-50 text-green-700' },
-  { name: 'Tools', icon: 'construction', color: 'bg-gray-100 text-gray-700' },
-  { name: 'Arts & Crafts', icon: 'brush', color: 'bg-fuchsia-50 text-fuchsia-700' },
-  { name: 'Musical', icon: 'music_note', color: 'bg-red-50 text-red-500' },
+// Shown until /api/products/categories answers, so the rail never
+// renders empty. Names match the curated Category table.
+const FALLBACK_CATS = [
+  { name: 'Electronics', icon: 'devices' }, { name: 'Phones', icon: 'smartphone' },
+  { name: 'Computer', icon: 'computer' }, { name: 'Fashion', icon: 'checkroom' },
+  { name: 'Shoes', icon: 'steps' }, { name: 'Beauty', icon: 'spa' },
+  { name: 'Home', icon: 'chair' }, { name: 'Kitchen', icon: 'blender' },
+  { name: 'Sports', icon: 'sports_basketball' }, { name: 'Fitness', icon: 'fitness_center' },
+  { name: 'Toys', icon: 'toys' }, { name: 'Gaming', icon: 'sports_esports' },
 ];
 
 export default function Home() {
+  const catsApi = useApi('/api/products/categories');
+  // Featured categories lead, then the curated order.
+  const homeCats = catsApi.data?.categories?.length
+    ? [...catsApi.data.categories].sort((a, b) => Number(b.featured) - Number(a.featured))
+    : FALLBACK_CATS;
   const navigate = useNavigate();
   const location = useLocation();
   const user = useStore((s) => s.user);
@@ -123,7 +109,7 @@ export default function Home() {
       // confirms the add, and the ProductCard flips to "Added" for
       // 3s. The user stays on Home so they can keep browsing. Cart
       // navigation is reserved for an explicit tap on the cart icon.
-      toast.success(`Added ${p.name} to cart`);
+      toast.addedToCart(p);
     } catch (e) {
       toast.error(e?.data?.error || 'Could not add to cart');
     }
@@ -174,14 +160,14 @@ export default function Home() {
       {/* Category shortcuts — the fastest path into the catalogue. */}
       <nav aria-label="Categories" className="-mx-4">
         <div className="reveal-stagger stagger-pop flex gap-3 overflow-x-auto no-scrollbar snap-x scroll-px-4 px-4" style={{ "--stagger-step": "45ms" }}>
-          {CATS.slice(0, 12).map((c) => (
+          {homeCats.slice(0, 12).map((c) => (
             <Link
               key={c.name}
-              to={`/categories/${encodeURIComponent(c.name)}`}
+              to={categoryPath(c)}
               className="snap-start flex flex-col items-center gap-1.5 w-[68px] shrink-0 group"
             >
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ring-1 ring-black/5 transition-transform group-active:scale-95 ${c.color}`}>
-                <Icon name={c.icon} className="text-[26px]" />
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ring-1 ring-black/5 transition-transform group-active:scale-95 ${themeFor(c).tile}`}>
+                <Icon name={themeFor(c).icon} className="text-[26px]" />
               </div>
               <span className="block text-label-md font-medium text-center leading-tight truncate w-full">{c.name}</span>
             </Link>

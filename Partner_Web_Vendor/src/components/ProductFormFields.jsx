@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { apiForm } from '../api';
 import CategoryPicker from './CategoryPicker';
+import SubcategoryPicker from './SubcategoryPicker';
 import VariantsAccordion from './VariantsAccordion';
 import Icon from './Icon';
 import PlacementSection from './PlacementSection';
@@ -111,12 +112,28 @@ export default function ProductFormFields({ form, update, errors = {} }) {
             <CategoryPicker
               id="pf-category"
               value={form.category}
-              onChange={(v) => update('category', v)}
+              onChange={(v) => {
+                // Subcategories belong to one category — clear on switch.
+                if (v !== form.category) update('subcategory', '');
+                update('category', v);
+              }}
               error={errors.category}
             />
             {errors.category && (
               <div role="alert" className="text-error text-sm mt-1">{errors.category}</div>
             )}
+          </div>
+          <div>
+            <label htmlFor="pf-subcategory" className="text-label-md text-on-surface-variant">
+              Subcategory
+            </label>
+            <SubcategoryPicker
+              id="pf-subcategory"
+              category={form.category}
+              value={form.subcategory}
+              onChange={(v) => update('subcategory', v)}
+              error={errors.subcategory}
+            />
           </div>
           <div>
             <label htmlFor="pf-stock" className="text-label-md text-on-surface-variant">
@@ -253,7 +270,7 @@ export default function ProductFormFields({ form, update, errors = {} }) {
 
       {/* ───── Placements (where shoppers see it) ───── */}
       <section className="pt-3 border-t border-outline-variant/30">
-        <PlacementSection form={form} update={update} errors={errors.placement || {}} />
+        <PlacementSection form={form} update={update} errors={errors.placement || {}} reviewNote="Yobou reviews placement changes with the rest of your edit before they go live." />
       </section>
 
       {/* ───── Media ───── */}

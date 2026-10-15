@@ -81,7 +81,7 @@ export async function refreshAccessToken() {
       // one. The returned value is unused by today's api() 401
       // handler (which just re-calls api()), but returning it keeps
       // the contract intact for any future caller.
-      if (accessToken !== currentToken) return data.accessToken;
+      if (accessToken !== currentToken) return { ...data, superseded: true };
       // Centralize the in-memory + localStorage write through
       // setAccessToken so the v0.3.10 localStorage invariant has
       // exactly one mutation site. notifyAuthChange stays here
@@ -89,7 +89,7 @@ export async function refreshAccessToken() {
       // actually knows the user identity.
       setAccessToken(data.accessToken);
       notifyAuthChange({ user: data.user });
-      return data.accessToken;
+      return data;
     })
     .catch((err) => {
       // Only wipe the token if no fresher one was installed in
@@ -112,7 +112,27 @@ function isIdempotent(method) {
   return method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
 }
 
-export async function api(path, { method = 'GET', body, headers = {}, auth = true, retry = true, retryCount = 0, retryNetwork = false } = {}) {
+// Concurrent identical GETs share one request. Several components often
+// ask for the same resource on mount (cart badge, cart page, header);
+// without this each fired its own fetch. Keyed on path + the token in
+// use, so a request made under a different session never gets another
+// session's response. Entries live only while the request is in flight —
+// this is de-duplication, not a cache.
+const inflightGets = new Map();
+
+export function api(path, opts = {}) {
+  const method = opts.method || 'GET';
+  const shareable = method === 'GET' && !opts.retryCount && opts.body === undefined && !opts.headers;
+  if (!shareable) return request(path, opts);
+  const key = `${opts.auth === false ? 'anon' : accessToken || 'anon'} ${path}`;
+  const pending = inflightGets.get(key);
+  if (pending) return pending;
+  const p = request(path, opts).finally(() => inflightGets.delete(key));
+  inflightGets.set(key, p);
+  return p;
+}
+
+async function request(path, { method = 'GET', body, headers = {}, auth = true, retry = true, retryCount = 0, retryNetwork = false } = {}) {
   // A unique query parameter prevents Android WebView from replaying stale
   // cached GET responses. POST/PUT/PATCH requests are already non-cacheable.
   const noCacheSuffix = method === 'GET' || method === 'HEAD'
@@ -147,7 +167,7 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
     if (retry && (isIdempotent(method) || retryNetwork) && retryCount < MAX_NETWORK_RETRIES) {
       const delay = RETRY_BASE_MS * 2 ** retryCount;
       await new Promise((r) => setTimeout(r, delay));
-      return api(path, { method, body, headers, auth, retry, retryCount: retryCount + 1, retryNetwork });
+      return request(path, { method, body, headers, auth, retry, retryCount: retryCount + 1, retryNetwork });
     }
     const err = new Error(
       networkErr?.message || 'Network request failed'
@@ -171,7 +191,7 @@ export async function api(path, { method = 'GET', body, headers = {}, auth = tru
     // Try one silent refresh, then retry once.
     try {
       await refreshAccessToken();
-      return api(path, { method, body, headers, auth, retry: false });
+      return request(path, { method, body, headers, auth, retry: false });
     } catch {
       // Only clear the token if no fresher one was installed. If
       // accessToken already moved on (e.g. ensureGuestSession set

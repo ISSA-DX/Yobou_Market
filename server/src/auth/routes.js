@@ -79,6 +79,51 @@ async function transferGuestCart(guestId, newId) {
   return items.length;
 }
 
+// Guest users are real User rows with a generated address — see
+// POST /guest. This is the one place that defines what "guest" means.
+const GUEST_EMAIL = /^guest-[0-9a-f]+@guest\.local$/;
+function isGuestUser(user) {
+  return Boolean(user && user.role === 'CUSTOMER' && GUEST_EMAIL.test(user.email || ''));
+}
+
+// Move a guest's saved addresses to the account they just signed in to
+// or created. The account's own default address stays the default.
+async function transferGuestAddresses(guestId, newId) {
+  if (!guestId || guestId === newId) return 0;
+  const hasOwn = (await prisma.address.count({ where: { userId: newId } })) > 0;
+  const moved = await prisma.address.updateMany({
+    where: { userId: guestId },
+    data: { userId: newId, ...(hasOwn ? { isDefault: false } : {}) },
+  });
+  return moved.count;
+}
+
+// The visitor's current session, read from the refresh cookie. Returns
+// null when there is no cookie, it is invalid/expired, or it was revoked
+// by a password change.
+async function sessionUserFromCookie(req) {
+  const token = req.cookies?.[REFRESH_COOKIE];
+  if (!token) return null;
+  try {
+    const payload = verifyRefresh(token);
+    const user = await prisma.user.findUnique({ where: { id: payload.sub }, include: { vendor: true } });
+    if (!user || user.disabledAt || issuedBeforePasswordChange(user, payload.iat)) return null;
+    return user;
+  } catch {
+    return null;
+  }
+}
+
+// When a guest signs in or registers, carry their cart and addresses
+// into the account. Only a GUEST's data is ever merged — signing in as
+// a second real account on a shared phone must not mix two customers.
+async function mergeGuestInto(req, user) {
+  const prior = await sessionUserFromCookie(req);
+  if (!prior || prior.id === user.id || !isGuestUser(prior)) return;
+  await transferGuestCart(prior.id, user.id);
+  await transferGuestAddresses(prior.id, user.id);
+}
+
 function setRefreshCookie(res, token) {
   // Cross-site cookie policy. When the refresh cookie is issued, every
   // subsequent XHR/fetch from a real client has to carry it back so
@@ -128,6 +173,7 @@ function publicUser(user) {
     language: user.language,
     currency: user.currency,
     theme: user.theme,
+    isGuest: isGuestUser(user),
     notifyOrderUpdates: user.notifyOrderUpdates,
     notifyPromotions: user.notifyPromotions,
     notifyShipping: user.notifyShipping,
@@ -174,6 +220,11 @@ function checkVendorStatus(user, res) {
   return null;
 }
 
+// True when checkVendorStatus would refuse this vendor a session.
+function isBlockedVendor(user) {
+  return user.role === 'VENDOR' && (!user.vendor || ['REJECTED', 'SUSPENDED'].includes(user.vendor.status));
+}
+
 function checkAccountDisabled(user, res) {
   if (user.disabledAt) {
     return res.status(403).json({ error: 'ACCOUNT_DISABLED' });
@@ -200,6 +251,7 @@ router.post('/register', authLimiter, async (req, res, next) => {
       },
       include: { vendor: true },
     });
+    await mergeGuestInto(req, user);
     setRefreshCookie(res, signRefresh(user));
     res.status(201).json({ accessToken: signAccess(user), user: publicUser(user) });
   } catch (err) {
@@ -233,20 +285,9 @@ router.post('/login', authLimiter, async (req, res, next) => {
     }
     loginGuard.succeed(data.email);
 
-    // Merge any guest-cart sitting in the refresh cookie into this
-    // freshly-logged-in user. The visitor was browsing as a guest
-    // (POST /api/auth/guest) and added items; signing in should
-    // carry those items forward, not strand them on a now-orphan
-    // GuestUser row.
-    const priorToken = req.cookies?.[REFRESH_COOKIE];
-    if (priorToken) {
-      try {
-        const prior = verifyRefresh(priorToken);
-        if (prior?.sub && prior.sub !== user.id) {
-          await transferGuestCart(prior.sub, user.id);
-        }
-      } catch { /* invalid prior token — skip merge */ }
-    }
+    // Carry the guest's cart and addresses into this account (guest
+    // sessions only — see mergeGuestInto).
+    await mergeGuestInto(req, user);
 
     const disabledError = checkAccountDisabled(user, res);
     if (disabledError) return disabledError;
@@ -276,8 +317,24 @@ router.post('/login', authLimiter, async (req, res, next) => {
 // uses the same code path as a logged-in customer. The cost is empty
 // User rows in the DB; a 30-day cleanup cron for role=CUSTOMER users
 // with no orders is a Phase-2 follow-up.
-router.post('/guest', guestLimiter, async (_req, res, next) => {
+router.post('/guest', guestLimiter, async (req, res, next) => {
   try {
+    // Never replace a live session. A page that asks for a guest before
+    // the app has finished restoring its session (or two pages asking at
+    // once) gets the visitor's CURRENT user back — guest or signed in —
+    // instead of a fresh guest that would overwrite the cookie and strand
+    // their cart.
+    const current = await sessionUserFromCookie(req);
+    if (current && !isBlockedVendor(current)) {
+      setRefreshCookie(res, signRefresh(current));
+      return res.json({
+        accessToken: signAccess(current),
+        user: publicUser(current),
+        isGuest: isGuestUser(current),
+        resumed: true,
+      });
+    }
+
     const crypto = require('crypto');
     const guestId = crypto.randomBytes(12).toString('hex');
     const email = `guest-${guestId}@guest.local`;

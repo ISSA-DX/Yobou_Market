@@ -61,6 +61,7 @@ async function resetTestDb() {
     prisma.product.deleteMany(),
     prisma.address.deleteMany(),
     prisma.vendor.deleteMany(),
+    prisma.subcategory.deleteMany(),
     prisma.category.deleteMany(),
     prisma.user.deleteMany(),
   ]);

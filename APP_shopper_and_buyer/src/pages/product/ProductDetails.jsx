@@ -3,6 +3,8 @@ import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { api } from '../../api';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
+import { categoryPath } from '../../lib/categoryTheme';
+import { toast } from '../../lib/toast';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImages } from '../../lib/productImage';
 import { colorToHex } from '../../lib/colorSwatch';
@@ -255,6 +257,7 @@ export default function ProductDetails() {
         },
       }));
       await refreshCart();
+      toast.addedToCart(p);
       // v0.3.16: no longer navigate to /cart. The cart badge in
       // MobileShell updates via refreshCartCount() above, the sticky
       // CTA flips to a "Added" state for 3s, and the in-page Quick
@@ -267,6 +270,27 @@ export default function ProductDetails() {
       handleError(ex);
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Share: the native sheet where the browser/OS has one; otherwise copy
+  // the link and offer WhatsApp — the shopper always sees a result.
+  async function share() {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: p.name, text: `${p.name} on Yobou`, url });
+        return;
+      } catch (ex) {
+        if (ex?.name === 'AbortError') return; // shopper closed the sheet
+      }
+    }
+    const whatsapp = { label: 'WhatsApp', href: `https://wa.me/?text=${encodeURIComponent(`${p.name} — ${url}`)}` };
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied', { action: whatsapp });
+    } catch {
+      toast.info('Share this product on WhatsApp', { action: whatsapp });
     }
   }
 
@@ -341,7 +365,7 @@ export default function ProductDetails() {
             <Icon name="arrow_back" />
           </button>
           <div className="flex gap-2">
-            <button type="button" className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center" aria-label="Share">
+            <button type="button" onClick={share} className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center" aria-label="Share">
               <Icon name="share" />
             </button>
             <button
@@ -363,7 +387,16 @@ export default function ProductDetails() {
 
       <div className="px-4 pt-5 space-y-4">
         <div className="reveal reveal-fade-up">
-          <div className="eyebrow">{p.vendor?.businessName ? `${p.vendor.businessName} · ${p.category}` : p.category}</div>
+          <div className="eyebrow flex flex-wrap items-center gap-x-1">
+            {p.vendor?.businessName && <span>{p.vendor.businessName} ·</span>}
+            <Link to={categoryPath({ name: p.category })} className="hover:text-primary">{p.category}</Link>
+            {p.subcategory && (
+              <>
+                <span aria-hidden="true">›</span>
+                <Link to={categoryPath({ name: p.category }, { name: p.subcategory })} className="hover:text-primary">{p.subcategory}</Link>
+              </>
+            )}
+          </div>
           {/* Product names read in ink (page titles elsewhere keep the brand blue). */}
           <h1 className="mt-1 text-headline-lg font-bold text-on-surface leading-tight">{p.name}</h1>
           <div className="mt-2 flex items-center gap-3">

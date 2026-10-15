@@ -10,6 +10,8 @@
 //   toast.success('Added to cart');
 //   toast.error('Could not save');
 //   toast.info('Free shipping unlocked');
+//   toast.success('Added to cart', { action: { label: 'View cart', to: '/cart' } });
+//   toast.addedToCart(product)   // the standard add-to-cart confirmation
 //
 // ToastHost (mounted once in App.jsx) subscribes and renders. The store is
 // a tiny module-scope array + listeners — no Zustand needed for this scale.
@@ -30,13 +32,14 @@ function emit() {
   }
 }
 
-function push(type, message) {
+function push(type, message, { action } = {}) {
   const id = nextId++;
-  const item = { id, type, message, ts: Date.now() };
-  queue = [...queue, item];
+  const item = { id, type, message, action: action || null, ts: Date.now() };
+  // Keep at most 3 on screen so rapid taps don't stack a tower of toasts.
+  queue = [...queue, item].slice(-3);
   emit();
-  // Auto-dismiss after 4s.
-  setTimeout(() => dismiss(id), 4000);
+  // Auto-dismiss after 4s (a little longer when there is an action to tap).
+  setTimeout(() => dismiss(id), action ? 5000 : 4000);
   return id;
 }
 
@@ -47,9 +50,12 @@ function dismiss(id) {
 }
 
 export const toast = {
-  success: (msg) => push('success', msg),
-  error: (msg) => push('error', msg),
-  info: (msg) => push('info', msg),
+  success: (msg, opts) => push('success', msg, opts),
+  error: (msg, opts) => push('error', msg, opts),
+  info: (msg, opts) => push('info', msg, opts),
+  addedToCart: (product) => push('success', product?.name ? `Added ${product.name} to cart` : 'Added to cart', {
+    action: { label: 'View cart', to: '/cart' },
+  }),
   dismiss,
 };
 

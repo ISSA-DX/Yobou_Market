@@ -330,46 +330,29 @@ test('categories — GET ?curatedOnly=1 hides live-sourced rows', async () => {
   assert.deepStrictEqual(names, ['Electronics'], 'curatedOnly should exclude live-sourced rows');
 });
 
-test('categories — seed-file CATEGORIES array matches SEED_CATEGORIES on the route', async () => {
-  // Drift between the two arrays is the kind of bug that lives for
-  // months unnoticed. The seed file and the route helper both ship
-  // a curated list; this test compares them so a mismatch fails CI.
-  // eslint-disable-next-line global-require
-  const seed = require('../prisma/seed.js');
-  // The CATEGORIES const in the seed file isn't exported, so re-read
-  // the file as text and pull the array literal out.
+test('categories — seed file and route both derive from the shared catalogue', async () => {
+  // Both used to ship hand-copied arrays; they now import the same
+  // list from src/lib/categoryCatalog.js so they cannot drift.
   // eslint-disable-next-line global-require
   const fs = require('node:fs');
   // eslint-disable-next-line global-require
   const path = require('node:path');
-  const src = fs.readFileSync(
-    path.join(__dirname, '..', 'prisma', 'seed.js'),
-    'utf8',
-  );
-  const m = src.match(/const CATEGORIES = \[([\s\S]*?)\];/);
-  assert.ok(m, 'expected to find `const CATEGORIES = [...]` in prisma/seed.js');
-  const seedNames = m[1]
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => s.replace(/^['"]|['"]$/g, ''));
+  const src = fs.readFileSync(path.join(__dirname, '..', 'prisma', 'seed.js'), 'utf8');
+  assert.match(src, /require\('\.\.\/src\/lib\/categoryCatalog'\)/, 'seed.js should import the catalogue');
 
   // eslint-disable-next-line global-require
+  const { CATEGORY_CATALOG, CATEGORY_NAMES } = require('../src/lib/categoryCatalog');
+  // eslint-disable-next-line global-require
   const categoriesRouter = require('../src/routes/categories');
-  const routeNames = categoriesRouter.SEED_CATEGORIES;
-  assert.ok(Array.isArray(routeNames), 'SEED_CATEGORIES should be exported as an array');
-  assert.strictEqual(
-    routeNames.length,
-    seedNames.length,
-    `seed file lists ${seedNames.length} categories but the route's SEED_CATEGORIES has ${routeNames.length}`,
-  );
-  for (const n of seedNames) {
-    assert.ok(routeNames.includes(n), `route SEED_CATEGORIES missing "${n}" from the seed file`);
+  assert.deepStrictEqual(categoriesRouter.SEED_CATEGORIES, CATEGORY_NAMES);
+  assert.strictEqual(new Set(CATEGORY_NAMES).size, CATEGORY_NAMES.length, 'category names must be unique');
+
+  // Every catalogue entry carries complete page content.
+  for (const c of CATEGORY_CATALOG) {
+    assert.ok(c.icon && c.tagline && c.description, `${c.name}: icon/tagline/description required`);
+    assert.ok(c.subcategories.length >= 4, `${c.name}: at least 4 subcategories`);
+    assert.ok(c.guide.length >= 3 && c.faqs.length >= 3, `${c.name}: guide and FAQs required`);
+    const subNames = c.subcategories.map((x) => x.name);
+    assert.strictEqual(new Set(subNames).size, subNames.length, `${c.name}: duplicate subcategory`);
   }
-  for (const n of routeNames) {
-    assert.ok(seedNames.includes(n), `seed file CATEGORIES missing "${n}" from the route's SEED_CATEGORIES`);
-  }
-  // Touch seed so the require call doesn't get tree-shaken; this also
-  // documents the intent that the two arrays must stay in lockstep.
-  assert.ok(seed, 'seed module should be importable');
 });

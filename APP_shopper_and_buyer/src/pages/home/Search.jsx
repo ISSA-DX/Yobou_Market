@@ -209,7 +209,7 @@ export default function Search() {
       // MobileShell updates via refreshCartCount() above, the toast
       // confirms the add, and the ProductCard flips to "Added" for
       // 3s. The user stays on Search so they can keep browsing.
-      toast.success(`Added ${p.name} to cart`);
+      toast.addedToCart(p);
     } catch (e) {
       toast.error(e?.data?.error || 'Could not add to cart');
     }
