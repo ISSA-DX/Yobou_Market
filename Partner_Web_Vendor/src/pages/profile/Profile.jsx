@@ -4,6 +4,7 @@ import Icon from '../../components/Icon';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useStore } from '../../store';
 import { toast } from '../../lib/toast';
+import { storeUrl } from '../../lib/storefront';
 
 const SUGGESTED_CATEGORIES = [
   'Electronics', 'Fashion', 'Home', 'Beauty', 'Grocery',
@@ -35,6 +36,7 @@ export default function Profile() {
     categories: [],
     logoUrl: '',
     bannerUrl: '',
+    description: '',
   });
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -68,6 +70,7 @@ export default function Profile() {
         categories: Array.isArray(v.categories) ? v.categories : [],
         logoUrl: v.logoUrl || '',
         bannerUrl: v.bannerUrl || '',
+        description: v.description || '',
       });
     }
     if (user) {
@@ -235,6 +238,28 @@ export default function Profile() {
               </button>
             )}
           </div>
+        </div>
+
+        {/* Store page copy — shown on the public store page and in
+            "Shop by store" on category pages. */}
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <label htmlFor="store-description" className="text-label-md text-on-surface-variant">Store description</label>
+            {profileApi.data?.vendor?.id && (
+              <a href={storeUrl(profileApi.data.vendor.id)} target="_blank" rel="noreferrer" className="text-label-md text-primary font-semibold inline-flex items-center gap-1">
+                View my store <Icon name="open_in_new" className="text-[16px]" />
+              </a>
+            )}
+          </div>
+          <textarea
+            id="store-description"
+            className="input w-full mt-1 min-h-[90px]"
+            maxLength={600}
+            value={form.description}
+            onChange={(e) => update('description', e.target.value)}
+            placeholder="What you sell, where you deliver from, and what makes your store special."
+          />
+          <div className="text-label-sm text-on-surface-variant mt-1">{form.description.length}/600 · Shown on your public store page.</div>
         </div>
 
         {/* Logo — square preview */}

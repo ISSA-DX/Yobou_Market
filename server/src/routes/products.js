@@ -9,6 +9,7 @@ const { requireAuth, requireRole, requireApprovedVendor } = require('../auth/mid
 const { audit, notifyProductChange, notifyAdminsProductChangeSubmitted } = require('../lib/notifications');
 const categoriesRouter = require('./categories');
 const { FLAG_KEYS, normalizeExtraCategories, applyExtraCategories, inCategoryWhere, pinsToWire } = require('../lib/placement');
+const { liveCampaignWhere, serializeCampaign, storesInCategory, resolveCollection, serializeCollection } = require('../lib/merch');
 
 const router = express.Router();
 
@@ -356,7 +357,34 @@ router.get('/categories/:key', async (req, res, next) => {
       .sort((a, b) => Number(b.featured) - Number(a.featured) || b.productCount - a.productCount || a.sortOrder - b.sortOrder)
       .slice(0, 8)
       .map(publicSummary);
-    res.json({ category: { ...category, count: category.productCount }, related });
+    // Merchandising (lib/merch.js): live banners, the stores selling
+    // here, and active collections with their first products. Each item
+    // carries `subcategory` so the app can show department-specific ones.
+    const [campaigns, stores, collectionRows] = await Promise.all([
+      prisma.campaign.findMany({
+        where: { category: category.name, ...liveCampaignWhere() },
+        include: { vendor: true },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+        take: 10,
+      }),
+      storesInCategory(category.name),
+      prisma.collection.findMany({
+        where: { category: category.name, isActive: true },
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+    ]);
+    const collections = [];
+    for (const c of collectionRows) {
+      const items = await resolveCollection(c, { limit: 12 });
+      if (items.length) collections.push(serializeCollection(c, items));
+    }
+    res.json({
+      category: { ...category, count: category.productCount },
+      related,
+      campaigns: campaigns.map(serializeCampaign),
+      stores,
+      collections,
+    });
   } catch (err) { next(err); }
 });
 

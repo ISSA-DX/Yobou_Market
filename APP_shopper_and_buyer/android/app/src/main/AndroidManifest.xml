@@ -40,4 +40,12 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Search by photo: <input capture> hands off to the system camera app.
+         Android 11+ hides other apps unless we declare the intent we use. -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
 </manifest>

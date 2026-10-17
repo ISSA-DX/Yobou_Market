@@ -236,7 +236,7 @@ export default function Cart() {
   if (validItems.length === 0) {
     return (
       <div className="px-4 pt-6 pb-6 text-center max-w-screen-xl mx-auto">
-        <header className="flex items-center justify-between mb-8">
+        <header className="flex items-center justify-between mb-8 lg:hidden">
           <Link to="/home" className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></Link>
           <h1 className="font-bold text-lg">Shopping Cart</h1>
           <span className="w-10" />
@@ -254,7 +254,7 @@ export default function Cart() {
   }
 
   return (
-    <div className="px-4 pt-4 pb-6 max-w-screen-xl mx-auto">
+    <div className="px-4 pt-4 lg:pt-8 pb-6 max-w-screen-xl mx-auto">
       <header className="flex items-center justify-between mb-4 md:hidden">
         <Link to="/home" className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></Link>
         <h1 className="font-bold text-lg">Shopping Cart</h1>
@@ -400,7 +400,7 @@ export default function Cart() {
 
         {/* Summary column */}
         <div className="lg:col-span-5 mt-6 lg:mt-0">
-          <div className="reveal reveal-fade-up card p-5 lg:sticky lg:top-4 space-y-3" style={{ "--reveal-delay": "150ms" }}>
+          <div className="reveal reveal-fade-up card p-5 lg:p-6 lg:sticky lg:top-[148px] space-y-3" style={{ "--reveal-delay": "150ms" }}>
             <h2 className="text-headline-md font-bold hidden lg:block">Order Summary</h2>
             {selectedItems.length === 0 ? (
               <div className="text-sm text-on-surface-variant text-center py-4">

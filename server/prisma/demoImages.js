@@ -85,7 +85,31 @@ function writeDemoImages() {
   return count;
 }
 
-module.exports = { writeDemoImages, imageFile, slugify };
+// Logo + banner for the sample store (shown on its store page and in
+// "Shop by store" rows).
+function writeStoreArt() {
+  const logo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0047f1"/><stop offset="1" stop-color="#0034b9"/></linearGradient></defs>
+  <rect width="200" height="200" rx="44" fill="url(#g)"/>
+  <text x="100" y="118" font-size="96" font-weight="800" text-anchor="middle" fill="#fff" font-family="Inter, Segoe UI, Roboto, Arial, sans-serif">Y</text>
+  <circle cx="150" cy="52" r="16" fill="#fdc003"/>
+</svg>
+`;
+  const banner = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0034b9"/><stop offset=".6" stop-color="#0047f1"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>
+  <rect width="1200" height="360" fill="url(#g)"/>
+  <circle cx="1040" cy="80" r="190" fill="#fff" opacity=".08"/><circle cx="180" cy="360" r="160" fill="#fff" opacity=".06"/>
+  <text x="600" y="210" font-size="120" text-anchor="middle" font-family="Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif">🛍️🎧👗🏠</text>
+</svg>
+`;
+  for (const dir of APP_DIRS) {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'store-logo.svg'), logo);
+    fs.writeFileSync(path.join(dir, 'store-banner.svg'), banner);
+  }
+}
+
+module.exports = { writeDemoImages, writeStoreArt, imageFile, slugify };
 
 if (require.main === module) {
   console.log(`[demo] wrote ${writeDemoImages()} images into ${APP_DIRS.length} apps`);

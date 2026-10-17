@@ -12,6 +12,7 @@ import { useApi, RetryError } from '../../useApi.jsx';
 import ProductCard from '../../components/ProductCard';
 import Icon from '../../components/Icon';
 import { useProductLiveSync } from '../../lib/useProductLiveSync';
+import Rail, { RAIL_ITEM } from '../../components/Rail';
 
 export default function RelatedProducts({ productId, onAdd, excludeId }) {
   const { data, error, loading, refetch } = useApi(`/api/products/${productId}/related`);
@@ -39,11 +40,11 @@ export default function RelatedProducts({ productId, onAdd, excludeId }) {
 
   if (loading && !data) {
     return (
-      <section className="px-4 pt-2 pb-6" aria-label="Customers also viewed">
-        <h2 className="text-title-md font-bold mb-3">Customers also viewed</h2>
-        <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="w-44 sm:w-52 shrink-0">
+      <section className="pt-2 pb-6" aria-label="Customers also viewed">
+        <h2 className="section-title mb-3">Customers also viewed</h2>
+        <div className="flex gap-3 overflow-hidden pb-2">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className={RAIL_ITEM}>
               <ProductCardSkeletonInline />
             </div>
           ))}
@@ -54,7 +55,7 @@ export default function RelatedProducts({ productId, onAdd, excludeId }) {
 
   if (error && !data) {
     return (
-      <section className="px-4 pt-2 pb-6">
+      <section className="pt-2 pb-6">
         <RetryError message="Couldn't load related products." onRetry={refetch} />
       </section>
     );
@@ -63,21 +64,18 @@ export default function RelatedProducts({ productId, onAdd, excludeId }) {
   if (visible.length === 0) return null;
 
   return (
-    <section className="px-4 pt-4 pb-6" aria-label="Customers also viewed">
-      <h2 className="text-title-md font-bold mb-3 flex items-center gap-2">
-        <Icon name="people" className="text-[20px] text-primary" />
+    <section className="pt-4 pb-6" aria-label="Customers also viewed">
+      <h2 className="section-title mb-3 flex items-center gap-2">
+        <Icon name="people" className="text-[22px] text-primary" />
         Customers also viewed
       </h2>
-      <div
-        className="reveal-stagger stagger-left flex gap-3 overflow-x-auto pb-3 -mx-1 px-1 snap-x snap-mandatory"
-        style={{ scrollbarWidth: 'thin' }}
-      >
+      <Rail label="related products" className="reveal-stagger stagger-left gap-3 pb-3 -mx-4 px-4 lg:mx-0 lg:px-0 snap-x snap-mandatory">
         {visible.map((p) => (
-          <div key={p.id} className="w-44 sm:w-52 shrink-0 snap-start">
+          <div key={p.id} className={`${RAIL_ITEM} snap-start`}>
             <ProductCard product={p} onAdd={onAdd} />
           </div>
         ))}
-      </div>
+      </Rail>
     </section>
   );
 }

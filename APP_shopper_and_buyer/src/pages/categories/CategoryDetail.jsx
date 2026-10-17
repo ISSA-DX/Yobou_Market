@@ -33,7 +33,7 @@ import { toast } from '../../lib/toast';
 import { productImage } from '../../lib/productImage';
 import { themeFor, categoryPath } from '../../lib/categoryTheme';
 import { plural, countLabel } from '../../lib/categoryFormat';
-import { Spotlight, FlashShelf, DepartmentShelf, priceBands, isDeal, isShownDeal, onPage, dealPercent, RAIL_CARD } from './CategoryShowcase';
+import { Spotlight, FlashShelf, DepartmentShelf, CampaignCarousel, StoresRow, CollectionShelf, priceBands, isDeal, isShownDeal, onPage, dealPercent, RAIL_CARD } from './CategoryShowcase';
 
 const SORTS = [
   { key: 'featured', label: 'Featured' },
@@ -68,6 +68,12 @@ export default function CategoryDetail() {
   const loaded = meta.data?.category;
   const category = loaded && (loaded.slug === slug || slug.toLowerCase() === loaded.name.toLowerCase()) ? loaded : null;
   const related = category ? meta.data?.related || [] : [];
+  // Merchandising from Admin / Partner tools. On a department page only
+  // the category-wide items and that department's own are shown.
+  const forScope = (x) => !subSlug || !x.subcategory || x.subcategory === subs.find((s) => s.slug === subSlug)?.name;
+  const campaigns = category ? (meta.data?.campaigns || []).filter(forScope) : [];
+  const collections = category ? (meta.data?.collections || []).filter(forScope) : [];
+  const stores = category ? meta.data?.stores || [] : [];
   const subs = category?.subcategories || [];
   const activeSub = subSlug ? subs.find((s) => s.slug === subSlug) || null : null;
   const t = themeFor(category || { slug });
@@ -133,29 +139,35 @@ export default function CategoryDetail() {
   const hasProducts = scope.length > 0;
 
   return (
-    <div className="pb-8">
+    <div className="pb-8 lg:pt-6 lg:px-4">
       <Hero category={category} activeSub={activeSub} theme={t} slug={slug} peek={merch.peek} />
 
       {subs.length > 0 && <DepartmentBar category={category} subs={subs} activeSub={activeSub} theme={t} />}
 
-      <div className="px-4 pt-4 space-y-8">
-        {hasProducts && <Spotlight products={merch.spotlight} theme={t} title={activeSub ? `${activeSub.name} deals` : 'Top deals'} />}
+      <div className="px-4 pt-4 lg:px-0 lg:pt-8 space-y-8 lg:space-y-10">
+        {/* Campaign banners lead; without any, the automatic spotlight. */}
+        {campaigns.length > 0
+          ? <CampaignCarousel campaigns={campaigns} theme={t} />
+          : hasProducts && <Spotlight products={merch.spotlight} theme={t} title={activeSub ? `${activeSub.name} deals` : 'Top deals'} />}
         {hasProducts && <FlashShelf products={merch.flash} onAdd={addToCart} />}
+        {collections.map((c) => <CollectionShelf key={c.id} collection={c} onAdd={addToCart} />)}
 
         {/* Category level: browse department by department. */}
         {shelves.map(({ sub, products }) => (
           <DepartmentShelf key={sub.slug} category={category} sub={sub} products={products} theme={t} onAdd={addToCart} />
         ))}
+        {!activeSub && <StoresRow stores={stores} category={category} />}
         {!activeSub && merch.fresh.length >= 4 && (
           <ProductRow title={`New in ${category.name}`} icon="new_releases" products={merch.fresh} onAdd={addToCart} cardWidth={RAIL_CARD} />
         )}
 
-        <div ref={gridRef} className="scroll-mt-16">
+        <div ref={gridRef} className="scroll-mt-16 lg:scroll-mt-[220px]">
           {category
             ? <ProductsSection key={`${category.name}/${activeSub?.name || ''}`} category={category} activeSub={activeSub} related={related} scope={scope} />
             : <GridSkeleton />}
         </div>
 
+        {activeSub && <StoresRow stores={stores} category={category} />}
         {moreInCategory.length > 0 && (
           <ProductRow title={`More in ${category.name}`} icon="explore" actionTo={categoryPath(category)} products={moreInCategory} onAdd={addToCart} cardWidth={RAIL_CARD} />
         )}
@@ -179,12 +191,20 @@ function Hero({ category, activeSub, theme, slug, peek }) {
     : [];
 
   return (
-    <header className={`relative overflow-hidden bg-gradient-to-br ${theme.gradient} text-white`}>
+    <header className={`relative overflow-hidden bg-gradient-to-br ${theme.gradient} text-white lg:rounded-3xl`}>
+      {/* Department hero image (Admin → Categories → department), toned by
+          the category colour so white text stays readable. */}
+      {activeSub?.heroImageUrl && (
+        <>
+          <img src={activeSub.heroImageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <span className={`absolute inset-0 bg-gradient-to-br ${theme.gradient} opacity-80`} aria-hidden="true" />
+        </>
+      )}
       {/* Decorative depth */}
       <span className="absolute -top-16 -left-10 w-48 h-48 rounded-full bg-white/10" aria-hidden="true" />
       <span className="absolute -bottom-20 right-1/3 w-56 h-56 rounded-full bg-black/10" aria-hidden="true" />
 
-      <div className="relative z-10 px-4 pt-3 pb-6">
+      <div className="relative z-10 px-4 pt-3 pb-6 lg:px-10 lg:pt-6 lg:pb-10">
         <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-label-md text-white/80 mb-3 min-w-0">
           <Link to={activeSub ? categoryPath(category) : `/categories${category ? `?c=${category.slug}` : ''}`} className="p-2 -ml-2 rounded-full hover:bg-white/20 transition-colors shrink-0" aria-label="Back">
             <Icon name="arrow_back" className="text-[22px] text-white" />
@@ -215,9 +235,9 @@ function Hero({ category, activeSub, theme, slug, peek }) {
               <span className="text-label-md font-semibold">{activeSub ? category?.name : 'Department store'}</span>
             </div>
             {/* text-white overrides the global brand-blue h1 rule. */}
-            <h1 className="reveal reveal-slide-right text-headline-md sm:text-headline-lg font-extrabold text-white leading-tight" style={{ '--reveal-delay': '80ms' }}>{title}</h1>
+            <h1 className="reveal reveal-slide-right text-headline-md sm:text-headline-lg lg:text-[2.5rem] font-extrabold text-white leading-tight" style={{ '--reveal-delay': '80ms' }}>{title}</h1>
             {subtitle
-              ? <p className="text-sm text-white/90 mt-1 line-clamp-2">{subtitle}</p>
+              ? <p className="text-sm lg:text-base text-white/90 mt-1 lg:mt-2 line-clamp-2 lg:max-w-2xl">{subtitle}</p>
               : !category && <div className="h-4 w-48 mt-2 rounded bg-white/25 animate-pulse" />}
 
             {stats.length > 0 && (
@@ -251,7 +271,7 @@ function ProductFan({ products }) {
   const poses = ['-rotate-12 -translate-x-6 translate-y-2', 'rotate-0 z-10 -translate-y-1', 'rotate-12 translate-x-6 translate-y-2'];
   const order = products.length === 1 ? [1] : products.length === 2 ? [0, 2] : [0, 1, 2];
   return (
-    <div className="relative w-[120px] h-[112px] shrink-0 mr-2" aria-hidden="true">
+    <div className="relative w-[120px] h-[112px] shrink-0 mr-2 lg:scale-[1.6] lg:mr-20 lg:origin-center" aria-hidden="true">
       {products.slice(0, 3).map((p, i) => (
         <img
           key={p.id}
@@ -275,7 +295,7 @@ function DepartmentBar({ category, subs, activeSub, theme }) {
 
   const items = [{ slug: null, name: 'All', icon: 'apps', productCount: category.productCount }, ...subs];
   return (
-    <nav aria-label={`${category.name} departments`} className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-outline-variant/40">
+    <nav aria-label={`${category.name} departments`} className="sticky top-0 lg:top-[148px] z-20 bg-white/90 backdrop-blur border-b border-outline-variant/40 lg:mt-4 lg:border lg:rounded-2xl">
       <div ref={scroller} className="flex gap-2 overflow-x-auto no-scrollbar px-4 py-2.5">
         {items.map((s) => {
           const active = s.slug ? activeSub?.slug === s.slug : !activeSub;
@@ -426,7 +446,7 @@ function ProductsSection({ category, activeSub, related, scope }) {
 
       {!loading && !error && products.length > 0 && (
         <>
-          <div className="reveal-stagger stagger-up grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 pt-1">
+          <div className="reveal-stagger stagger-up grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4 pt-1">
             {products.map((p) => <ProductCard key={p.id} product={p} onAdd={addToCart} />)}
           </div>
           {pagination?.hasMore && (
@@ -540,7 +560,7 @@ function ComingSoon({ category, activeSub, related }) {
 
 function GridSkeleton() {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
       {Array.from({ length: 6 }).map((_, i) => <ProductCardSkeleton key={i} />)}
     </div>
   );
@@ -549,11 +569,16 @@ function GridSkeleton() {
 // About / Buying guide / FAQs in one tabbed panel — the editorial
 // content is there when wanted without pushing products off-screen.
 function GuidePanel({ category, activeSub, theme }) {
+  // A department's own content (Admin → Categories → department) wins;
+  // otherwise the category's.
+  const intro = activeSub?.intro || category.description;
+  const guide = activeSub?.guide?.length ? activeSub.guide : category.guide || [];
+  const faqs = activeSub?.faqs?.length ? activeSub.faqs : category.faqs || [];
   const tabs = useMemo(() => [
-    (category.description || activeSub?.description) && { key: 'about', label: 'About', icon: 'info' },
-    category.guide?.length > 0 && { key: 'guide', label: 'Buying guide', icon: 'tips_and_updates' },
-    category.faqs?.length > 0 && { key: 'faqs', label: 'FAQs', icon: 'quiz' },
-  ].filter(Boolean), [category, activeSub]);
+    (intro || activeSub?.description) && { key: 'about', label: 'About', icon: 'info' },
+    guide.length > 0 && { key: 'guide', label: 'Buying guide', icon: 'tips_and_updates' },
+    faqs.length > 0 && { key: 'faqs', label: 'FAQs', icon: 'quiz' },
+  ].filter(Boolean), [intro, guide, faqs, activeSub]);
   const [tab, setTab] = useState(tabs[0]?.key);
   const [expanded, setExpanded] = useState(false);
   if (tabs.length === 0) return null;
@@ -592,10 +617,10 @@ function GuidePanel({ category, activeSub, theme }) {
         {current === 'about' && (
           <div className="space-y-2">
             {activeSub?.description && <p className="text-sm font-medium">{activeSub.description}</p>}
-            {category.description && (
+            {intro && (
               <>
-                <p className={`text-sm text-on-surface-variant leading-relaxed ${expanded ? '' : 'line-clamp-3'}`}>{category.description}</p>
-                {category.description.length > 180 && (
+                <p className={`text-sm text-on-surface-variant leading-relaxed ${expanded ? '' : 'line-clamp-3'}`}>{intro}</p>
+                {intro.length > 180 && (
                   <button type="button" onClick={() => setExpanded((v) => !v)} className="text-sm text-primary font-semibold">
                     {expanded ? 'Show less' : 'Read more'}
                   </button>
@@ -607,7 +632,7 @@ function GuidePanel({ category, activeSub, theme }) {
 
         {current === 'guide' && (
           <ol className="space-y-4">
-            {category.guide.map((g, i) => (
+            {guide.map((g, i) => (
               <li key={i} className="flex gap-3">
                 <span className="w-7 h-7 rounded-full bg-primary text-white text-sm font-bold flex items-center justify-center shrink-0">{i + 1}</span>
                 <div>
@@ -621,7 +646,7 @@ function GuidePanel({ category, activeSub, theme }) {
 
         {current === 'faqs' && (
           <div className="-mx-4 -my-2 divide-y divide-outline-variant/40">
-            {category.faqs.map((f, i) => (
+            {faqs.map((f, i) => (
               <details key={i} className="group" open={i === 0}>
                 <summary className="flex items-center justify-between gap-3 px-4 py-3.5 cursor-pointer list-none font-medium text-sm hover:bg-surface-low">
                   {f.q}

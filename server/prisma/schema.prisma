@@ -73,6 +73,8 @@ model Vendor {
   // by the same /uploads/* route as product images.
   logoUrl      String?
   bannerUrl    String?
+  // Public store page copy (shopper /stores/:id). Partner-editable.
+  description  String?
   status       String          @default("PENDING") // PENDING | APPROVED | REJECTED
   approvedAt   DateTime?
   // Yobou's commission on this store's sales, in basis points (1000 = 10%).
@@ -81,6 +83,7 @@ model Vendor {
   changes      ProductChange[]
   ledger       VendorLedger[]
   payouts      Payout[]
+  campaigns    Campaign[]
   createdAt    DateTime        @default(now())
 }
 
@@ -259,6 +262,11 @@ model Subcategory {
   icon        String?
   sortOrder   Int      @default(0)
   isActive    Boolean  @default(true)
+  // Department page content (falls back to the category's when empty).
+  heroImageUrl String?
+  intro        String?
+  guide        String   @default("[]") // JSON [{title, body}]
+  faqs         String   @default("[]") // JSON [{q, a}]
   createdAt   DateTime @default(now())
 
   @@unique([categoryId, name])
@@ -723,4 +731,63 @@ model Review {
   @@unique([userId, productId]) // one review per shopper per product
   @@index([productId, createdAt]) // list-by-recent path
   @@index([productId, rating]) // histogram + rating-filter path
+}
+
+// Search by photo: a compact visual fingerprint of each product image,
+// keyed by the image URL (a new photo gets a new URL, so entries never go
+// stale). Computed lazily and at boot by lib/visualSearch.js.
+model ImageSignature {
+  url       String   @id
+  sig       String
+  createdAt DateTime @default(now())
+}
+
+// Promotional banner on a category (or one department) page. Created by
+// an admin (APPROVED immediately) or requested by a partner for their own
+// store/product (PENDING until an admin approves). Shown while
+// status=APPROVED, isActive and inside [startsAt, endsAt].
+model Campaign {
+  id          String    @id @default(cuid())
+  title       String
+  subtitle    String?
+  ctaLabel    String    @default("Shop now")
+  linkUrl     String    // internal app path, e.g. /stores/abc or /product/xyz
+  imageUrl    String?
+  category    String
+  subcategory String?
+  vendorId    String?   // set when a partner requested it
+  vendor      Vendor?   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  status      String    @default("APPROVED") // PENDING | APPROVED | REJECTED
+  isActive    Boolean   @default(true)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  sortOrder   Int       @default(0)
+  reviewNote  String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([category, status])
+}
+
+// Admin-curated product collection shown as a rail on a category (or
+// department) page and on its own /collections/:slug page. MANUAL lists
+// productIds in order; RULE selects live products in the category by
+// `rule` ({ maxPriceCents, minDiscountPct, inStockOnly, sort }).
+model Collection {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String   @default("")
+  category    String
+  subcategory String?
+  mode        String   @default("MANUAL") // MANUAL | RULE
+  productIds  String   @default("[]")     // JSON string[] (MANUAL)
+  rule        String   @default("{}")     // JSON (RULE)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
 }

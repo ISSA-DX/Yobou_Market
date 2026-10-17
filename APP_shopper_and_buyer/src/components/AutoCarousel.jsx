@@ -172,7 +172,7 @@ export default function AutoCarousel({
         aria-roledescription="carousel"
       >
         {itemArr.map((child, i) => (
-          <div key={i} className="snap-start shrink-0 w-[170px] sm:w-[200px]" aria-roledescription="slide" aria-label={`Slide ${i + 1} of ${itemCount}`}>
+          <div key={i} className="snap-start shrink-0 w-[170px] sm:w-[200px] lg:w-[214px]" aria-roledescription="slide" aria-label={`Slide ${i + 1} of ${itemCount}`}>
             {child}
           </div>
         ))}

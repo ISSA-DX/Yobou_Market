@@ -219,6 +219,18 @@ app.use('/api', eventsRoutes);
 // any product route, so it picks up `/products/:id/reviews` and
 // `/reviews/:id` cleanly.
 app.use('/api', reviewsRoutes);
+// Category merchandising: store + collection pages, campaign banners,
+// curated collections (routes/merch.js). Mounted after the other
+// /api/admin and /api/vendor routers.
+const merchRoutes = require('./routes/merch');
+app.use('/api', merchRoutes.publicRouter);
+app.use('/api/admin', merchRoutes.adminRouter);
+app.use('/api/vendor', merchRoutes.vendorRouter);
+// Search by photo (routes/visualSearch.js).
+const visualSearchRoutes = require('./routes/visualSearch');
+app.use('/api', visualSearchRoutes.publicRouter);
+app.use('/api/admin', visualSearchRoutes.adminRouter);
+app.use('/api/vendor', visualSearchRoutes.vendorRouter);
 
 // Serve the built React apps in production (single-deploy mode).
 // The shopper portal has two build targets: APP_shopper_and_buyer (the Capacitor /
@@ -285,6 +297,8 @@ if (require.main === module) {
   app.listen(port, () => {
     console.log(`[yobou] api listening on http://localhost:${port}`);
   });
+  // Pre-compute photo-search fingerprints once the server has settled.
+  setTimeout(() => require('./lib/visualSearch').warmInBackground(), 10_000).unref();
 }
 
 module.exports = app;

@@ -21,9 +21,12 @@ import Logout from './pages/auth/Logout.jsx';
 const Onboarding = lazy(() => import('./pages/onboarding/Onboarding.jsx'));
 const Home = lazy(() => import('./pages/home/Home.jsx'));
 const Search = lazy(() => import('./pages/home/Search.jsx'));
+const PhotoSearch = lazy(() => import('./pages/home/PhotoSearch.jsx'));
 const Help = lazy(() => import('./pages/home/Help.jsx'));
 const Categories = lazy(() => import('./pages/categories/Categories.jsx'));
 const CategoryDetail = lazy(() => import('./pages/categories/CategoryDetail.jsx'));
+const StorePage = lazy(() => import('./pages/stores/StorePage.jsx'));
+const CollectionPage = lazy(() => import('./pages/collections/CollectionPage.jsx'));
 const ProductDetails = lazy(() => import('./pages/product/ProductDetails.jsx'));
 const Cart = lazy(() => import('./pages/cart/Cart.jsx'));
 const CheckoutShipping = lazy(() => import('./pages/checkout/CheckoutShipping.jsx'));
@@ -102,9 +105,13 @@ export default function App() {
           <Route path="/forgot-password" element={<TransactionLayout><ForgotPassword /></TransactionLayout>} />
           <Route path="/reset-password" element={<TransactionLayout><ResetPassword /></TransactionLayout>} />
 
-          {/* Public / customer pages */}
-          <Route path="/search" element={<Search />} />
-          <Route path="/help" element={<Help />} />
+          {/* Public / customer pages — full-screen on phones (no tab bar),
+              with the site header on laptops. */}
+          <Route element={<MobileShell tabs={false} />}>
+            <Route path="/search" element={<Search />} />
+            <Route path="/search/photo" element={<PhotoSearch />} />
+            <Route path="/help" element={<Help />} />
+          </Route>
 
           {/* Browsing + cart — PUBLIC. Guests (anonymous shoppers) hit
               /api/auth/guest on first cart-add so they get a server-side
@@ -115,6 +122,8 @@ export default function App() {
             <Route path="/categories" element={<Categories />} />
             <Route path="/categories/:slug" element={<CategoryDetail />} />
             <Route path="/categories/:slug/:sub" element={<CategoryDetail />} />
+            <Route path="/stores/:id" element={<StorePage />} />
+            <Route path="/collections/:slug" element={<CollectionPage />} />
             {/* ErrorBoundary on PDP prevents a child-render crash (e.g.
                 a malformed live-sync event or a related-product card
                 missing a field) from blanking the whole page. Without

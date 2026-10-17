@@ -4,6 +4,8 @@ import { api } from '../../api';
 import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import ProductCard, { ProductCardSkeleton } from '../../components/ProductCard';
+import CameraSearchButton from '../../components/CameraSearchButton';
+import FilterSections, { SearchSidebar } from './FilterSections';
 import { useCatalogStream } from '../../lib/useSse';
 import { toast } from '../../lib/toast';
 
@@ -217,10 +219,27 @@ export default function Search() {
 
   const activeSortLabel = SORTS.find((s) => s.key === state.sort)?.label || 'Sort';
 
+  // Laptop filter sidebar: ticking a box applies at once; the price
+  // range applies on its Go button so typing doesn't refetch per key.
+  function sidebarSet(next) {
+    setDraft(next);
+    if (next.minPrice === draft.minPrice && next.maxPrice === draft.maxPrice) setParams({ ...next, page: 1 });
+  }
+  function applySidebarPrice() { setParams({ ...draft, page: 1 }); }
+  function clearSidebar() {
+    setParams({ ...state, category: [], vendor: [], minPrice: '', maxPrice: '', inStock: false, page: 1 });
+  }
+  const heading = state.showOnNewArrivals ? 'New arrivals'
+    : state.showOnRecentDeals ? 'Recent deals'
+      : state.q ? `Results for "${state.q}"` : 'All products';
+
   return (
-    <div className="px-4 pt-4 pb-6 space-y-4">
+    <div className="px-4 pt-4 pb-6 lg:pt-8 lg:grid lg:grid-cols-[264px_minmax(0,1fr)] lg:gap-8 lg:items-start">
+      <SearchSidebar facets={data.facets} draft={draft} activeFilterCount={activeFilterCount} onChange={sidebarSet} onApplyPrice={applySidebarPrice} onClear={clearSidebar} />
+    <div className="space-y-4 min-w-0">
+      <h1 className="hidden lg:block text-headline-lg font-bold text-on-surface">{heading}</h1>
       {/* Search input — primary surface */}
-      <header className="flex items-center gap-2">
+      <header className="flex items-center gap-2 lg:hidden">
         <Link to="/home" className="p-2 -ml-2" aria-label="Back">
           <Icon name="arrow_back" className="text-[24px]" />
         </Link>
@@ -234,13 +253,14 @@ export default function Search() {
           <div className="relative">
             <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]" />
             <input
-              className="input pl-10 w-full"
+              className="input pl-10 pr-12 w-full"
               placeholder="Search products…"
               value={inputQ}
               onChange={(e) => setInputQ(e.target.value)}
               aria-label="Search products"
               autoFocus
             />
+            <CameraSearchButton className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full text-primary hover:bg-primary/10 flex items-center justify-center" />
           </div>
         </form>
       </header>
@@ -249,7 +269,7 @@ export default function Search() {
       <div className="flex items-center gap-2">
         <button
           onClick={openSheet}
-          className="h-10 px-3 rounded-lg border border-outline/40 bg-surface-low flex items-center gap-1.5 text-sm font-medium relative"
+          className="lg:hidden h-10 px-3 rounded-lg border border-outline/40 bg-surface-low flex items-center gap-1.5 text-sm font-medium relative"
           aria-label={`Open filters${activeFilterCount > 0 ? ` (${activeFilterCount} active)` : ''}`}
         >
           <Icon name="tune" className="text-[18px]" />
@@ -381,7 +401,7 @@ export default function Search() {
 
       {/* Skeleton while the request is in flight */}
       {loading && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {Array.from({ length: PAGE_SIZE }).map((_, i) => <ProductCardSkeleton key={i} />)}
         </div>
       )}
@@ -420,7 +440,7 @@ export default function Search() {
       {/* Results grid + page paginator */}
       {!loading && !error && data.products.length > 0 && (
         <>
-          <div className="reveal-stagger stagger-zoom grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+          <div className="reveal-stagger stagger-zoom grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
             {data.products.map((p) => <ProductCard key={p.id} product={p} onAdd={quickAdd} />)}
           </div>
 
@@ -451,6 +471,7 @@ export default function Search() {
       {/* Filter sheet — lazy-mounted so the existing page chrome stays
           cheap to render when the sheet isn't open. Renders nothing
           before facets are loaded (first-render window). */}
+    </div>
       {showFilterSheet && data.facets && (
         <FilterSheet
           facets={data.facets}
@@ -470,23 +491,6 @@ export default function Search() {
 // dismiss: X button, Cancel button, browser back button (handled in
 // the parent via pushState + popstate).
 function FilterSheet({ facets, draft, setDraft, onApply, onClear, onClose }) {
-  function toggleCategory(c) {
-    setDraft({
-      ...draft,
-      category: draft.category.includes(c)
-        ? draft.category.filter((x) => x !== c)
-        : [...draft.category, c],
-    });
-  }
-  function toggleVendor(v) {
-    setDraft({
-      ...draft,
-      vendor: draft.vendor.includes(v)
-        ? draft.vendor.filter((x) => x !== v)
-        : [...draft.vendor, v],
-    });
-  }
-
   return (
     <div className="anim-sheet fixed inset-0 z-50 flex flex-col bg-surface">
       <header className="flex items-center justify-between px-4 h-14 border-b border-outline-variant/30 flex-none">
@@ -497,112 +501,8 @@ function FilterSheet({ facets, draft, setDraft, onApply, onClear, onClose }) {
         <button type="button" onClick={onClear} className="text-sm text-primary font-semibold px-2">Clear</button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
-        {/* Categories */}
-        {facets.categories?.length > 0 && (
-          <section className="reveal reveal-fade-up" style={{ "--reveal-delay": "120ms" }}>
-            <h3 className="text-title-md font-bold mb-2">Category</h3>
-            <ul className="space-y-1.5">
-              {facets.categories.map((c) => (
-                <li key={c.name}>
-                  <label className="flex items-center gap-3 py-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={draft.category.includes(c.name)}
-                      onChange={() => toggleCategory(c.name)}
-                      className="w-5 h-5 accent-primary"
-                    />
-                    <span className="flex-1">{c.name}</span>
-                    <span className="text-label-md text-on-surface-variant tabular-nums">{c.count}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {/* Brands (vendors) */}
-        {facets.vendors?.length > 0 && (
-          <section className="reveal reveal-fade-up" style={{ "--reveal-delay": "180ms" }}>
-            <h3 className="text-title-md font-bold mb-2">Brand</h3>
-            <ul className="space-y-1.5">
-              {facets.vendors.map((v) => (
-                <li key={v.id}>
-                  <label className="flex items-center gap-3 py-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={draft.vendor.includes(v.id)}
-                      onChange={() => toggleVendor(v.id)}
-                      className="w-5 h-5 accent-primary"
-                    />
-                    <span className="flex-1">{v.name}</span>
-                    <span className="text-label-md text-on-surface-variant tabular-nums">{v.count}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {/* Price range. Inputs are in cents to match the API's
-            priceCents field; the helper text below shows the price
-            envelope across the shop in formatted dollars so users
-            know what range the shop actually carries before they
-            enter numbers. */}
-        <section className="reveal reveal-fade-up" style={{ "--reveal-delay": "240ms" }}>
-          <h3 className="text-title-md font-bold mb-2">Price</h3>
-          <div className="flex items-center gap-2">
-            <div className="flex-1 relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">$</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                min="0"
-                placeholder="Min"
-                value={draft.minPrice}
-                onChange={(e) => setDraft({ ...draft, minPrice: e.target.value })}
-                className="input pl-7 w-full"
-                aria-label="Minimum price (cents)"
-              />
-            </div>
-            <span className="text-on-surface-variant">–</span>
-            <div className="flex-1 relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">$</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                min="0"
-                placeholder="Max"
-                value={draft.maxPrice}
-                onChange={(e) => setDraft({ ...draft, maxPrice: e.target.value })}
-                className="input pl-7 w-full"
-                aria-label="Maximum price (cents)"
-              />
-            </div>
-          </div>
-          {facets.priceRange && facets.priceRange.min != null && facets.priceRange.max != null && (
-            <p className="text-label-md text-on-surface-variant mt-2">
-              In this shop: ${(facets.priceRange.min / 100).toFixed(2)}–${(facets.priceRange.max / 100).toFixed(2)}
-            </p>
-          )}
-        </section>
-
-        {/* In-stock toggle — single switch on the right; label on the
-            left toggles the same state for big-tap accessibility. */}
-        <section className="reveal reveal-fade-up" style={{ "--reveal-delay": "300ms" }}>
-          <label className="flex items-center justify-between py-1.5 cursor-pointer gap-3">
-            <span className="text-title-md font-bold flex-1">In stock only</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={draft.inStock}
-              onClick={() => setDraft({ ...draft, inStock: !draft.inStock })}
-              className={`relative w-11 h-6 rounded-full transition-colors flex-none ${draft.inStock ? 'bg-primary' : 'bg-outline-variant'}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${draft.inStock ? 'translate-x-5' : ''}`} />
-            </button>
-          </label>
-        </section>
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <FilterSections facets={facets} draft={draft} setDraft={setDraft} />
       </div>
 
       <footer className="px-4 py-3 border-t border-outline-variant/30 flex items-center gap-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex-none bg-surface">

@@ -17,7 +17,7 @@ export default function Help() {
       </header>
 
       <div className="reveal reveal-zoom anim-shine relative overflow-hidden card p-5 bg-gradient-to-br from-primary to-primary-container text-white">
-        <h2 className="font-bold text-headline-md">Need help?</h2>
+        <h2 className="font-bold text-headline-md text-white">Need help?</h2>
         <p className="mt-1 opacity-90">Our support team is available 24/7 to assist you.</p>
         <div className="mt-4 flex gap-3">
           <a href="mailto:support@yobou.market" className="btn-secondary flex-1 py-2">Email support</a>

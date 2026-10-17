@@ -16,23 +16,25 @@ import Icon from './Icon';
 // missed the event for any reason.
 const countsRefreshBus = { current: null };
 function PendingBadges() {
-  const [counts, setCounts] = useState({ changes: 0, refunds: 0, payouts: 0 });
+  const [counts, setCounts] = useState({ changes: 0, refunds: 0, payouts: 0, campaigns: 0 });
   const loadRef = useRef(null);
 
   useEffect(() => {
     let alive = true;
     async function load() {
       try {
-        const [c, r, p] = await Promise.all([
+        const [c, r, p, b] = await Promise.all([
           api('/api/product-changes?status=PENDING'),
           api('/api/refunds?status=PENDING'),
           api('/api/admin/payouts?status=REQUESTED'),
+          api('/api/admin/campaigns?status=PENDING').catch(() => ({ pending: 0 })),
         ]);
         if (!alive) return;
         setCounts({
           changes: c.changes?.length || 0,
           refunds: r.refunds?.length || 0,
           payouts: p.payouts?.length || 0,
+          campaigns: b.pending || 0,
         });
       } catch {
         // Non-admin (e.g. before login) won't have access — ignore.
@@ -83,6 +85,7 @@ const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: 'space_dashboard' },
   { to: '/products', label: 'Products', icon: 'inventory_2' },
   { to: '/categories', label: 'Categories', icon: 'category' },
+  { to: '/campaigns', label: 'Campaigns', icon: 'view_carousel', badgeKey: 'campaigns' },
   { to: '/changes', label: 'Changes', icon: 'pending_actions', badgeKey: 'changes' },
   { to: '/refunds', label: 'Refunds', icon: 'assignment_return', badgeKey: 'refunds' },
   { to: '/vendors', label: 'Vendors', icon: 'storefront' },

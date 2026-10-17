@@ -5,11 +5,14 @@ import { useStore } from '../../store';
 import Icon from '../../components/Icon';
 import ProductCard from '../../components/ProductCard';
 import AutoCarousel from '../../components/AutoCarousel';
+import CameraSearchButton from '../../components/CameraSearchButton';
+import Rail, { RAIL_ITEM } from '../../components/Rail';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useNotifications } from '../../lib/useNotifications';
 import { useProductLiveSync } from '../../lib/useProductLiveSync';
 import { useRecentlyViewed } from '../../lib/useRecentlyViewed';
 import { toast } from '../../lib/toast';
+import { formatPrice } from '../../lib/format';
 import { themeFor, categoryPath } from '../../lib/categoryTheme';
 
 // Shown until /api/products/categories answers, so the rail never
@@ -34,6 +37,7 @@ export default function Home() {
   const user = useStore((s) => s.user);
   const { unreadCount } = useNotifications(10);
   const cartCount = useStore((s) => s.cartCount);
+  const currency = user?.currency || 'USD';
   const [q, setQ] = useState('');
   const { data, error, loading, refetch } = useApi('/api/products');
   // Live sync — Home page refetches when any product is created/updated/deleted.
@@ -118,8 +122,9 @@ export default function Home() {
   return (
     <div className="pb-6">
       {/* App header — brand, notifications, cart and a search field that
-          stays pinned while the shopper scrolls the feed. */}
-      <header className="sticky top-0 z-20 glass border-b border-outline-variant/40 px-4 pt-3 pb-3">
+          stays pinned while the shopper scrolls the feed. Laptops use the
+          site header (DesktopHeader) instead. */}
+      <header className="lg:hidden sticky top-0 z-20 glass border-b border-outline-variant/40 px-4 pt-3 pb-3">
         <div className="flex items-center justify-between">
           <Link to="/home" className="flex items-center gap-2" aria-label="Yobou home">
             <div className="w-9 h-9 rounded-md bg-gradient-to-br from-primary-container to-primary text-white flex items-center justify-center font-black text-lg shadow-pop">Y</div>
@@ -140,40 +145,41 @@ export default function Home() {
         >
           <Icon name="search" className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]" />
           <input
-            className="input rounded-full pl-11 pr-12 py-2.5 bg-surface-low border-transparent shadow-none focus:bg-white"
+            className="input rounded-full pl-11 pr-[5.5rem] py-2.5 bg-surface-low border-transparent shadow-none focus:bg-white"
             placeholder="Search products, brands and categories"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             enterKeyHint="search"
           />
+          <CameraSearchButton className="absolute right-11 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full text-primary hover:bg-primary/10 flex items-center justify-center" />
           <button type="submit" className="absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center" aria-label="Search">
             <Icon name="arrow_forward" className="text-[18px]" />
           </button>
         </form>
       </header>
 
-      <div className="px-4 pt-4 space-y-7">
+      <div className="px-4 pt-4 lg:pt-6 space-y-7 lg:space-y-10">
       {error && !data ? (
         <RetryError message="Couldn't load products." onRetry={refetch} />
       ) : null}
 
       {/* Category shortcuts — the fastest path into the catalogue. */}
-      <nav aria-label="Categories" className="-mx-4">
-        <div className="reveal-stagger stagger-pop flex gap-3 overflow-x-auto no-scrollbar snap-x scroll-px-4 px-4" style={{ "--stagger-step": "45ms" }}>
+      <nav aria-label="Categories" className="-mx-4 lg:mx-0">
+        <div className="reveal-stagger stagger-pop flex gap-3 overflow-x-auto no-scrollbar snap-x scroll-px-4 px-4 lg:px-0 lg:overflow-visible lg:grid lg:grid-cols-[repeat(13,minmax(0,1fr))] lg:gap-2" style={{ "--stagger-step": "45ms" }}>
           {homeCats.slice(0, 12).map((c) => (
             <Link
               key={c.name}
               to={categoryPath(c)}
-              className="snap-start flex flex-col items-center gap-1.5 w-[68px] shrink-0 group"
+              className="snap-start flex flex-col items-center gap-1.5 w-[68px] lg:w-auto shrink-0 group"
             >
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ring-1 ring-black/5 transition-transform group-active:scale-95 ${themeFor(c).tile}`}>
-                <Icon name={themeFor(c).icon} className="text-[26px]" />
+              <div className={`w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center ring-1 ring-black/5 transition-transform group-active:scale-95 lg:group-hover:-translate-y-0.5 lg:group-hover:shadow-card ${themeFor(c).tile}`}>
+                <Icon name={themeFor(c).icon} className="text-[26px] lg:text-[30px]" />
               </div>
-              <span className="block text-label-md font-medium text-center leading-tight truncate w-full">{c.name}</span>
+              <span className="block text-label-md font-medium text-center leading-tight truncate w-full lg:group-hover:text-primary">{c.name}</span>
             </Link>
           ))}
-          <Link to="/categories" className="snap-start flex flex-col items-center gap-1.5 w-[68px] shrink-0">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-white ring-1 ring-outline-variant text-primary">
+          <Link to="/categories" className="snap-start flex flex-col items-center gap-1.5 w-[68px] lg:w-auto shrink-0">
+            <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-2xl flex items-center justify-center bg-white ring-1 ring-outline-variant text-primary">
               <Icon name="apps" className="text-[26px]" />
             </div>
             <span className="text-label-md font-semibold text-primary">All</span>
@@ -183,31 +189,32 @@ export default function Home() {
 
       {/* Hero banner — data-driven when a real deal exists, otherwise a
           neutral on-brand welcome card. Renders nothing misleading. */}
+      <div className="space-y-7 lg:space-y-0 lg:grid lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:gap-5">
       {topDeal ? (
         <Link
           to={`/product/${topDeal.id}`}
-          className="reveal reveal-zoom anim-shine relative block overflow-hidden rounded-2xl p-5 text-white bg-gradient-to-br from-[#0a2a8f] via-primary to-primary-container shadow-pop"
+          className="reveal reveal-zoom anim-shine relative block overflow-hidden rounded-2xl p-5 lg:p-10 lg:flex lg:items-center lg:min-h-[320px] text-white bg-gradient-to-br from-[#0a2a8f] via-primary to-primary-container shadow-pop"
         >
           <HeroDecor />
-          <div className="relative z-10 flex items-center gap-4">
+          <div className="relative z-10 flex items-center gap-4 lg:gap-10 lg:w-full">
             <div className="flex-1 min-w-0">
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/15 text-label-sm font-bold uppercase tracking-wide">
                 <Icon name="bolt" className="text-[14px]" fill /> Today's deal
               </span>
               {/* text-white: overrides the global h2 colour on the gradient. */}
-              <h2 className="mt-2 text-headline-md font-extrabold leading-snug line-clamp-2 text-white">{topDeal.name}</h2>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-headline-lg font-extrabold">${(topDeal.priceCents / 100).toFixed(2)}</span>
-                <span className="text-label-md line-through opacity-75">${(topDeal.compareAtPriceCents / 100).toFixed(2)}</span>
+              <h2 className="mt-2 lg:mt-4 text-headline-md lg:text-4xl font-extrabold leading-snug lg:leading-tight line-clamp-2 text-white">{topDeal.name}</h2>
+              <div className="mt-2 lg:mt-4 flex items-baseline gap-2">
+                <span className="text-headline-lg lg:text-4xl font-extrabold">{formatPrice(topDeal.priceCents, currency)}</span>
+                <span className="text-label-md line-through opacity-75">{formatPrice(topDeal.compareAtPriceCents, currency)}</span>
                 <span className="px-1.5 py-0.5 rounded bg-secondary text-on-secondary text-label-sm font-black">
                   -{Math.round(((topDeal.compareAtPriceCents - topDeal.priceCents) / topDeal.compareAtPriceCents) * 100)}%
                 </span>
               </div>
-              <span className="mt-4 inline-flex items-center gap-1 bg-white text-primary font-bold px-4 py-2 rounded-full text-sm shadow-card">
+              <span className="mt-4 lg:mt-6 inline-flex items-center gap-1 bg-white text-primary font-bold px-4 lg:px-6 py-2 lg:py-3 rounded-full text-sm lg:text-base shadow-card">
                 Shop the deal <Icon name="arrow_forward" className="text-[16px]" />
               </span>
             </div>
-            <div className="anim-float w-28 h-28 shrink-0 rounded-xl bg-white/95 p-1.5 shadow-float rotate-3">
+            <div className="anim-float w-28 h-28 lg:w-56 lg:h-56 shrink-0 rounded-xl lg:rounded-2xl bg-white/95 p-1.5 lg:p-2 shadow-float rotate-3">
               <img
                 src={(() => {
                   try {
@@ -224,9 +231,9 @@ export default function Home() {
           </div>
         </Link>
       ) : (
-        <div className="reveal reveal-zoom anim-shine relative overflow-hidden rounded-2xl p-5 text-white bg-gradient-to-br from-[#0a2a8f] via-primary to-primary-container shadow-pop">
+        <div className="reveal reveal-zoom anim-shine relative overflow-hidden rounded-2xl p-5 lg:p-10 lg:min-h-[320px] lg:flex lg:items-center text-white bg-gradient-to-br from-[#0a2a8f] via-primary to-primary-container shadow-pop">
           <HeroDecor />
-          <div className="relative z-10 max-w-[78%]">
+          <div className="relative z-10 max-w-[78%] lg:max-w-xl">
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/15 text-label-sm font-bold uppercase tracking-wide">
               <Icon name="storefront" className="text-[14px]" /> Welcome to Yobou
             </span>
@@ -242,8 +249,30 @@ export default function Home() {
         </div>
       )}
 
-      {/* Trust strip — the promises that matter in this market. */}
-      <div className="reveal-stagger stagger-up grid grid-cols-3 gap-2" style={{ "--stagger-step": "90ms" }}>
+      {/* Laptops: two shortcut tiles beside the hero. */}
+      <div className="hidden lg:grid grid-rows-2 gap-5">
+        <Link to="/search/photo" className="group relative overflow-hidden rounded-2xl p-6 bg-gradient-to-br from-secondary/30 to-secondary/5 ring-1 ring-secondary/30 flex flex-col justify-between hover:shadow-card transition-shadow">
+          <span className="w-12 h-12 rounded-2xl bg-white text-primary shadow-card flex items-center justify-center"><Icon name="photo_camera" className="text-[26px]" /></span>
+          <span>
+            <span className="block text-title-lg font-bold text-on-surface">Search with a photo</span>
+            <span className="block text-sm text-on-surface-variant">Seen it somewhere? Snap it and find it here.</span>
+          </span>
+          <Icon name="arrow_forward" className="absolute top-6 right-6 text-primary transition-transform group-hover:translate-x-1" />
+        </Link>
+        <Link to="/categories" className="group relative overflow-hidden rounded-2xl p-6 bg-gradient-to-br from-tertiary/20 to-tertiary/5 ring-1 ring-tertiary/25 flex flex-col justify-between hover:shadow-card transition-shadow">
+          <span className="w-12 h-12 rounded-2xl bg-white text-tertiary shadow-card flex items-center justify-center"><Icon name="grid_view" className="text-[26px]" /></span>
+          <span>
+            <span className="block text-title-lg font-bold text-on-surface">Browse every department</span>
+            <span className="block text-sm text-on-surface-variant">{homeCats.length} categories from approved local sellers.</span>
+          </span>
+          <Icon name="arrow_forward" className="absolute top-6 right-6 text-tertiary transition-transform group-hover:translate-x-1" />
+        </Link>
+      </div>
+      </div>
+
+      {/* Trust strip — the promises that matter in this market. Laptops
+          show them in the site header and footer. */}
+      <div className="lg:hidden reveal-stagger stagger-up grid grid-cols-3 gap-2" style={{ "--stagger-step": "90ms" }}>
         {[
           ['local_shipping', 'Free delivery', 'over $50'],
           ['payments', 'Pay on delivery', 'cash accepted'],
@@ -266,7 +295,7 @@ export default function Home() {
             <h2 className="section-title flex items-center gap-2">
               <Icon name="auto_awesome" className="text-secondary" /> Featured for you
             </h2>
-            <span className="text-label-md text-on-surface-variant flex items-center gap-1">
+            <span className="lg:hidden text-label-md text-on-surface-variant flex items-center gap-1">
               <Icon name="swipe" className="text-[14px]" /> Swipe
             </span>
           </div>
@@ -289,20 +318,20 @@ export default function Home() {
               {dealCount} item{dealCount === 1 ? '' : 's'} on sale
             </span>
           </div>
-          <div className="reveal-stagger stagger-left flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4">
-            {deals.slice(0, 8).map((p) => (
-              <div key={p.id} className="min-w-[170px] sm:min-w-[200px]">
+          <Rail label="deals" className="reveal-stagger stagger-left gap-3 -mx-4 px-4">
+            {deals.slice(0, 10).map((p) => (
+              <div key={p.id} className={RAIL_ITEM}>
                 <ProductCard product={p} onAdd={quickAdd} />
               </div>
             ))}
-          </div>
+          </Rail>
         </section>
       )}
 
       {/* Recent deals — curated by admins/sellers (Product.showOnRecentDeals),
           newest first. Warm band so it reads as a promotion. */}
       {recentDeals.length > 0 && (
-        <section className="reveal reveal-tilt -mx-4 px-4 py-4 bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 border-y border-rose-100">
+        <section className="reveal reveal-tilt -mx-4 px-4 py-4 lg:mx-0 lg:px-6 lg:py-6 lg:rounded-2xl lg:border-x bg-gradient-to-br from-rose-50 via-orange-50 to-amber-50 border-y border-rose-100">
           <div className="flex items-center justify-between mb-3">
             <h2 className="section-title flex items-center gap-2">
               <span className="w-8 h-8 rounded-full bg-sale text-white flex items-center justify-center">
@@ -314,13 +343,13 @@ export default function Home() {
               See all <Icon name="chevron_right" className="text-[18px]" />
             </Link>
           </div>
-          <div className="reveal-stagger stagger-pop flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4 pb-1">
+          <Rail label="recent deals" className="reveal-stagger stagger-pop gap-3 -mx-4 px-4 pb-1">
             {recentDeals.map((p) => (
-              <div key={p.id} className="min-w-[170px] sm:min-w-[200px]">
+              <div key={p.id} className={RAIL_ITEM}>
                 <ProductCard product={p} onAdd={quickAdd} />
               </div>
             ))}
-          </div>
+          </Rail>
         </section>
       )}
 
@@ -339,9 +368,9 @@ export default function Home() {
               See all <Icon name="chevron_right" className="text-[18px]" />
             </Link>
           </div>
-          <div className="reveal-stagger stagger-zoom grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {newArrivals.slice(0, 4).map((p) => (
-              <div key={p.id} className="relative">
+          <div className="reveal-stagger stagger-zoom grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 lg:gap-4">
+            {newArrivals.slice(0, 5).map((p, i) => (
+              <div key={p.id} className={`relative ${i === 4 ? 'hidden lg:block' : ''}`}>
                 <span className="absolute z-10 -top-1.5 left-2 px-2 py-0.5 rounded-full bg-primary text-white text-label-sm font-black tracking-wide shadow-pop">
                   NEW
                 </span>
@@ -366,13 +395,13 @@ export default function Home() {
               {flashDeals.length} pick{flashDeals.length === 1 ? '' : 's'}
             </span>
           </div>
-          <div className="reveal-stagger stagger-zoom flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4">
+          <Rail label="flash deals" className="reveal-stagger stagger-zoom gap-3 -mx-4 px-4">
             {flashDeals.map((p) => (
-              <div key={p.id} className="min-w-[170px] sm:min-w-[200px]">
+              <div key={p.id} className={RAIL_ITEM}>
                 <ProductCard product={p} onAdd={quickAdd} />
               </div>
             ))}
-          </div>
+          </Rail>
         </section>
       )}
 
@@ -403,13 +432,13 @@ export default function Home() {
                 Clear
               </button>
             </div>
-            <div className="flex gap-3 overflow-x-auto no-scrollbar -mx-4 px-4">
+            <Rail label="recently viewed" className="gap-3 -mx-4 px-4">
               {recent.map((p) => (
-                <div key={p.id} className="min-w-[170px] sm:min-w-[200px]">
+                <div key={p.id} className={RAIL_ITEM}>
                   <ProductCard product={p} onAdd={quickAdd} />
                 </div>
               ))}
-            </div>
+            </Rail>
           </section>
         );
       })()}
@@ -423,7 +452,7 @@ export default function Home() {
             <h2 className="section-title">Recommended for you</h2>
             <span className="text-label-md text-on-surface-variant">{all.length} items</span>
           </div>
-          <div className="reveal-stagger stagger-flip grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+          <div className="reveal-stagger stagger-flip grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4 lg:gap-5">
             {all.map((p) => (
               <ProductCard key={p.id} product={p} onAdd={quickAdd} />
             ))}

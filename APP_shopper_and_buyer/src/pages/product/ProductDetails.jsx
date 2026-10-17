@@ -339,10 +339,46 @@ export default function ProductDetails() {
     setErr(humanizeCartError(e.data?.error));
   }
 
+  // Add to cart / Buy now — in the sticky bottom bar on phones, inline in
+  // the details column on laptops.
+  const ctaDisabled = busy || outOfStock || (hasVariants && !exactMatch);
+  const ctaButtons = (
+    <>
+      <button type="button" onClick={add} disabled={ctaDisabled} className="btn-secondary py-3 disabled:opacity-60">
+        <Icon name="shopping_bag" />
+        {hasVariants && !exactMatch ? 'Unavailable combo' : outOfStock ? 'Sold out' : 'Add to Cart'}
+      </button>
+      <button type="button" onClick={buy} disabled={ctaDisabled} className="btn-primary py-3 disabled:opacity-60">
+        Buy Now
+      </button>
+    </>
+  );
+  const showImage = (i) => {
+    const el = carouselRef.current;
+    if (el) el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
+  };
+
   return (
-    <div className="pb-32">
+    <div className="pb-32 lg:pb-4 lg:pt-6 lg:px-4">
+      {/* Laptops: breadcrumb instead of the floating back button. */}
+      <nav aria-label="Breadcrumb" className="hidden lg:flex items-center gap-1 text-sm text-on-surface-variant mb-5 min-w-0">
+        <Link to="/home" className="hover:text-primary">Home</Link>
+        <Icon name="chevron_right" className="text-[18px]" />
+        <Link to={categoryPath({ name: p.category })} className="hover:text-primary">{p.category}</Link>
+        {p.subcategory && (
+          <>
+            <Icon name="chevron_right" className="text-[18px]" />
+            <Link to={categoryPath({ name: p.category }, { name: p.subcategory })} className="hover:text-primary">{p.subcategory}</Link>
+          </>
+        )}
+        <Icon name="chevron_right" className="text-[18px]" />
+        <span className="text-on-surface truncate">{p.name}</span>
+      </nav>
+
+      <div className="lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-10 xl:gap-14 lg:items-start">
       {/* Image carousel */}
-      <div className="relative">
+      <div className="lg:sticky lg:top-[148px]">
+      <div className="relative lg:rounded-3xl lg:overflow-hidden lg:ring-1 lg:ring-outline-variant/40">
         <div ref={carouselRef} className="reveal reveal-blur aspect-square bg-surface-low overflow-x-auto no-scrollbar snap-x snap-mandatory flex">
           {images.map((src, i) => (
             <img
@@ -361,7 +397,7 @@ export default function ProductDetails() {
               CTA was already fixed in the v0.3.9 patch; these close
               the same `type="submit"` WebView quirk for the rest of
               the page so no PDP button can reload the WebView. */}
-          <button type="button" onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center">
+          <button type="button" onClick={() => navigate(-1)} className="w-10 h-10 rounded-full bg-white/90 backdrop-blur flex items-center justify-center lg:invisible" aria-label="Back">
             <Icon name="arrow_back" />
           </button>
           <div className="flex gap-2">
@@ -383,9 +419,37 @@ export default function ProductDetails() {
             <div key={i} className={`h-1.5 rounded-full transition-all ${i === activeImage ? 'w-4 bg-white' : 'w-1.5 bg-white/60'}`} />
           ))}
         </div>
+        {images.length > 1 && (
+          <>
+            <button type="button" onClick={() => showImage(Math.max(0, activeImage - 1))} disabled={activeImage === 0} aria-label="Previous photo" className="hidden lg:flex absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/90 shadow-card items-center justify-center disabled:opacity-0 transition-opacity">
+              <Icon name="chevron_left" className="text-[26px]" />
+            </button>
+            <button type="button" onClick={() => showImage(Math.min(images.length - 1, activeImage + 1))} disabled={activeImage === images.length - 1} aria-label="Next photo" className="hidden lg:flex absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/90 shadow-card items-center justify-center disabled:opacity-0 transition-opacity">
+              <Icon name="chevron_right" className="text-[26px]" />
+            </button>
+          </>
+        )}
+      </div>
+      {/* Laptops: thumbnail strip. */}
+      {images.length > 1 && (
+        <div className="hidden lg:flex gap-3 mt-3 overflow-x-auto no-scrollbar">
+          {images.map((src, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => showImage(i)}
+              aria-label={`Photo ${i + 1}`}
+              aria-current={i === activeImage}
+              className={`shrink-0 w-20 h-20 rounded-xl overflow-hidden bg-surface-low ring-2 transition ${i === activeImage ? 'ring-primary' : 'ring-transparent hover:ring-outline-variant'}`}
+            >
+              <img src={src} alt="" loading="lazy" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = '/seed-images/placeholder.svg'; }} />
+            </button>
+          ))}
+        </div>
+      )}
       </div>
 
-      <div className="px-4 pt-5 space-y-4">
+      <div className="px-4 pt-5 lg:px-0 lg:pt-0 space-y-4 lg:space-y-5">
         <div className="reveal reveal-fade-up">
           <div className="eyebrow flex flex-wrap items-center gap-x-1">
             {p.vendor?.businessName && <span>{p.vendor.businessName} ·</span>}
@@ -398,7 +462,7 @@ export default function ProductDetails() {
             )}
           </div>
           {/* Product names read in ink (page titles elsewhere keep the brand blue). */}
-          <h1 className="mt-1 text-headline-lg font-bold text-on-surface leading-tight">{p.name}</h1>
+          <h1 className="mt-1 text-headline-lg lg:text-[2rem] font-bold text-on-surface leading-tight">{p.name}</h1>
           <div className="mt-2 flex items-center gap-3">
             {typeof p.rating === 'number' && p.rating > 0 ? (
               <>
@@ -604,6 +668,8 @@ export default function ProductDetails() {
           </div>
         </div>
 
+        <div className="hidden lg:grid grid-cols-2 gap-3">{ctaButtons}</div>
+
         <div className="reveal reveal-flip"><ProductDescriptionTabs product={p} onChanged={() => refetch()} /></div>
 
         {/* Delivery card — expanded with cash-on-delivery (a Yobou
@@ -755,7 +821,10 @@ export default function ProductDetails() {
             </div>
           </details>
         </div>
+      </div>
+      </div>
 
+      <div className="px-4 pt-4 lg:px-0 lg:pt-12">
         <div className="reveal reveal-fade-up"><RelatedProducts productId={p.id} onAdd={add} /></div>
       </div>
 
@@ -775,31 +844,11 @@ export default function ProductDetails() {
           handler which then calls add() / buy() and navigates to
           /cart or /checkout/shipping as expected. */}
       <div
-        className="fixed bottom-0 inset-x-0 px-4 pt-3 glass border-t border-outline-variant/50 shadow-nav z-40"
+        className="lg:hidden fixed bottom-0 inset-x-0 px-4 pt-3 glass border-t border-outline-variant/50 shadow-nav z-40"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
         <div className="max-w-screen-md mx-auto grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={add}
-            disabled={busy || outOfStock || (hasVariants && !exactMatch)}
-            className="btn-secondary py-3 disabled:opacity-60"
-          >
-            <Icon name="shopping_bag" />
-            {hasVariants && !exactMatch
-              ? 'Unavailable combo'
-              : outOfStock
-                ? 'Sold out'
-                : 'Add to Cart'}
-          </button>
-          <button
-            type="button"
-            onClick={buy}
-            disabled={busy || outOfStock || (hasVariants && !exactMatch)}
-            className="btn-primary py-3 disabled:opacity-60"
-          >
-            Buy Now
-          </button>
+          {ctaButtons}
         </div>
       </div>
     </div>

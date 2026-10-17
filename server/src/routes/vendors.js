@@ -109,6 +109,7 @@ router.patch('/me', requireAuth, requireApprovedVendor, async (req, res, next) =
         ...(data.categories !== undefined && { categories: JSON.stringify(data.categories) }),
         ...(data.logoUrl !== undefined && { logoUrl: data.logoUrl || null }),
         ...(data.bannerUrl !== undefined && { bannerUrl: data.bannerUrl || null }),
+        ...(data.description !== undefined && { description: data.description?.trim() || null }),
       },
     });
 

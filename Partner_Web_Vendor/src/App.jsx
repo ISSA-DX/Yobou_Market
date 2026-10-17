@@ -25,6 +25,7 @@ const OrderDetail = lazy(() => import('./pages/orders/OrderDetail'));
 const Changes = lazy(() => import('./pages/changes/Changes'));
 const Analytics = lazy(() => import('./pages/analytics/Analytics'));
 const Profile = lazy(() => import('./pages/profile/Profile'));
+const Promotions = lazy(() => import('./pages/promotions/Promotions.jsx'));
 const Notifications = lazy(() => import('./pages/notifications/Notifications'));
 const Courier = lazy(() => import('./pages/courier/Courier'));
 const Payouts = lazy(() => import('./pages/payouts/Payouts'));
@@ -111,6 +112,7 @@ export default function App() {
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/payouts" element={<Payouts />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/promotions" element={<Promotions />} />
             <Route path="/notifications" element={<Notifications />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
