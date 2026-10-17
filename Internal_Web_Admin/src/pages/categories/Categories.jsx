@@ -17,6 +17,9 @@ import Modal from '../../components/Modal';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { useProductLiveSync } from '../../lib/useProductLiveSync';
 import { shopperCategoryUrl } from '../../lib/config';
+import { Link } from 'react-router-dom';
+import ImageField from '../../components/ImageField';
+import CollectionsSection from './CollectionsSection';
 
 const emptyContent = (c) => ({
   icon: c?.icon || '',
@@ -215,6 +218,17 @@ function CategoryEditor({ category, onChanged }) {
 
       <SubcategoriesSection category={category} onChanged={onChanged} />
 
+      <CollectionsSection category={category} />
+
+      <Link to={`/campaigns`} className="card p-4 flex items-center gap-3 hover:ring-1 hover:ring-primary/30">
+        <Icon name="view_carousel" className="text-[22px] text-primary" />
+        <div className="flex-1">
+          <div className="text-title-md font-semibold">Campaign banners</div>
+          <div className="text-label-sm text-on-surface-variant">Create banners for {category.name} or one of its departments, and review partner requests, in Campaigns.</div>
+        </div>
+        <Icon name="chevron_right" className="text-[20px] text-on-surface-variant" />
+      </Link>
+
       {/* Buying guide */}
       <section className="card p-5 space-y-3" aria-labelledby="cat-guide-h">
         <SectionTitle id="cat-guide-h" icon="tips_and_updates" title="Buying guide" hint="Up to 8 short tips. Shown as cards on the category page." />
@@ -361,12 +375,25 @@ function SubcategoriesSection({ category, onChanged }) {
 
 function SubcategoryModal({ category, sub, onClose, onSaved }) {
   const isNew = sub && !sub.id;
-  const [form, setForm] = useState({ name: '', description: '', icon: '' });
+  const blank = { name: '', description: '', icon: '', heroImageUrl: '', intro: '', guide: [], faqs: [] };
+  const [form, setForm] = useState(blank);
+  const [tab, setTab] = useState('basics');
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (sub) setForm({ name: sub.name || '', description: sub.description || '', icon: sub.icon || '' });
+    if (sub) {
+      setForm({
+        name: sub.name || '',
+        description: sub.description || '',
+        icon: sub.icon || '',
+        heroImageUrl: sub.heroImageUrl || '',
+        intro: sub.intro || '',
+        guide: (sub.guide || []).map((g) => ({ ...g })),
+        faqs: (sub.faqs || []).map((f) => ({ ...f })),
+      });
+      setTab('basics');
+    }
     setErr('');
   }, [sub]);
 
@@ -375,11 +402,20 @@ function SubcategoryModal({ category, sub, onClose, onSaved }) {
     if (!form.name.trim()) { setErr('Name is required.'); return; }
     setSaving(true); setErr('');
     const body = { name: form.name.trim(), description: form.description.trim(), icon: form.icon.trim() || null };
+    const content = {
+      heroImageUrl: form.heroImageUrl || null,
+      intro: form.intro.trim() || null,
+      guide: form.guide.filter((g) => g.title.trim() && g.body.trim()),
+      faqs: form.faqs.filter((f) => f.q.trim() && f.a.trim()),
+    };
     try {
       if (isNew) {
-        await api(`/api/categories/${category.id}/subcategories`, { method: 'POST', body });
+        const { category: updated } = await api(`/api/categories/${category.id}/subcategories`, { method: 'POST', body });
+        const created = updated.subcategories.find((x) => x.name === body.name);
+        const hasContent = content.heroImageUrl || content.intro || content.guide.length || content.faqs.length;
+        if (created && hasContent) await api(`/api/categories/${category.id}/subcategories/${created.id}`, { method: 'PATCH', body: content });
       } else {
-        await api(`/api/categories/${category.id}/subcategories/${sub.id}`, { method: 'PATCH', body });
+        await api(`/api/categories/${category.id}/subcategories/${sub.id}`, { method: 'PATCH', body: { ...body, ...content } });
       }
       await onSaved();
     } catch (e2) {
@@ -390,6 +426,7 @@ function SubcategoryModal({ category, sub, onClose, onSaved }) {
   return (
     <Modal
       open={Boolean(sub)}
+      size="lg"
       onClose={onClose}
       title={isNew ? `New subcategory in ${category.name}` : `Edit ${sub?.name || ''}`}
       footer={(
@@ -399,7 +436,42 @@ function SubcategoryModal({ category, sub, onClose, onSaved }) {
         </>
       )}
     >
-      <form onSubmit={submit} className="space-y-3">
+      <div role="tablist" className="flex gap-1 border-b border-outline-variant/40 mb-3 -mt-1">
+        {[['basics', 'Basics'], ['page', 'Department page'], ['guide', 'Buying tips'], ['faqs', 'FAQs']].map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === k ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === 'page' && (
+        <div className="space-y-3">
+          <div>
+            <span className="text-label-md text-on-surface-variant">Hero image</span>
+            <div className="mt-1">
+              <ImageField value={form.heroImageUrl} onChange={(v) => setForm({ ...form, heroImageUrl: v })} hint="Shown behind the department title. Leave empty to use the category colours." />
+            </div>
+          </div>
+          <Field label="Introduction" hint={`${form.intro.length}/1200 · Shown in “About”. Falls back to the category introduction when empty.`}>
+            <textarea className="input w-full min-h-[110px]" value={form.intro} maxLength={1200} onChange={(e) => setForm({ ...form, intro: e.target.value })} />
+          </Field>
+        </div>
+      )}
+      {tab === 'guide' && (
+        <div className="space-y-2">
+          <p className="text-label-sm text-on-surface-variant">Specific to this department. Empty = the category’s buying guide is shown.</p>
+          <RowsEditor rows={form.guide} onChange={(v) => setForm({ ...form, guide: v })} max={8} addLabel="Add tip" blank={{ title: '', body: '' }}
+            fields={[{ key: 'title', label: 'Tip title', max: 80 }, { key: 'body', label: 'Advice', max: 500, multiline: true }]} />
+        </div>
+      )}
+      {tab === 'faqs' && (
+        <div className="space-y-2">
+          <p className="text-label-sm text-on-surface-variant">Specific to this department. Empty = the category’s FAQs are shown.</p>
+          <RowsEditor rows={form.faqs} onChange={(v) => setForm({ ...form, faqs: v })} max={12} addLabel="Add question" blank={{ q: '', a: '' }}
+            fields={[{ key: 'q', label: 'Question', max: 160 }, { key: 'a', label: 'Answer', max: 600, multiline: true }]} />
+        </div>
+      )}
+      <form onSubmit={submit} className={`space-y-3 ${tab === 'basics' ? '' : 'hidden'}`}>
         <Field label="Name">
           <input autoFocus className="input w-full" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={80} placeholder="e.g. Smartphones" />
         </Field>

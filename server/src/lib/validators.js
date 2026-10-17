@@ -269,6 +269,7 @@ const vendorSelfUpdate = z.object({
   categories: z.array(z.string().min(1).max(80)).max(20).optional(),
   logoUrl: z.string().url().nullable().optional(),
   bannerUrl: z.string().url().nullable().optional(),
+  description: z.string().max(600).nullable().optional(),
 }).refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
 
 const categoryCreate = z.object({
@@ -303,13 +304,90 @@ const subcategoryCreate = z.object({
   sortOrder: z.number().int().min(0).max(10000).optional(),
 });
 
+const guideItems = z.array(z.object({
+  title: z.string().min(1).max(80),
+  body: z.string().min(1).max(500),
+})).max(8);
+const faqItems = z.array(z.object({
+  q: z.string().min(1).max(160),
+  a: z.string().min(1).max(600),
+})).max(12);
+
 const subcategoryUpdate = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   description: z.string().max(240).optional(),
   icon: z.string().max(60).nullable().optional(),
   sortOrder: z.number().int().min(0).max(10000).optional(),
   isActive: z.boolean().optional(),
+  // Department page content.
+  heroImageUrl: z.string().max(500).refine((v) => /^https?:\/\//.test(v) || /^\/[A-Za-z0-9/_\-.]+$/.test(v), { message: 'Must be an image URL or an in-app image path' }).nullable().optional(),
+  intro: z.string().max(1200).nullable().optional(),
+  guide: guideItems.optional(),
+  faqs: faqItems.optional(),
 }).refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
+
+// An image reference: a full URL (uploads) or an in-app asset path such
+// as /seed-images/demo/x.svg (bundled with every app).
+const imageRef = z.string().max(500).refine((v) => /^https?:\/\//.test(v) || /^\/[A-Za-z0-9/_\-.]+$/.test(v), { message: 'Must be an image URL or an in-app image path' });
+
+// Campaign banner (admin). linkUrl must be an in-app path — checked in
+// the route with lib/merch.isInternalLink.
+const optionalDate = z.union([z.string().datetime({ offset: true }), z.string().date()]).nullable().optional();
+const campaignFields = {
+  title: z.string().trim().min(1).max(80),
+  subtitle: z.string().trim().max(160).nullable().optional(),
+  ctaLabel: z.string().trim().min(1).max(30).optional(),
+  linkUrl: z.string().trim().min(1).max(300),
+  imageUrl: imageRef.nullable().optional(),
+  category: z.string().trim().min(1).max(80),
+  subcategory: z.string().trim().max(80).nullable().optional(),
+  isActive: z.boolean().optional(),
+  startsAt: optionalDate,
+  endsAt: optionalDate,
+  sortOrder: z.number().int().min(0).max(10000).optional(),
+};
+const campaignCreate = z.object(campaignFields);
+const campaignUpdate = z.object({
+  ...Object.fromEntries(Object.entries(campaignFields).map(([k, v]) => [k, v.optional()])),
+  status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
+  reviewNote: z.string().max(300).nullable().optional(),
+}).refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
+
+// Partner banner request: links to their own store or one of their products.
+const vendorCampaignRequest = z.object({
+  title: campaignFields.title,
+  subtitle: campaignFields.subtitle,
+  ctaLabel: campaignFields.ctaLabel,
+  imageUrl: campaignFields.imageUrl,
+  category: campaignFields.category,
+  subcategory: campaignFields.subcategory,
+  startsAt: optionalDate,
+  endsAt: optionalDate,
+  target: z.enum(['store', 'product']),
+  productId: z.string().max(80).optional(),
+});
+
+const collectionRule = z.object({
+  maxPriceCents: z.number().int().positive().max(100000000).nullable().optional(),
+  minDiscountPct: z.number().int().min(1).max(95).nullable().optional(),
+  inStockOnly: z.boolean().optional(),
+  sort: z.enum(['newest', 'price-asc', 'discount']).optional(),
+});
+const collectionFields = {
+  name: z.string().trim().min(1).max(80),
+  description: z.string().max(300).optional(),
+  category: z.string().trim().min(1).max(80),
+  subcategory: z.string().trim().max(80).nullable().optional(),
+  mode: z.enum(['MANUAL', 'RULE']),
+  productIds: z.array(z.string().max(80)).max(60).optional(),
+  rule: collectionRule.optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).max(10000).optional(),
+};
+const collectionCreate = z.object(collectionFields);
+const collectionUpdate = z.object(
+  Object.fromEntries(Object.entries(collectionFields).map(([k, v]) => [k, v.optional()])),
+).refine((d) => Object.keys(d).length > 0, { message: 'no fields to update' });
 
 // Review payload submitted by a customer. rating is the only numeric
 // field; title is the headline shown in the list, body is the long
@@ -408,6 +486,11 @@ module.exports = {
   categoryUpdate,
   subcategoryCreate,
   subcategoryUpdate,
+  campaignCreate,
+  campaignUpdate,
+  vendorCampaignRequest,
+  collectionCreate,
+  collectionUpdate,
   reviewCreate,
   reviewListQuery,
   productListQuery,

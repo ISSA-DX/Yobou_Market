@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { api, getAccessToken, refreshAccessToken } from '../../api';
 import Icon from '../../components/Icon';
 import Modal from '../../components/Modal';
+import PhotoSearchButton, { PhotoFilterBanner } from '../../components/PhotoSearchButton';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImage } from '../../lib/productImage';
 import { useProductLiveSync } from '../../lib/useProductLiveSync';
@@ -59,7 +60,22 @@ export default function Products() {
   // approval) creates/updates/deletes any product.
   useProductLiveSync(refetch);
 
-  const products = data?.products || [];
+  // Find by photo: { previewUrl, matches: [{ id, score }], detected } — the
+  // table then shows only the matching products (within the filters
+  // above), closest first.
+  const [photo, setPhoto] = useState(null);
+  function setPhotoFilter(next) {
+    if (photo?.previewUrl) URL.revokeObjectURL(photo.previewUrl);
+    setPhoto(next);
+    setSelected(new Set());
+  }
+
+  const all = data?.products || [];
+  const products = useMemo(() => {
+    if (!photo) return all;
+    const byId = new Map(all.map((p) => [p.id, p]));
+    return photo.matches.map((m) => byId.get(m.id)).filter(Boolean);
+  }, [all, photo]);
   const allChecked = products.length > 0 && products.every((p) => selected.has(p.id));
 
   function setFilter(k, v) {
@@ -246,7 +262,10 @@ export default function Products() {
         {filtered && (
           <button onClick={() => { setFilters(EMPTY_FILTERS); setSelected(new Set()); }} className="btn-secondary py-2 px-3">Clear</button>
         )}
+        <PhotoSearchButton endpoint="/api/admin/products/search-image" onResult={setPhotoFilter} />
       </div>
+
+      {photo && <PhotoFilterBanner photo={photo} count={products.length} onClear={() => setPhotoFilter(null)} />}
 
       {selected.size > 0 && (
         <div className="card p-3 flex flex-wrap items-center gap-2 border border-primary/30 sticky top-2 z-10">
@@ -305,7 +324,7 @@ export default function Products() {
             {!loading && products.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-8 text-center text-on-surface-variant">
-                  {filtered ? 'No products match these filters.' : 'No products yet.'}
+                  {photo ? 'No products look like that photo.' : filtered ? 'No products match these filters.' : 'No products yet.'}
                 </td>
               </tr>
             )}

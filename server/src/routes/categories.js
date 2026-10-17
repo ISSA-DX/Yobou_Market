@@ -156,6 +156,10 @@ function serializeCategory(c, counts = {}, subCounts = {}, { includeInactiveSubs
       icon: s.icon,
       sortOrder: s.sortOrder,
       isActive: s.isActive,
+      heroImageUrl: s.heroImageUrl || null,
+      intro: s.intro || null,
+      guide: parseJsonArray(s.guide),
+      faqs: parseJsonArray(s.faqs),
       productCount: subCounts[`${c.name}\u0000${s.name}`] || 0,
     }));
   return {
@@ -534,6 +538,10 @@ router.patch('/:id/subcategories/:subId', requireAuth, requireRole('ADMIN'), asy
     if (data.icon !== undefined) patch.icon = data.icon || null;
     if (data.sortOrder !== undefined) patch.sortOrder = data.sortOrder;
     if (typeof data.isActive === 'boolean') patch.isActive = data.isActive;
+    if (data.heroImageUrl !== undefined) patch.heroImageUrl = data.heroImageUrl || null;
+    if (data.intro !== undefined) patch.intro = data.intro?.trim() || null;
+    if (data.guide !== undefined) patch.guide = JSON.stringify(data.guide);
+    if (data.faqs !== undefined) patch.faqs = JSON.stringify(data.faqs);
     try {
       await prisma.$transaction(async (tx) => {
         await tx.subcategory.update({ where: { id: sub.id }, data: patch });

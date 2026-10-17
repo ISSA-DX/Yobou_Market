@@ -4,6 +4,9 @@ import { replayAnimation } from '../lib/motion';
 import { useStore } from '../store';
 import Icon from './Icon';
 import NetworkStatus from './NetworkStatus';
+import DesktopHeader from './DesktopHeader';
+import SiteFooter from './SiteFooter';
+import { useIsDesktop } from '../lib/useMediaQuery';
 
 const NAV = [
   { to: '/home', label: 'Home', icon: 'home' },
@@ -13,7 +16,13 @@ const NAV = [
   { to: '/profile', label: 'Profile', icon: 'person' },
 ];
 
-export default function MobileShell() {
+// The customer app's frame. Phones: each page's own header, content in a
+// phone-width column, bottom tab bar. Laptops/desktops (lg+): site header
+// with search and category menu, wide content area, footer — no tab bar.
+// `tabs={false}` hides the tab bar on phones (full-screen pages such as
+// Search) while keeping the desktop header.
+export default function MobileShell({ tabs = true }) {
+  const isDesktop = useIsDesktop();
   const user = useStore((s) => s.user);
   const cartCount = useStore((s) => s.cartCount);
   const refreshCart = useStore((s) => s.refreshCartCount);
@@ -32,10 +41,11 @@ export default function MobileShell() {
 
   return (
     <div
-      className="min-h-screen bg-surface"
-      style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}
+      className={`min-h-screen bg-surface flex flex-col ${tabs ? 'pb-[calc(5rem+env(safe-area-inset-bottom))]' : 'pb-[env(safe-area-inset-bottom)]'} lg:pb-0`}
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
       <NetworkStatus />
+      {isDesktop && <DesktopHeader />}
       {/* No global top bar: every page owns its header (Home carries the
           brand, search, notifications and cart; inner pages a back
           button + title). The old bell-only strip duplicated Home's
@@ -44,11 +54,13 @@ export default function MobileShell() {
           stacking context, letting the bottom nav cover pages' own fixed
           action bars (product "Add to cart") during the fade. Each page's
           sections animate in on their own (styles/motion.css). */}
-      <div className="max-w-screen-md mx-auto">
+      <main className="flex-1 w-full max-w-screen-md mx-auto lg:max-w-screen-xl lg:px-2 xl:px-4">
         <Outlet />
-      </div>
+      </main>
+      {isDesktop && <SiteFooter />}
+      {tabs && (
       <nav
-        className="fixed bottom-0 inset-x-0 bg-white border-t border-outline-variant/50 shadow-nav z-30"
+        className="lg:hidden fixed bottom-0 inset-x-0 bg-white border-t border-outline-variant/50 shadow-nav z-30"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="max-w-screen-md mx-auto grid grid-cols-5 px-2">
@@ -79,6 +91,7 @@ export default function MobileShell() {
           ))}
         </div>
       </nav>
+      )}
     </div>
   );
 }

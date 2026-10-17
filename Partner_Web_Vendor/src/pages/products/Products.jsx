@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../../api';
 import Icon from '../../components/Icon';
 import Modal from '../../components/Modal';
+import PhotoSearchButton, { PhotoFilterBanner } from '../../components/PhotoSearchButton';
 import { useApi, RetryError } from '../../useApi.jsx';
 import { productImage } from '../../lib/productImage';
 import { useStore } from '../../store';
@@ -47,7 +48,20 @@ export default function Products() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [actionErr, setActionErr] = useState('');
 
-  const products = data?.products || [];
+  // Find by photo: { previewUrl, matches: [{ id, score }], detected } — the
+  // list then shows only the matching products, closest first.
+  const [photo, setPhoto] = useState(null);
+  function setPhotoFilter(next) {
+    if (photo?.previewUrl) URL.revokeObjectURL(photo.previewUrl);
+    setPhoto(next);
+  }
+
+  const all = data?.products || [];
+  const products = useMemo(() => {
+    if (!photo) return all;
+    const byId = new Map(all.map((p) => [p.id, p]));
+    return photo.matches.map((m) => byId.get(m.id)).filter(Boolean);
+  }, [all, photo]);
 
   async function saveStock() {
     setStockBusy(true);
@@ -127,7 +141,10 @@ export default function Products() {
             </button>
           ))}
         </div>
+        <PhotoSearchButton endpoint="/api/vendor/products/search-image" onResult={setPhotoFilter} />
       </div>
+
+      {photo && <PhotoFilterBanner photo={photo} count={products.length} onClear={() => setPhotoFilter(null)} />}
 
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
@@ -154,7 +171,7 @@ export default function Products() {
             {!loading && products.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-on-surface-variant">
-                  {q ? `No products match “${q}”.` : 'No products yet. Add your first product to get started.'}
+                  {photo ? 'None of your products look like that photo.' : q ? `No products match “${q}”.` : 'No products yet. Add your first product to get started.'}
                 </td>
               </tr>
             )}

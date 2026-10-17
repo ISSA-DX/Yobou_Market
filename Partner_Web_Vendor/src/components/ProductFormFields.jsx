@@ -5,9 +5,11 @@ import SubcategoryPicker from './SubcategoryPicker';
 import VariantsAccordion from './VariantsAccordion';
 import Icon from './Icon';
 import PlacementSection from './PlacementSection';
+import { shrinkPhoto } from '../lib/photo';
 
 export default function ProductFormFields({ form, update, errors = {} }) {
   const fileRef = useRef(null);
+  const cameraRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState('');
   const [dragging, setDragging] = useState(false);
@@ -19,8 +21,10 @@ export default function ProductFormFields({ form, update, errors = {} }) {
     return url;
   }
 
-  async function handleFiles(files) {
-    const images = Array.from(files).filter((f) => f.type.startsWith('image/'));
+  async function handleFiles(files, { fromCamera = false } = {}) {
+    let images = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    // Camera shots can exceed the 5 MB upload limit; shrink them first.
+    if (fromCamera) images = await Promise.all(images.map((f) => shrinkPhoto(f, 2048)));
     if (!images.length) {
       setUploadErr('Only image files (PNG, JPG, WEBP) are supported.');
       return;
@@ -36,6 +40,7 @@ export default function ProductFormFields({ form, update, errors = {} }) {
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = '';
+      if (cameraRef.current) cameraRef.current.value = '';
     }
   }
 
@@ -319,6 +324,18 @@ export default function ProductFormFields({ form, update, errors = {} }) {
           </div>
           <div className="text-label-sm mt-1">PNG, JPG, WEBP up to 5 MB each · multiple files OK</div>
         </div>
+        {/* Phones: shoot the product straight from the camera. */}
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files, { fromCamera: true })}
+        />
+        <button type="button" onClick={() => cameraRef.current?.click()} disabled={uploading} className="btn-secondary w-full sm:w-auto">
+          <Icon name="photo_camera" /> Take a photo
+        </button>
 
         {uploadErr && (
           <div role="alert" className="card p-3 bg-error/10 text-error text-sm flex items-start gap-2">

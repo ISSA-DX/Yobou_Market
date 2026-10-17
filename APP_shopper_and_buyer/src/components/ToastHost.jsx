@@ -18,7 +18,7 @@ export default function ToastHost() {
 
   return (
     <div
-      className="fixed inset-x-0 bottom-20 z-40 px-4 flex flex-col gap-2 items-center pointer-events-none"
+      className="fixed inset-x-0 bottom-20 lg:bottom-auto lg:top-32 lg:items-end lg:px-8 z-50 px-4 flex flex-col gap-2 items-center pointer-events-none"
       aria-live="polite"
     >
       {items.map((t) => {

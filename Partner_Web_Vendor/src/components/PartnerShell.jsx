@@ -106,6 +106,7 @@ const NAV_ITEMS = [
   { to: '/products', label: 'Products', icon: 'inventory_2' },
   { to: '/orders', label: 'Orders', icon: 'receipt_long' },
   { to: '/changes', label: 'Changes', icon: 'pending_actions' },
+  { to: '/promotions', label: 'Promotions', icon: 'campaign' },
   { to: '/analytics', label: 'Analytics', icon: 'monitoring' },
   { to: '/payouts', label: 'Payouts', icon: 'account_balance_wallet' },
   { to: '/notifications', label: 'Inbox', icon: 'inbox' },

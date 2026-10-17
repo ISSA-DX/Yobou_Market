@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import Icon from '../../components/Icon';
 import ProductCard, { ProductCardSkeleton } from '../../components/ProductCard';
+import Rail, { RAIL_ITEM } from '../../components/Rail';
 
 /**
  * Horizontal scroll section with a header and a row of product cards.
@@ -19,7 +20,7 @@ export default function ProductRow({
   skeletonCount = 4,
   onAdd,
   badge,
-  cardWidth = 'min-w-[170px] sm:min-w-[200px]',
+  cardWidth = RAIL_ITEM,
 }) {
   const showHeader = title || actionTo;
 
@@ -39,7 +40,7 @@ export default function ProductRow({
         </div>
       )}
 
-      <div className="flex gap-3 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory scroll-px-4 px-4 pb-1 min-h-[280px]">
+      <Rail label={title || 'products'} className="gap-3 snap-x snap-mandatory scroll-px-4 px-4 pb-1 min-h-[280px]">
         {loading ? (
           <>
             {Array.from({ length: skeletonCount }).map((_, i) => (
@@ -62,11 +63,11 @@ export default function ProductRow({
             </span>
           </div>
         )}
-      </div>
+      </Rail>
 
-      {/* Right-edge fade hinting there is more to scroll. */}
+      {/* Right-edge fade hinting there is more to swipe (phones). */}
       {products.length > 2 && (
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-surface to-transparent" />
+        <div className="lg:hidden pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-surface to-transparent" />
       )}
     </section>
   );

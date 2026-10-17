@@ -11,14 +11,15 @@ import { Link } from 'react-router-dom';
 import Icon from '../../components/Icon';
 import CountdownTimer from '../../components/CountdownTimer';
 import ProductRow from '../home/ProductRow';
+import Rail, { RAIL_ITEM } from '../../components/Rail';
 import { productImage } from '../../lib/productImage';
 import { formatPrice } from '../../lib/format';
 import { useStore } from '../../store';
 import { categoryPath } from '../../lib/categoryTheme';
 
 // Fixed card width: a lone card in a rail would otherwise stretch to its
-// image's intrinsic size.
-export const RAIL_CARD = 'w-[170px] sm:w-[200px] shrink-0';
+// image's intrinsic size. Shared with every other rail (components/Rail).
+export const RAIL_CARD = RAIL_ITEM;
 
 export const isDeal = (p) => typeof p.compareAtPriceCents === 'number' && p.compareAtPriceCents > (p.priceCents || 0);
 // A deal the seller/admin allows in deal sections (Product.showOnDeals).
@@ -187,4 +188,144 @@ export function priceBands(products, currency) {
       label: b.min == null ? `Under ${fmt(b.max)}` : b.max == null ? `${fmt(b.min)}+` : `${fmt(b.min)} – ${fmt(b.max)}`,
     }))
     .filter((b) => b.count > 0);
+}
+
+// ---------------------------------------------------------------------------
+// Campaign banners (Admin → Campaigns, or partner requests approved there).
+
+export function CampaignCarousel({ campaigns, theme }) {
+  const ref = useRef(null);
+  const paused = useRef(false);
+  const [index, setIndex] = useState(0);
+  const count = campaigns.length;
+
+  useEffect(() => {
+    if (count < 2) return undefined;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
+    const id = setInterval(() => {
+      const el = ref.current;
+      if (!el || paused.current) return;
+      const next = (Math.round(el.scrollLeft / el.clientWidth) + 1) % count;
+      el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
+    }, 6000);
+    return () => clearInterval(id);
+  }, [count]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const onScroll = () => setIndex(Math.round(el.scrollLeft / Math.max(1, el.clientWidth)));
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  if (count === 0) return null;
+  return (
+    <section aria-label="Promotions" className="-mx-4">
+      <div
+        ref={ref}
+        className="flex overflow-x-auto no-scrollbar snap-x snap-mandatory scroll-smooth"
+        onPointerDown={() => { paused.current = true; }}
+        onPointerUp={() => { setTimeout(() => { paused.current = false; }, 4000); }}
+        aria-roledescription="carousel"
+      >
+        {campaigns.map((c, i) => (
+          <div key={c.id} className="snap-center shrink-0 w-full px-4" aria-roledescription="slide" aria-label={`${i + 1} of ${count}`}>
+            <Link to={c.linkUrl} className={`relative flex items-stretch overflow-hidden rounded-3xl bg-gradient-to-br ${theme.gradient} text-white min-h-[168px] shadow-lg group`}>
+              <div className="relative z-10 flex-1 p-4 sm:p-5 flex flex-col justify-between min-w-0">
+                <div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">
+                    <Icon name={c.vendor ? 'storefront' : 'campaign'} fill className="text-[13px]" />
+                    {c.vendor ? c.vendor.businessName : 'Yobou picks'}
+                  </span>
+                  <h3 className="mt-2 text-title-lg font-extrabold leading-tight line-clamp-2 text-white">{c.title}</h3>
+                  {c.subtitle && <p className="text-sm text-white/85 mt-1 line-clamp-2">{c.subtitle}</p>}
+                </div>
+                <span className="mt-3 self-start inline-flex items-center gap-1 rounded-full bg-white text-on-surface px-3.5 py-1.5 text-label-md font-bold">
+                  {c.ctaLabel || 'Shop now'} <Icon name="arrow_forward" className="text-[16px] transition-transform group-hover:translate-x-0.5" />
+                </span>
+              </div>
+              {c.imageUrl && (
+                <div className="relative w-[42%] shrink-0">
+                  <img src={c.imageUrl} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+                </div>
+              )}
+              {!c.imageUrl && <Icon name={theme.icon} className="absolute -right-4 -bottom-6 text-[150px] opacity-20" />}
+            </Link>
+          </div>
+        ))}
+      </div>
+      {count > 1 && (
+        <div className="mt-2 flex justify-center gap-1.5" aria-hidden="true">
+          {campaigns.map((c, i) => (
+            <span key={c.id} className={`h-1.5 rounded-full transition-all ${i === index ? 'w-5 bg-primary' : 'w-1.5 bg-outline-variant'}`} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stores selling in this category (partner profile: logo, banner, copy).
+
+export function StoresRow({ stores, category }) {
+  if (!stores?.length) return null;
+  return (
+    <section aria-labelledby="stores-h">
+      <div className="flex items-end justify-between gap-3 mb-3">
+        <div>
+          <div className="eyebrow">Approved sellers</div>
+          <h2 id="stores-h" className="text-title-lg font-bold">Shop by store</h2>
+        </div>
+        <span className="text-label-md text-on-surface-variant">{stores.length} in {category.name}</span>
+      </div>
+      <Rail label="stores" className="-mx-4 gap-3 snap-x scroll-px-4 px-4 pb-1">
+        {stores.map((s) => (
+          <Link key={s.id} to={`/stores/${s.id}`} className="snap-start shrink-0 w-56 card overflow-hidden group">
+            <div className="relative h-16 bg-gradient-to-br from-primary to-primary-container">
+              {s.bannerUrl && <img src={s.bannerUrl} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />}
+            </div>
+            <div className="px-3 pb-3 -mt-6 relative">
+              <span className="w-12 h-12 rounded-xl bg-white ring-2 ring-white shadow flex items-center justify-center overflow-hidden">
+                {s.logoUrl ? <img src={s.logoUrl} alt="" className="w-full h-full object-cover" /> : <Icon name="storefront" className="text-[24px] text-primary" />}
+              </span>
+              <div className="mt-1.5 font-semibold text-sm truncate">{s.businessName}</div>
+              <div className="text-label-sm text-on-surface-variant">
+                {s.productCount} product{s.productCount === 1 ? '' : 's'}{s.dealCount ? ` · ${s.dealCount} deal${s.dealCount === 1 ? '' : 's'}` : ''}
+              </div>
+              {s.description && <p className="text-label-sm text-on-surface-variant line-clamp-2 mt-1">{s.description}</p>}
+              <span className="mt-2 inline-flex items-center gap-0.5 text-label-md font-semibold text-primary">
+                Visit store <Icon name="chevron_right" className="text-[16px]" />
+              </span>
+            </div>
+          </Link>
+        ))}
+      </Rail>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Curated collection rail (Admin → Categories → Collections).
+
+export function CollectionShelf({ collection, onAdd }) {
+  if (!collection.products?.length) return null;
+  return (
+    <section aria-labelledby={`coll-${collection.slug}`} className="rounded-3xl bg-primary/5 ring-1 ring-primary/10 pt-4 pb-2 -mx-1 px-1">
+      <div className="px-3 flex items-end justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <div className="eyebrow flex items-center gap-1"><Icon name="collections_bookmark" className="text-[14px]" /> Collection</div>
+          <h2 id={`coll-${collection.slug}`} className="text-title-lg font-bold truncate">{collection.name}</h2>
+          {collection.description && <p className="text-label-md text-on-surface-variant line-clamp-1">{collection.description}</p>}
+        </div>
+        <Link to={`/collections/${collection.slug}`} className="shrink-0 inline-flex items-center gap-0.5 text-sm text-primary font-semibold">
+          See all <Icon name="chevron_right" className="text-[18px]" />
+        </Link>
+      </div>
+      <div className="px-3">
+        <ProductRow products={collection.products} onAdd={onAdd} cardWidth={RAIL_CARD} />
+      </div>
+    </section>
+  );
 }

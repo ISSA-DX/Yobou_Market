@@ -24,7 +24,7 @@ import { useStore } from '../../store';
 import { toast } from '../../lib/toast';
 
 // Cards in the narrow right-hand pane: two visible on a phone.
-const PANE_CARD = 'w-[150px] md:w-[180px] shrink-0';
+const PANE_CARD = 'w-[150px] md:w-[180px] lg:w-[200px] shrink-0';
 
 async function addToCart(p) {
   try {
@@ -76,8 +76,12 @@ export default function Categories() {
     <div className="pb-6">
       {/* Sticky search — the page's only header; the bottom nav already
           says where you are. */}
-      <div className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-outline-variant/40 px-4 py-3" style={{ height: SEARCH_BAR_H }}>
-        <div className="relative">
+      <div className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-outline-variant/40 px-4 py-3 lg:static lg:!h-auto lg:bg-transparent lg:backdrop-blur-none lg:border-0 lg:pt-8 lg:pb-5 lg:flex lg:items-end lg:justify-between lg:gap-6" style={{ height: SEARCH_BAR_H }}>
+        <div className="hidden lg:block">
+          <h1 className="text-headline-lg font-bold">All categories</h1>
+          <p className="text-sm text-on-surface-variant mt-1">Every department on Yobou, from approved local sellers.</p>
+        </div>
+        <div className="relative lg:w-[420px]">
           <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]" />
           <input
             className="input pl-10 pr-10 w-full h-11"
@@ -107,7 +111,7 @@ export default function Categories() {
       {results && <SearchResults results={results} query={query} />}
 
       {!results && data && selected && (
-        <div className="grid grid-cols-[92px_1fr] md:grid-cols-[200px_1fr] items-start">
+        <div className="grid grid-cols-[92px_1fr] md:grid-cols-[200px_1fr] lg:grid-cols-[248px_minmax(0,1fr)] lg:gap-6 lg:px-4 items-start">
           <CategoryRail categories={categories} selected={selected} onSelect={select} />
           <SelectedPane category={selected} />
         </div>
@@ -126,7 +130,7 @@ function CategoryRail({ categories, selected, onSelect }) {
   return (
     <nav
       aria-label="Categories"
-      className="sticky self-start overflow-y-auto no-scrollbar bg-surface-low border-r border-outline-variant/40"
+      className="sticky self-start overflow-y-auto no-scrollbar bg-surface-low border-r border-outline-variant/40 lg:!top-[160px] lg:!max-h-[calc(100vh-180px)] lg:bg-white lg:border lg:rounded-2xl lg:py-2"
       style={{ top: SEARCH_BAR_H, maxHeight: `calc(100dvh - ${SEARCH_BAR_H}px - 5rem - env(safe-area-inset-bottom))` }}
     >
       <ul role="tablist" aria-orientation="vertical">
@@ -163,30 +167,30 @@ function SelectedPane({ category }) {
   const t = themeFor(category);
   const subs = category.subcategories || [];
   return (
-    <section aria-labelledby="pane-h" className="min-w-0 p-3 md:p-5 space-y-5" key={category.slug}>
+    <section aria-labelledby="pane-h" className="min-w-0 p-3 md:p-5 lg:p-0 space-y-5 lg:space-y-8" key={category.slug}>
       {/* Banner */}
-      <Link to={categoryPath(category)} className={`reveal reveal-fade-up relative block overflow-hidden rounded-2xl bg-gradient-to-br ${t.gradient} text-white p-4 min-h-[132px] group`}>
+      <Link to={categoryPath(category)} className={`reveal reveal-fade-up relative block overflow-hidden rounded-2xl bg-gradient-to-br ${t.gradient} text-white p-4 lg:p-8 min-h-[132px] lg:min-h-[200px] group`}>
         <div className="relative z-10 max-w-[78%]">
           {category.featured && (
             <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mb-1.5">
               <Icon name="star" fill className="text-[12px]" /> Featured
             </span>
           )}
-          <h1 id="pane-h" className="text-title-lg font-bold text-white leading-tight">{category.name}</h1>
+          <h1 id="pane-h" className="text-title-lg lg:text-headline-lg font-bold text-white leading-tight">{category.name}</h1>
           {category.tagline && <p className="text-label-md text-white/85 mt-1 line-clamp-2">{category.tagline}</p>}
           <span className="mt-3 inline-flex items-center gap-1 rounded-full bg-white text-on-surface px-3 py-1.5 text-label-md font-semibold">
             Shop all{category.productCount > 0 ? ` ${category.productCount}` : ''}
             <Icon name="arrow_forward" className="text-[16px] transition-transform group-hover:translate-x-0.5" />
           </span>
         </div>
-        <Icon name={t.icon} className="absolute -right-3 -bottom-4 text-[110px] opacity-20" />
+        <Icon name={t.icon} className="absolute -right-3 -bottom-4 text-[110px] lg:text-[180px] opacity-20" />
       </Link>
 
       {/* Departments */}
       {subs.length > 0 ? (
         <div>
           <h2 className="text-title-md font-semibold mb-3">Shop by department</h2>
-          <ul className="reveal-stagger stagger-pop grid grid-cols-3 md:grid-cols-4 gap-x-2 gap-y-4" style={{ '--stagger-step': '30ms' }}>
+          <ul className="reveal-stagger stagger-pop grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-2 gap-y-4 lg:gap-y-6" style={{ '--stagger-step': '30ms' }}>
             {subs.map((s) => (
               <li key={s.slug}>
                 <Link to={categoryPath(category, s)} className="flex flex-col items-center gap-1.5 text-center group">

@@ -91,3 +91,6 @@ Partner_Web_Vendor/android/app/release/
 Partner_Web_Vendor/yobou-partner.keystore
 Partner_Web_Vendor/yobou-partner.apk
 Partner_Web_Vendor/dist/
+
+# Local session cookies from manual API testing
+cookies.txt

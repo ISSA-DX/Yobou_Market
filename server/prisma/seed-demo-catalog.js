@@ -12,7 +12,7 @@ const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 const { PrismaClient } = require('@prisma/client');
 const { DEMO_CATALOG } = require('./demoCatalog');
-const { writeDemoImages, imageFile } = require('./demoImages');
+const { writeDemoImages, writeStoreArt, imageFile, slugify } = require('./demoImages');
 
 const prisma = new PrismaClient();
 const STORE_EMAIL = 'demo-store@yobou.test';
@@ -103,6 +103,73 @@ async function add() {
     }
   }
   console.log(`[demo] ${created} sample products added, ${skipped} already present (seller: ${STORE_NAME})`);
+  await addMerchandising(vendor);
+}
+
+// Sample merchandising so every category page shows the admin/partner
+// features: a store profile, two collections per category and one banner
+// per category. Sample collections use the `sample-` slug prefix so
+// --remove can find them (and the banners that link to them).
+const SAMPLE_PREFIX = 'sample-';
+
+async function addMerchandising(vendor) {
+  writeStoreArt();
+  await prisma.vendor.update({
+    where: { id: vendor.id },
+    data: {
+      description: 'Example listings that show how Yobou looks with a full catalogue — every department has a few products to explore while real sellers onboard.',
+      logoUrl: '/seed-images/demo/store-logo.svg',
+      bannerUrl: '/seed-images/demo/store-banner.svg',
+    },
+  });
+
+  const categories = Object.keys(DEMO_CATALOG);
+  let collections = 0;
+  let campaigns = 0;
+  for (let i = 0; i < categories.length; i++) {
+    const category = categories[i];
+    const base = `${SAMPLE_PREFIX}${slugify(category)}`;
+    const defs = [
+      { slug: `${base}-best-deals`, name: 'Best deals', description: `The biggest savings in ${category} right now.`, rule: { minDiscountPct: 10, inStockOnly: true, sort: 'discount' }, sortOrder: 1 },
+      { slug: `${base}-under-25`, name: 'Under $25', description: `Great finds in ${category} for less.`, rule: { maxPriceCents: 2500, inStockOnly: true, sort: 'price-asc' }, sortOrder: 2 },
+    ];
+    for (const d of defs) {
+      const exists = await prisma.collection.findUnique({ where: { slug: d.slug } });
+      if (exists) continue;
+      await prisma.collection.create({
+        data: { slug: d.slug, name: d.name, description: d.description, category, mode: 'RULE', rule: JSON.stringify(d.rule), sortOrder: d.sortOrder },
+      });
+      collections++;
+    }
+    const link = `/collections/${base}-best-deals`;
+    if (!(await prisma.campaign.findFirst({ where: { linkUrl: link } }))) {
+      // Use the first sample product's artwork for the banner image.
+      const firstSub = Object.keys(DEMO_CATALOG[category])[0];
+      const firstProduct = DEMO_CATALOG[category][firstSub][0][0];
+      await prisma.campaign.create({
+        data: {
+          title: `${category} deals of the week`,
+          subtitle: 'Hand-picked savings from approved sellers.',
+          ctaLabel: 'See the deals',
+          linkUrl: link,
+          imageUrl: `/seed-images/demo/${imageFile(category, firstProduct)}`,
+          category,
+          status: 'APPROVED',
+          sortOrder: 1,
+        },
+      });
+      campaigns++;
+    }
+  }
+  console.log(`[demo] merchandising: store profile, ${collections} collections, ${campaigns} banners added`);
+}
+
+async function removeMerchandising() {
+  const cols = await prisma.collection.findMany({ where: { slug: { startsWith: SAMPLE_PREFIX } }, select: { slug: true } });
+  const links = cols.map((c) => `/collections/${c.slug}`);
+  const camp = await prisma.campaign.deleteMany({ where: { linkUrl: { in: links } } });
+  const col = await prisma.collection.deleteMany({ where: { slug: { startsWith: SAMPLE_PREFIX } } });
+  console.log(`[demo] removed ${col.count} sample collections and ${camp.count} sample banners`);
 }
 
 async function remove() {
@@ -123,7 +190,7 @@ async function remove() {
 
 (async () => {
   try {
-    if (process.argv.includes('--remove')) await remove();
+    if (process.argv.includes('--remove')) { await removeMerchandising(); await remove(); }
     else await add();
   } catch (err) {
     console.error('[demo] failed:', err);

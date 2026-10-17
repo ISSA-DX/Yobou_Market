@@ -239,6 +239,24 @@ h2, h3 { color: #0b1220; }
   animation-delay: 1.5s;
 }
 
+/* Search by photo: a light band sweeping over the shopper's photo while
+   it is being matched (PhotoSearch.jsx). */
+@keyframes photo-scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+.photo-scan { overflow: hidden; }
+.photo-scan::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 0%, rgba(255, 255, 255, 0.55) 50%, transparent 100%);
+  animation: photo-scan 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .photo-scan::after { animation: none; background: rgba(255, 255, 255, 0.25); }
+}
+
 /* =====================================================================
    Yobou Market: unified dark theme
    ---------------------------------------------------------------------

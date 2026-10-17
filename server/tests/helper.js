@@ -12,6 +12,9 @@ function setupTestDb() {
   process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-must-be-at-least-32-characters-long';
   process.env.NODE_ENV = 'test';
   process.env.MOBILE_MONEY_SIM_FAILURE_RATE = '0';
+  // Same for the card simulator's random decline (default 5%), which made
+  // order-placing tests fail at random.
+  process.env.PAYMENT_DECLINE_RATE = '0';
 
   // Push the schema to the test database.
   execSync('npx prisma db push --skip-generate', {
@@ -61,9 +64,12 @@ async function resetTestDb() {
     prisma.product.deleteMany(),
     prisma.address.deleteMany(),
     prisma.vendor.deleteMany(),
+    prisma.campaign.deleteMany(),
+    prisma.collection.deleteMany(),
     prisma.subcategory.deleteMany(),
     prisma.category.deleteMany(),
     prisma.user.deleteMany(),
+    prisma.imageSignature.deleteMany(),
   ]);
 }
 

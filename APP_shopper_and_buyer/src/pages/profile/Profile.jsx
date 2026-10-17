@@ -84,16 +84,18 @@ export default function Profile() {
   }
 
   return (
-    <div className="pb-24 max-w-screen-md mx-auto">
-      <header className="flex items-center justify-between px-4 h-14">
+    <div className="pb-24 lg:pb-10 lg:pt-8 max-w-screen-md lg:max-w-5xl mx-auto">
+      <h1 className="hidden lg:block px-4 mb-6 text-headline-lg font-bold">My account</h1>
+      <header className="flex items-center justify-between px-4 h-14 lg:hidden">
         <button type="button" onClick={() => navigate(-1)} className="p-2 -ml-2"><Icon name="arrow_back" className="text-[24px]" /></button>
         <h1 className="font-bold">Profile</h1>
         <span className="w-10" />
       </header>
 
-      <div className="px-4 space-y-6">
+      <div className="px-4 space-y-6 lg:space-y-0 lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-8 lg:items-start">
+        <div className="space-y-6 lg:sticky lg:top-[148px]">
         {/* Avatar */}
-        <div className="text-center">
+        <div className="text-center lg:card lg:p-6">
           <div className="relative inline-block">
             <div className="reveal reveal-pop w-24 h-24 rounded-full bg-gradient-to-br from-primary to-primary-container text-white flex items-center justify-center text-headline-lg font-bold shadow-float">
               {(form.name || user?.name || 'U').slice(0, 2).toUpperCase()}
@@ -114,6 +116,38 @@ export default function Profile() {
           <div className="text-label-md text-on-surface-variant">{user?.email}</div>
         </div>
 
+        {/* Stats */}
+        <div className="reveal-stagger stagger-zoom grid grid-cols-2 gap-3" style={{ "--stagger-step": "100ms" }}>
+          <Link to="/orders" className="card p-4 text-center hover:shadow-float transition">
+            <Icon name="receipt_long" className="text-primary text-[24px] mx-auto" />
+            <div className="mt-1 text-headline-md font-bold">{orders.length}</div>
+            <div className="text-label-md text-on-surface-variant">Orders</div>
+          </Link>
+          <Link to="/wishlist" className="card p-4 text-center hover:shadow-float transition">
+            <Icon name="favorite" className="text-tertiary text-[24px] mx-auto" />
+            <div className="mt-1 text-headline-md font-bold">{wishlist.length}</div>
+            <div className="text-label-md text-on-surface-variant">Wishlist</div>
+          </Link>
+        </div>
+
+        {/* Default address */}
+        {defaultAddr && (
+          <div className="reveal reveal-slide-right card p-4">
+            <div className="flex items-center gap-2 text-label-md text-on-surface-variant">
+              <Icon name="home" className="text-[16px]" /> Default address
+            </div>
+            <div className="mt-1 font-semibold text-sm">
+              {defaultAddr.recipientName || defaultAddr.line1}
+            </div>
+            <div className="text-label-md text-on-surface-variant">
+              {defaultAddr.line1}, {defaultAddr.city}, {defaultAddr.state} {defaultAddr.postal}
+            </div>
+          </div>
+        )}
+
+        </div>
+
+        <div className="space-y-6">
         {/* Editable profile card */}
         <div className="reveal reveal-fade-up card p-4 sm:p-5">
           <div className="flex items-center justify-between mb-4">
@@ -176,35 +210,6 @@ export default function Profile() {
           )}
         </div>
 
-        {/* Stats */}
-        <div className="reveal-stagger stagger-zoom grid grid-cols-2 gap-3" style={{ "--stagger-step": "100ms" }}>
-          <Link to="/orders" className="card p-4 text-center hover:shadow-float transition">
-            <Icon name="receipt_long" className="text-primary text-[24px] mx-auto" />
-            <div className="mt-1 text-headline-md font-bold">{orders.length}</div>
-            <div className="text-label-md text-on-surface-variant">Orders</div>
-          </Link>
-          <Link to="/wishlist" className="card p-4 text-center hover:shadow-float transition">
-            <Icon name="favorite" className="text-tertiary text-[24px] mx-auto" />
-            <div className="mt-1 text-headline-md font-bold">{wishlist.length}</div>
-            <div className="text-label-md text-on-surface-variant">Wishlist</div>
-          </Link>
-        </div>
-
-        {/* Default address */}
-        {defaultAddr && (
-          <div className="reveal reveal-slide-right card p-4">
-            <div className="flex items-center gap-2 text-label-md text-on-surface-variant">
-              <Icon name="home" className="text-[16px]" /> Default address
-            </div>
-            <div className="mt-1 font-semibold text-sm">
-              {defaultAddr.recipientName || defaultAddr.line1}
-            </div>
-            <div className="text-label-md text-on-surface-variant">
-              {defaultAddr.line1}, {defaultAddr.city}, {defaultAddr.state} {defaultAddr.postal}
-            </div>
-          </div>
-        )}
-
         {/* Sections */}
         {SECTIONS.map((sec) => (
           <div key={sec.title} className="reveal reveal-flip card overflow-hidden">
@@ -237,6 +242,7 @@ export default function Profile() {
 
         <div className="text-center text-label-md text-on-surface-variant pb-4">
           Yobou v1.0.0 · <Link to="/help" className="text-primary">Terms</Link> · <Link to="/help" className="text-primary">Privacy</Link>
+        </div>
         </div>
       </div>
     </div>
