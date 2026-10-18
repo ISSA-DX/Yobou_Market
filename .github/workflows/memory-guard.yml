@@ -1,0 +1,42 @@
+# PROJECT_MEMORY.md is append-only: new lines may be added, but no
+# existing line may be removed or changed. See the rules at the top of
+# that file.
+name: Project memory is append-only
+
+on:
+  pull_request:
+    paths: [PROJECT_MEMORY.md]
+  push:
+    branches: [main]
+    paths: [PROJECT_MEMORY.md]
+
+jobs:
+  append-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse removed or changed lines
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            BASE=$(git merge-base "$PR_BASE" HEAD)
+          else
+            BASE="$PUSH_BEFORE"
+          fi
+          if ! git cat-file -e "$BASE:PROJECT_MEMORY.md" 2>/dev/null; then
+            echo "No earlier version of PROJECT_MEMORY.md to compare with."
+            exit 0
+          fi
+          REMOVED=$(git diff --numstat "$BASE" HEAD -- PROJECT_MEMORY.md | awk '{print $2}')
+          if [ "${REMOVED:-0}" != "0" ]; then
+            echo "::error file=PROJECT_MEMORY.md::$REMOVED existing line(s) were removed or changed. PROJECT_MEMORY.md is append-only; add a new entry instead."
+            git diff "$BASE" HEAD -- PROJECT_MEMORY.md | grep '^-' | grep -v '^---' || true
+            exit 1
+          fi
+          echo "PROJECT_MEMORY.md only gained lines."
