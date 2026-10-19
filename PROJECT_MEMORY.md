@@ -338,3 +338,66 @@ line (fails) and one that only appends (passes).
 
 ### Next steps
 None new.
+
+---
+
+## Entry 006 — 2026-10-20 — Customer APK 0.4.6-preview.1 published
+- Commit(s): `acff652` · PR: #5 (open) · Branch: release/v0.4.6-preview.1
+- Type: chore
+- Areas: android, infra
+- Author: Claude (AI assistant), for Issa
+
+### What changed
+- Bumped the customer Android app to versionCode 12 / versionName
+  `0.4.6-preview.1` in `APP_shopper_and_buyer/android/app/build.gradle`.
+- Pushed tag `v0.4.6-preview.1-android-customer`, so `release-apk.yml`
+  built and published a GitHub Release with `yobou-market.apk` (3.66 MB)
+  from the October 17 feature set merged in PR #3.
+- Built the same source locally as a fallback and copied the APK to the
+  repository root (git-ignored as `Yobou-Market-*.apk`).
+
+### Why
+The owner wanted the current customer app on their Android phone and
+approved publishing a release.
+
+### Key files
+`APP_shopper_and_buyer/android/app/build.gradle`,
+`.github/workflows/release-apk.yml`.
+
+### Verification
+- GitHub Actions run `39257665755` succeeded (build and release jobs).
+- Downloaded the published APK and checked with aapt/apksigner:
+  package `com.yobou.market`, versionCode 12, versionName
+  `0.4.6-preview.1`, minSdk 24, targetSdk 36; bundled assets include the
+  department, collection and store pages and photo search; API base
+  `https://yobou-server.onrender.com`; SHA-256
+  `604d8db5579e7abb2d64445ade6d95bcd7f307b677e7648b2ec29ada0f3db841`.
+- The APK is signed with a debug certificate. It was not installed on a
+  physical phone.
+- Live API `/api/health` returned 200; `POST /api/auth/login` with
+  `shopper@yobou.test` and its seed password returned 200.
+
+### Decisions and notes
+- `gh secret list` returns no repository secrets, so the workflow's
+  "Decode release keystore" step is skipped and the APK is signed with a
+  key the runner generates. Every CI run therefore has a different key,
+  and a new APK cannot install over an older one until the old app is
+  uninstalled. The local `android/app/yobou-release.keystore` exists but
+  its passwords are not stored on this machine.
+- The release is marked pre-release because the tag contains `-preview`.
+
+### Status of earlier next steps
+- NS-016 (rebuild test APKs against the live server): in progress — a
+  current APK is published, but it is not release-signed.
+
+### Next steps
+- NS-018 [P0] Configure Android release signing in GitHub Actions
+  (`YOBOU_KEYSTORE_BASE64`, `YOBOU_KEYSTORE_PASSWORD`, `YOBOU_KEY_ALIAS`,
+  `YOBOU_KEY_PASSWORD`) and fix the decode step's `if:` condition, which
+  reads `env` instead of the secret — every published APK is currently
+  debug-signed with a per-run key. Done when two consecutive releases are
+  signed with the same certificate and upgrade in place.
+- NS-019 [P1] Find out why the owner's login says "email or password
+  incorrect": confirm which email was used. The live API accepted
+  `shopper@yobou.test` with its seed password on 2026-10-20, so the issue
+  is the account or the typed credentials, not the server.
